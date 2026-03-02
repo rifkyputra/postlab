@@ -1,8 +1,53 @@
+# Python
 **/.venv
 **/__pycache__
 **/*.pyc
 **/*.pyo
 **/*.pyd
+
+# Logs + databases
 **/*.db
 **/*.sqlite3
 **/*.log
+
+# Rust
+/target/
+crates/*/target/
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+
+# Docker test SSH keys (generated locally, never commit private keys)
+docker/test_key
+docker/test_key.pub
+
+# SvelteKit / Node
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.output
+web/.vercel
+web/.netlify
+web/.wrangler
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+!.env.test
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.iml
+.vscode/settings.json
+
+# SSH keys (never commit private keys)
+*.pem
+id_rsa
+id_ed25519

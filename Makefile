@@ -1,124 +1,149 @@
-# Root Makefile for Homelab + selfhost-pg
-# Provides unified shortcuts for server setup, utilities, and PostgreSQL stack
+# Postlab — development shortcuts
 # Usage: make help
 
 SHELL := /bin/bash
-SETUP_DIR := setup-ubuntu-server
-UTIL_DIR := $(SETUP_DIR)/utils
-PG_DIR := selfhost-pg
+DB_URL ?= sqlite://postlab.db?mode=rwc
 
-# Detect if running inside a POSIX shell without sudo (mac vs linux usage)
-UNAME_S := $(shell uname -s)
-SUDO := sudo
-ifeq ($(UNAME_S),Darwin)
-	# Allow overriding sudo on mac if not needed
-	SUDO := sudo
-endif
+.PHONY: help \
+        dev \
+        build build-release check test \
+        server cli \
+        web-install web-dev web-build web-test \
+        db-reset \
+        docker-keygen docker-up docker-down docker-ssh-ubuntu docker-ssh-fedora \
+        harden-perms \
+        clean
 
-.PHONY: help setup-all firewall-fix permissions install-code-server install-vnc troubleshoot-vnc services postgres-start postgres-stop postgres-restart postgres-status backup-pg logs-pg monitor-pg security-pg compose-restart netdata-restart pg-shell vnc-password code-password clean root-info
-
-help: ## Show this help message
-	@echo "Homelab Unified Commands:"; echo;
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' | sort
-	@echo; echo "PostgreSQL specific commands also live in $(PG_DIR)/Makefile (invoke with: make -C $(PG_DIR) help)"
-
-root-info: ## Show key directories and scripts
-	@echo "Setup dir:        $(SETUP_DIR)"; \
-	echo "Utilities dir:    $(UTIL_DIR)"; \
-	echo "Postgres dir:     $(PG_DIR)"; \
-	echo "Config file:      $(SETUP_DIR)/config.env"; \
-	echo "Permissions fixer: $(UTIL_DIR)/fix-permissions.sh";
+DOCKER_KEY   := docker/test_key
+DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
 # ---------------------------------------------------------------------------
-# Setup & Utilities
+# Help
 # ---------------------------------------------------------------------------
-setup-all: ## Run full homelab setup (on target Ubuntu server)
-	@echo "🚀 Running full setup sequence"; \
-	chmod +x $(SETUP_DIR)/*.sh $(SETUP_DIR)/lib/common.sh || true; \
-	$(SUDO) $(SETUP_DIR)/00-run-all.sh
 
-firewall-fix: ## Diagnose & fix service accessibility / firewall
-	@echo "🛡  Running firewall & service diagnostics"; \
-	chmod +x $(UTIL_DIR)/fix-firewall.sh; \
-	$(SUDO) $(UTIL_DIR)/fix-firewall.sh || true
+help: ## Show this help
+	@echo "Postlab commands:"; echo
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' \
+		| sort
 
-permissions: ## Fix permissions for all project scripts
-	@echo "🔧 Fixing script & config permissions"; \
-	chmod +x $(UTIL_DIR)/fix-permissions.sh; \
-	$(UTIL_DIR)/fix-permissions.sh
+# ---------------------------------------------------------------------------
+# Dev (full stack)
+# ---------------------------------------------------------------------------
 
-install-code-server: ## Install & configure code-server service
-	@echo "🧩 Installing code-server"; \
-	chmod +x $(UTIL_DIR)/install-code-server.sh; \
-	$(UTIL_DIR)/install-code-server.sh
+dev: ## Start API server + web dev server concurrently (Ctrl-C stops both)
+	@trap 'kill %1 %2 2>/dev/null; exit 0' INT TERM; \
+	DATABASE_URL=$(DB_URL) cargo run -p postlab-server & \
+	(cd web && npm run dev) & \
+	wait
 
-install-vnc: ## Install & configure VNC (TigerVNC)
-	@echo "🖥  Installing VNC server"; \
-	chmod +x $(UTIL_DIR)/install-vnc.sh; \
-	$(UTIL_DIR)/install-vnc.sh
+# ---------------------------------------------------------------------------
+# Rust
+# ---------------------------------------------------------------------------
 
-troubleshoot-vnc: ## Run VNC troubleshooting diagnostics
-	@chmod +x $(UTIL_DIR)/troubleshoot-vnc.sh; \
-	$(UTIL_DIR)/troubleshoot-vnc.sh
+build: ## Build all crates (dev)
+	cargo build --workspace
 
-services: ## Quick check of core listening services & ports
-	@echo "🔍 Checking core service ports"; \
-	netstat -tlnp 2>/dev/null | grep -E ':(443|8080|5901|19999) ' || echo "(netstat output unavailable)"; \
-	$(SUDO) ufw status | grep -E '(443|8080|5901|19999)' || true
+build-release: ## Build all crates (release)
+	cargo build --workspace --release
 
-netdata-restart: ## Restart Netdata after config edits
-	$(SUDO) systemctl restart netdata && $(SUDO) systemctl status netdata --no-pager -l | head -20
+check: ## Type-check + lint without building binaries
+	cargo check --workspace
+	cargo clippy --workspace -- -D warnings
 
-compose-restart: ## Restart homelab Docker compose stack (Portainer/code/Grafana)
-	$(SUDO) systemctl restart homelab-compose && $(SUDO) systemctl status homelab-compose --no-pager -l | head -20
+test: ## Run all Rust unit tests
+	cargo test --workspace
 
-vnc-password: ## Set / change VNC password (run as your user)
-	vncpasswd
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
 
-code-password: ## Show code-server password (compose env or user config)
-	@if [ -f /opt/homelab/.env ]; then \
-		grep CODE_SERVER_PASSWORD /opt/homelab/.env || echo "Password not found in /opt/homelab/.env"; \
-	elif [ -f $$HOME/.config/code-server/config.yaml ]; then \
-		grep '^password:' $$HOME/.config/code-server/config.yaml; \
+server: ## Start the API server (port 3000, auto-migrates DB)
+	DATABASE_URL=$(DB_URL) cargo run -p postlab-server
+
+cli: ## Launch the interactive CLI wizard
+	cargo run -p postlab-cli
+
+# ---------------------------------------------------------------------------
+# Web
+# ---------------------------------------------------------------------------
+
+web-install: ## Install web dependencies
+	cd web && npm install
+
+web-dev: ## Start the SvelteKit dev server (proxies /api → :3000)
+	cd web && npm run dev
+
+web-build: ## Production build of the web frontend
+	cd web && npm run build
+
+web-test: ## Run Vitest frontend tests
+	cd web && npm test
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+db-reset: ## Delete the local SQLite database (will be re-created on next server start)
+	@echo "Removing postlab.db …"
+	rm -f postlab.db postlab.db-shm postlab.db-wal
+	@echo "Done. Start the server to re-apply migrations."
+
+# ---------------------------------------------------------------------------
+# Docker test containers
+# ---------------------------------------------------------------------------
+
+docker-keygen: ## Generate SSH test keypair for Docker containers (run once)
+	@if [ -f $(DOCKER_KEY) ]; then \
+		echo "$(DOCKER_KEY) already exists — delete it first to regenerate."; \
 	else \
-		echo "code-server config not found"; \
+		ssh-keygen -t ed25519 -f $(DOCKER_KEY) -N "" -C "postlab-test"; \
+		echo "Created: $(DOCKER_KEY) and $(DOCKER_KEY).pub"; \
+		echo "Now run: make docker-up"; \
 	fi
 
+docker-up: ## Build and start Ubuntu (:2222) + Fedora (:2223) SSH containers
+	@if [ ! -f $(DOCKER_KEY).pub ]; then \
+		echo "No test key found. Run: make docker-keygen"; exit 1; \
+	fi
+	$(DOCKER_COMPOSE) up -d --build
+	@echo ""
+	@echo "Containers ready:"
+	@echo "  Ubuntu  → localhost:2222  (user: postlab, key: $(DOCKER_KEY))"
+	@echo "  Fedora  → localhost:2223  (user: postlab, key: $(DOCKER_KEY))"
+	@echo ""
+	@echo "Add to Postlab:"
+	@echo "  cargo run -p postlab-cli -- server add --name ubuntu-test --host localhost --port 2222 --user postlab --key $(CURDIR)/$(DOCKER_KEY)"
+	@echo "  cargo run -p postlab-cli -- server add --name fedora-test --host localhost --port 2223 --user postlab --key $(CURDIR)/$(DOCKER_KEY)"
+
+docker-down: ## Stop and remove test containers
+	$(DOCKER_COMPOSE) down
+
+docker-ssh-ubuntu: ## Open a shell in the Ubuntu test container
+	ssh -i $(DOCKER_KEY) -p 2222 \
+		-o StrictHostKeyChecking=no \
+		-o UserKnownHostsFile=/dev/null \
+		postlab@localhost
+
+docker-ssh-fedora: ## Open a shell in the Fedora test container
+	ssh -i $(DOCKER_KEY) -p 2223 \
+		-o StrictHostKeyChecking=no \
+		-o UserKnownHostsFile=/dev/null \
+		postlab@localhost
+
 # ---------------------------------------------------------------------------
-# PostgreSQL Delegated Commands (pass-through to sub Makefile)
+# Harden scripts
 # ---------------------------------------------------------------------------
-postgres-start: ## Start PostgreSQL production stack
-	$(MAKE) -C $(PG_DIR) start
 
-postgres-stop: ## Stop PostgreSQL production stack
-	$(MAKE) -C $(PG_DIR) stop
-
-postgres-restart: ## Restart PostgreSQL production stack
-	$(MAKE) -C $(PG_DIR) restart
-
-postgres-status: ## Show PostgreSQL container status
-	$(MAKE) -C $(PG_DIR) status
-
-backup-pg: ## Run database backup (delegated)
-	$(MAKE) -C $(PG_DIR) backup
-
-logs-pg: ## Show PostgreSQL logs (delegated)
-	$(MAKE) -C $(PG_DIR) logs
-
-monitor-pg: ## Run PostgreSQL health monitor
-	$(MAKE) -C $(PG_DIR) monitor
-
-security-pg: ## Run PostgreSQL security audit
-	$(MAKE) -C $(PG_DIR) security
-
-pg-shell: ## Open psql interactive shell (delegated)
-	$(MAKE) -C $(PG_DIR) connect
+harden-perms: ## Make all harden-security scripts executable
+	chmod +x harden-security/*.sh harden-security/lib/*.sh
 
 # ---------------------------------------------------------------------------
-# Cleaning / Maintenance
+# Maintenance
 # ---------------------------------------------------------------------------
-clean: ## Clean transient artifacts (logs + old backups via sub-make)
-	$(MAKE) -C $(PG_DIR) clean-all || true
-	@echo "✅ Clean complete"
+
+clean: ## Remove Rust build artifacts and web build output
+	cargo clean
+	rm -rf web/.svelte-kit web/build
 
 # End of Makefile

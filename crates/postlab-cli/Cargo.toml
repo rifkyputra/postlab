@@ -1,0 +1,20 @@
+[package]
+name    = "postlab-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "postlab"
+path = "src/main.rs"
+
+[dependencies]
+postlab-core = { path = "../postlab-core" }
+tokio        = { workspace = true }
+anyhow       = { workspace = true }
+serde_json   = { workspace = true }
+clap         = { workspace = true }
+dialoguer    = { workspace = true }
+indicatif    = { workspace = true }
+console      = { workspace = true }
+reqwest      = { workspace = true }
+serde        = { workspace = true }

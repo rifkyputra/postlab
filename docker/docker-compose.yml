@@ -1,0 +1,18 @@
+services:
+  ubuntu-ssh:
+    build: ./ubuntu
+    container_name: postlab-ubuntu
+    ports:
+      - "2222:22"
+    volumes:
+      - ./test_key.pub:/tmp/authorized_keys:ro
+    restart: unless-stopped
+
+  fedora-ssh:
+    build: ./fedora
+    container_name: postlab-fedora
+    ports:
+      - "2223:22"
+    volumes:
+      - ./test_key.pub:/tmp/authorized_keys:ro
+    restart: unless-stopped
