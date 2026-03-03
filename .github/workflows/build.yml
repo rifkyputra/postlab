@@ -1,0 +1,107 @@
+name: CI - Build binaries
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    # Trigger on tag push OR commit message containing #build
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '#build')
+    strategy:
+      matrix:
+        include:
+          - name: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            use-cross: false
+          - name: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            use-cross: true
+          - name: macos-x86_64
+            target: x86_64-apple-darwin
+            runs-on: macos-latest
+            use-cross: false
+          - name: macos-aarch64
+            target: aarch64-apple-darwin
+            runs-on: macos-latest
+            use-cross: false
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Show rustc version
+        run: rustc --version
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.use-cross == 'true'
+        run: |
+          cargo install cross --locked || true
+          cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: matrix.use-cross == 'false'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package artifact
+        run: |
+          BIN=target/${{ matrix.target }}/release/postlab
+          if [ -f "$BIN" ]; then
+            mkdir -p release
+            cp "$BIN" release/postlab-${{ matrix.target }}
+            tar -czf postlab-${{ matrix.target }}.tar.gz -C release postlab-${{ matrix.target }}
+            ls -lh postlab-${{ matrix.target }}.tar.gz
+          else
+            echo "Binary not found at $BIN"
+            ls -R target/${{ matrix.target }}/release || true
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: postlab-${{ matrix.target }}
+          path: postlab-${{ matrix.target }}.tar.gz
+
+  release:
+    # Only publish to GitHub release on tag pushes
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release_files
+          find artifacts -name "*.tar.gz" -exec cp {} release_files/ \;
+          ls -lh release_files/
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release_files/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -1,18 +1,23 @@
 services:
-  ubuntu-ssh:
-    build: ./ubuntu
-    container_name: postlab-ubuntu
+  fedora-dev:
+    build: ./fedora-dev
+    platform: linux/amd64
+    container_name: postlab-fedora-dev
+    privileged: true          # required for systemd as PID 1
     ports:
-      - "2222:22"
+      - "3001:3000"   # API
+      - "8080:8080"   # web dashboard
     volumes:
-      - ./test_key.pub:/tmp/authorized_keys:ro
-    restart: unless-stopped
+      - ../:/workspace
+      - cargo-cache:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+      - target-linux:/workspace/target   # isolated from macOS target/
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      DATABASE_URL: sqlite:///workspace/postlab-fedora.db?mode=rwc
+    working_dir: /workspace
 
-  fedora-ssh:
-    build: ./fedora
-    container_name: postlab-fedora
-    ports:
-      - "2223:22"
-    volumes:
-      - ./test_key.pub:/tmp/authorized_keys:ro
-    restart: unless-stopped
+volumes:
+  cargo-cache:
+  cargo-git:
+  target-linux:

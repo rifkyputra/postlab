@@ -1,149 +1,130 @@
-# Postlab — development shortcuts
-# Usage: make help
-
 SHELL := /bin/bash
-DB_URL ?= sqlite://postlab.db?mode=rwc
 
-.PHONY: help \
-        dev \
-        build build-release check test \
-        server cli \
-        web-install web-dev web-build web-test \
-        db-reset \
-        docker-keygen docker-up docker-down docker-ssh-ubuntu docker-ssh-fedora \
-        harden-perms \
-        clean
+# Detect host triple for cross-compilation support.
+# Override: make build TARGET=x86_64-unknown-linux-gnu
+HOST_TRIPLE := $(shell rustc -vV 2>/dev/null | awk '/^host:/{print $$2}')
+TARGET      ?= $(HOST_TRIPLE)
 
-DOCKER_KEY   := docker/test_key
-DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
+ifeq ($(TARGET),$(HOST_TRIPLE))
+  DEBUG_DIR   := target/debug
+  RELEASE_DIR := target/release
+else
+  DEBUG_DIR   := target/$(TARGET)/debug
+  RELEASE_DIR := target/$(TARGET)/release
+endif
+
+.PHONY: help build release build-linux build-all run dev info list check test clean install link link-release docker-build docker-shell docker-cp docker-release
+
+LINUX_TARGET := x86_64-unknown-linux-gnu
 
 # ---------------------------------------------------------------------------
 # Help
 # ---------------------------------------------------------------------------
 
 help: ## Show this help
-	@echo "Postlab commands:"; echo
+	@echo "postlab commands:"; echo
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' \
 		| sort
 
 # ---------------------------------------------------------------------------
-# Dev (full stack)
+# Build
 # ---------------------------------------------------------------------------
 
-dev: ## Start API server + web dev server concurrently (Ctrl-C stops both)
-	@trap 'kill %1 %2 2>/dev/null; exit 0' INT TERM; \
-	DATABASE_URL=$(DB_URL) cargo run -p postlab-server & \
-	(cd web && npm run dev) & \
-	wait
+build: ## Dev build
+	cargo build -p postlab $(if $(filter-out $(HOST_TRIPLE),$(TARGET)),--target $(TARGET))
 
-# ---------------------------------------------------------------------------
-# Rust
-# ---------------------------------------------------------------------------
+release: ## Release build (stripped, LTO, ~8–15 MB)
+	cargo build -p postlab --release $(if $(filter-out $(HOST_TRIPLE),$(TARGET)),--target $(TARGET))
+	@echo "  Binary: $(RELEASE_DIR)/postlab"
+	@ls -lh $(RELEASE_DIR)/postlab
 
-build: ## Build all crates (dev)
-	cargo build --workspace
+build-linux: ## Release build for x86_64 Linux via zigbuild (requires: cargo install cargo-zigbuild)
+	cargo zigbuild -p postlab --release --target $(LINUX_TARGET)
+	@mkdir -p binaries/$(LINUX_TARGET)
+	@rm -f binaries/$(LINUX_TARGET)/postlab
+	@cp -rf ./target/$(LINUX_TARGET)/release/postlab binaries/$(LINUX_TARGET)/postlab
+	@echo "  binaries/$(LINUX_TARGET)/postlab"
+	@ls -lh binaries/$(LINUX_TARGET)/postlab
 
-build-release: ## Build all crates (release)
-	cargo build --workspace --release
+build-all: ## Build release binaries for all targets (native + x86_64 Linux)
+	$(MAKE) release
+	$(MAKE) build-linux
+	@echo; echo "  Binaries:"
+	@cp $(RELEASE_DIR)/postlab binaries/$(LINUX_TARGET)/postlab
 
-check: ## Type-check + lint without building binaries
-	cargo check --workspace
-	cargo clippy --workspace -- -D warnings
+link: ## Symlink dev binary → binaries/<triple>/postlab
+	@mkdir -p binaries/$(TARGET)
+	@ln -sf ../../$(DEBUG_DIR)/postlab binaries/$(TARGET)/postlab
 
-test: ## Run all Rust unit tests
-	cargo test --workspace
+link-release: ## Symlink release binary → binaries/<triple>/postlab
+	@mkdir -p binaries/$(TARGET)
+	@ln -sf ../../$(RELEASE_DIR)/postlab binaries/$(TARGET)/postlab
 
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 
-server: ## Start the API server (port 3000, auto-migrates DB)
-	DATABASE_URL=$(DB_URL) cargo run -p postlab-server
+run: ## Launch the TUI (dev build)
+	cargo run -p postlab
 
-cli: ## Launch the interactive CLI wizard
-	cargo run -p postlab-cli
+dev: ## Watch + auto-restart on file changes (requires: cargo install cargo-watch)
+	sudo cargo watch -x 'run -p postlab'
 
-# ---------------------------------------------------------------------------
-# Web
-# ---------------------------------------------------------------------------
+info: ## Print system info (no TUI)
+	cargo run -p postlab -- info
 
-web-install: ## Install web dependencies
-	cd web && npm install
-
-web-dev: ## Start the SvelteKit dev server (proxies /api → :3000)
-	cd web && npm run dev
-
-web-build: ## Production build of the web frontend
-	cd web && npm run build
-
-web-test: ## Run Vitest frontend tests
-	cd web && npm test
+list: ## Print installed packages (no TUI)
+	cargo run -p postlab -- list
 
 # ---------------------------------------------------------------------------
-# Database
+# Quality
 # ---------------------------------------------------------------------------
 
-db-reset: ## Delete the local SQLite database (will be re-created on next server start)
-	@echo "Removing postlab.db …"
-	rm -f postlab.db postlab.db-shm postlab.db-wal
-	@echo "Done. Start the server to re-apply migrations."
+check: ## Type-check + clippy
+	cargo check -p postlab
+	cargo clippy -p postlab -- -D warnings
+
+test: ## Run unit tests
+	cargo test -p postlab
 
 # ---------------------------------------------------------------------------
-# Docker test containers
+# Install
 # ---------------------------------------------------------------------------
 
-docker-keygen: ## Generate SSH test keypair for Docker containers (run once)
-	@if [ -f $(DOCKER_KEY) ]; then \
-		echo "$(DOCKER_KEY) already exists — delete it first to regenerate."; \
-	else \
-		ssh-keygen -t ed25519 -f $(DOCKER_KEY) -N "" -C "postlab-test"; \
-		echo "Created: $(DOCKER_KEY) and $(DOCKER_KEY).pub"; \
-		echo "Now run: make docker-up"; \
-	fi
-
-docker-up: ## Build and start Ubuntu (:2222) + Fedora (:2223) SSH containers
-	@if [ ! -f $(DOCKER_KEY).pub ]; then \
-		echo "No test key found. Run: make docker-keygen"; exit 1; \
-	fi
-	$(DOCKER_COMPOSE) up -d --build
-	@echo ""
-	@echo "Containers ready:"
-	@echo "  Ubuntu  → localhost:2222  (user: postlab, key: $(DOCKER_KEY))"
-	@echo "  Fedora  → localhost:2223  (user: postlab, key: $(DOCKER_KEY))"
-	@echo ""
-	@echo "Add to Postlab:"
-	@echo "  cargo run -p postlab-cli -- server add --name ubuntu-test --host localhost --port 2222 --user postlab --key $(CURDIR)/$(DOCKER_KEY)"
-	@echo "  cargo run -p postlab-cli -- server add --name fedora-test --host localhost --port 2223 --user postlab --key $(CURDIR)/$(DOCKER_KEY)"
-
-docker-down: ## Stop and remove test containers
-	$(DOCKER_COMPOSE) down
-
-docker-ssh-ubuntu: ## Open a shell in the Ubuntu test container
-	ssh -i $(DOCKER_KEY) -p 2222 \
-		-o StrictHostKeyChecking=no \
-		-o UserKnownHostsFile=/dev/null \
-		postlab@localhost
-
-docker-ssh-fedora: ## Open a shell in the Fedora test container
-	ssh -i $(DOCKER_KEY) -p 2223 \
-		-o StrictHostKeyChecking=no \
-		-o UserKnownHostsFile=/dev/null \
-		postlab@localhost
+install: release ## Install postlab binary to /usr/local/bin
+	@echo "Installing $(RELEASE_DIR)/postlab → /usr/local/bin/postlab"
+	install -m 0755 $(RELEASE_DIR)/postlab /usr/local/bin/postlab
+	@echo "Done. Run: postlab"
 
 # ---------------------------------------------------------------------------
-# Harden scripts
+# Docker — Fedora dev/test container
 # ---------------------------------------------------------------------------
 
-harden-perms: ## Make all harden-security scripts executable
-	chmod +x harden-security/*.sh harden-security/lib/*.sh
+docker-build: ## Build Fedora dev image
+	docker compose -f docker/docker-compose.yml build
+
+docker-shell: ## Shell into running Fedora container
+	docker exec -it postlab-fedora-dev bash
+
+docker-cp: ## Copy Linux binary → running Fedora container (/usr/local/bin/postlab)
+	docker cp target/$(LINUX_TARGET)/release/postlab postlab-fedora-dev:/usr/local/bin/postlab
+
+docker-release: ## Build release Linux/amd64 binary inside Fedora container
+	docker compose -f docker/docker-compose.yml up -d
+	docker exec postlab-fedora-dev bash -c \
+		"cd /workspace && cargo build -p postlab --release 2>&1"
+	@mkdir -p binaries/x86_64-unknown-linux-gnu
+	docker exec postlab-fedora-dev bash -c \
+		"cp /workspace/target/release/postlab /workspace/binaries/x86_64-unknown-linux-gnu/"
+	@echo "  binaries/x86_64-unknown-linux-gnu/postlab"
+	@ls -lh binaries/x86_64-unknown-linux-gnu/postlab
 
 # ---------------------------------------------------------------------------
 # Maintenance
 # ---------------------------------------------------------------------------
 
-clean: ## Remove Rust build artifacts and web build output
+clean: ## Remove Rust build artifacts
 	cargo clean
-	rm -rf web/.svelte-kit web/build
 
 # End of Makefile

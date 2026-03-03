@@ -1,4 +1,4 @@
-FROM fedora:39
+FROM fedora:41
 
 RUN dnf install -y --setopt=install_weak_deps=False \
         openssh-server sudo procps-ng iproute && \

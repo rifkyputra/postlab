@@ -1,243 +1,140 @@
 # Postlab
 
-Bare-metal VPS management for developers — minimal DevOps knowledge required.
+Interactive bare metal server manager — runs directly on the machine it manages.
 
-Manage servers, install apps, harden security, and monitor status via a CLI, REST API, or web UI. Designed to work equally well for human operators and agentic AI systems.
+Single binary. Low memory. Cross-platform (Linux + macOS).
+
+---
+
+## Features
+
+| Screen | What it does |
+|--------|-------------|
+| **Dashboard** | Hostname, OS, uptime, live CPU cores, memory, disk gauges |
+| **Packages** | Install / remove / upgrade packages; curated quick-install list; operation queue |
+| **Processes** | Sortable process table; kill with confirmation |
+| **Security** | SSH, firewall, ASLR, update audits; one-key fix with `.bak` backup |
+| **Resources** | CPU sparklines per-core, memory %, network RX/TX history |
+| **Gateway** | Caddy install, route management (domain → port), TLS auto |
+| **Tunnel** | Cloudflare tunnel create, route, install as service |
+
+All operations are non-blocking — the TUI stays responsive while packages install.
+Every destructive change to config files creates a timestamped `.bak` backup first.
+
+---
+
+## Quick Start
+
+```bash
+# Build
+cargo build -p postlab --release
+
+# Run TUI (default)
+./target/release/postlab
+
+# One-shot commands
+./target/release/postlab info    # print system summary
+./target/release/postlab list    # print installed packages
+```
+
+Or use `make`:
+
+```bash
+make build          # dev build
+make run            # run TUI
+make release        # optimised release build (~8–15 MB)
+```
+
+---
+
+## Keybindings
+
+| Key | Action |
+|-----|--------|
+| `1`–`7` | Switch screens |
+| `Tab` / `Shift+Tab` | Next / previous screen |
+| `↑` `↓` | Navigate list |
+| `Space` | Toggle selection |
+| `Enter` | Confirm / execute |
+| `/` | Search (packages screen) |
+| `r` | Refresh |
+| `k` | Kill process (processes screen) |
+| `a` | Add route / create tunnel |
+| `D` | Delete selected route / tunnel |
+| `q` | Quit |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Postlab                           │
-│  ┌──────────┐   ┌──────────────┐   ┌────────────┐  │
-│  │   CLI    │──▶│   Backend    │◀──│  Web UI    │  │
-│  │  (Rust)  │   │  (Axum API)  │   │ (Svelte)   │  │
-│  └──────────┘   └──────┬───────┘   └────────────┘  │
-│                        │                            │
-│                 ┌──────┴───────┐                    │
-│                 │  SQLite DB   │                    │
-│                 └──────┬───────┘                    │
-│                        │                            │
-│              ┌─────────┴──────────┐                 │
-│              │   SSH Agent        │                 │
-│              │   (russh async)    │                 │
-│              │  ┌───────┬───────┐ │                 │
-│              │  │Ubuntu │Fedora │ │                 │
-│              │  │(apt)  │(dnf)  │ │                 │
-│              │  └───────┴───────┘ │                 │
-│              └────────────────────┘                 │
-└─────────────────────────────────────────────────────┘
+cli/src/
+├── main.rs                  # clap entry: info | list | tui (default)
+├── core/
+│   ├── platform.rs          # Platform { system, packages, processes,
+│   │                        #            security, gateway, tunnel }
+│   │                        # detect() — auto-selects right impls at runtime
+│   ├── models.rs            # shared data types
+│   ├── system/              # SystemInfo trait + sysinfo 0.30 impl
+│   ├── packages/            # PackageManager trait + apt / dnf / pacman / brew
+│   ├── processes/           # ProcessManager trait + sysinfo impl
+│   ├── security/            # SecurityAuditor trait + SSH/firewall/sysctl checks
+│   ├── gateway/             # GatewayManager trait + Caddy impl
+│   └── tunnel/              # TunnelManager trait + cloudflared impl
+├── db/
+│   ├── mod.rs               # init_db (SQLite, auto-create)
+│   └── audit.rs             # log_action(), recent() — audit log
+└── tui/
+    ├── mod.rs               # run() — terminal init + event loop
+    ├── app.rs               # App state machine, background task channel
+    ├── events.rs            # keyboard dispatch
+    └── screens/             # dashboard, packages, processes, security,
+                             # resources, gateway, tunnel
 ```
 
-## Project Structure
-
-```
-postlab/
-├── Cargo.toml                  # Workspace root
-├── crates/
-│   ├── postlab-core/           # Shared: DB, SSH, task engine, OS detection, modules
-│   ├── postlab-cli/            # `postlab` binary — interactive CLI
-│   └── postlab-server/         # `postlab-server` binary — Axum REST API
-├── web/                        # SvelteKit + TypeScript frontend
-├── migrations/                 # SQLite schema (001_initial.sql)
-├── harden-security/            # Shell scripts for Linux hardening
-└── Makefile
-```
-
-## Quick Start
-
-### 1. Start the API server
-
-```bash
-cargo run -p postlab-server
-# Listens on http://0.0.0.0:3000
-# Creates postlab.db automatically on first run
-# Override DB path: DATABASE_URL=sqlite:///path/to/db.sqlite cargo run -p postlab-server
-```
-
-### 2. Use the CLI
-
-```bash
-cargo run -p postlab-cli                    # Interactive wizard
-cargo run -p postlab-cli -- server add      # Add a server
-cargo run -p postlab-cli -- server list     # List servers
-cargo run -p postlab-cli -- server info <id>   # Details + live status
-cargo run -p postlab-cli -- server remove <id>
-cargo run -p postlab-cli -- task list       # Recent tasks
-cargo run -p postlab-cli -- task show <id>  # Task output
-```
-
-The CLI connects to `http://localhost:3000` by default. Override with:
-
-```bash
-POSTLAB_URL=http://my-server:3000 postlab server list
-```
-
-### 3. Web UI
-
-```bash
-cd web && npm install && npm run dev
-# Opens on http://localhost:5173 — proxies /api to :3000
-```
+The `core/` layer has no TUI dependency — it can be imported by a future axum API with no code changes.
 
 ---
 
-## REST API
+## Package Manager Support
 
-All routes are under `/api/`. Responses are JSON.
+Detected automatically at startup:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/servers` | List servers |
-| POST | `/api/servers` | Add a server |
-| GET | `/api/servers/:id` | Server details |
-| DELETE | `/api/servers/:id` | Remove server |
-| GET | `/api/servers/:id/status` | Live metrics via SSH |
-| POST | `/api/servers/:id/install` | Install app → creates task |
-| POST | `/api/servers/:id/upgrade` | Upgrade OS → creates task |
-| POST | `/api/servers/:id/harden` | Harden security → creates task |
-| GET | `/api/tasks` | List tasks (`?server_id=` filter) |
-| POST | `/api/tasks` | Submit task |
-| GET | `/api/tasks/:id` | Task details + output |
-| GET | `/api/audit` | Audit log |
-| GET | `/api/config` | Config entries |
-| PUT | `/api/config/:key` | Set config value |
+| OS | Package manager |
+|----|----------------|
+| Debian / Ubuntu | `apt` |
+| Fedora / RHEL | `dnf` / `yum` |
+| Arch | `pacman` |
+| macOS | `brew` |
 
-### Example: add a server
-
-```bash
-curl -X POST http://localhost:3000/api/servers \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"web-01","host":"1.2.3.4","user":"ubuntu","ssh_key_path":"~/.ssh/id_ed25519"}'
-```
-
-### Example: get live status
-
-```bash
-curl http://localhost:3000/api/servers/<id>/status
-# {"uptime":"up 3 days","load":"0.12 0.08 0.07","memory":"...","disk":"..."}
-```
-
----
-
-## OS Detection
-
-On first SSH connection, Postlab reads `/etc/os-release` on the target server and stores the result. Supported:
-
-| Distro | Package manager |
-|--------|----------------|
-| Ubuntu / Debian | `apt` |
-| Fedora / RHEL / Rocky / AlmaLinux | `dnf` |
+Curated quick-install categories: **Web Servers**, **Databases**, **System Tools**, **Runtimes**, **Security**.
 
 ---
 
 ## Security Hardening
 
-`harden-security/` contains modular, idempotent hardening scripts (numbered 01–11). The security module executes them remotely via SSH.
+The security screen runs these checks:
 
-Run all modules:
-
-```bash
-# remotely (via postlab)
-postlab harden --server <id>
-
-# directly on a server
-sudo ./harden-security/run-enable-all.sh
-```
-
-Individual modules:
-
-| # | Module | What it does |
-|---|--------|-------------|
-| 01 | update | System updates |
-| 02 | password-policy | PAM password complexity |
-| 03 | ssh-disable-root | `PermitRootLogin no` |
-| 04 | unattended | Automatic security upgrades |
-| 05 | firewall | UFW / firewalld + allow SSH |
-| 07 | cleanup | Remove unused packages |
-| 08 | shadow-perms | `/etc/shadow` permissions |
-| 09 | disable-services | Stop avahi-daemon, cups |
-| 10 | sysctl | Kernel network hardening |
-| 11 | cron-restrict | Restrict cron to root |
+| Check | Severity |
+|-------|----------|
+| SSH root login enabled | Critical |
 
 ---
 
-## End-to-End Testing with Docker
+## License
 
-The `docker/` directory provides two SSH-accessible containers — Ubuntu 22.04 and Fedora 39 — for testing the full CLI → API → SSH flow locally without a real VPS.
+This project is licensed under the Apache License, Version 2.0.
+See the [LICENSE](LICENSE) file for details.
 
-### Prerequisites
+| SSH password authentication enabled | High |
+| Firewall (ufw / firewalld) inactive | High |
+| ASLR not fully enabled | Medium |
+| Automatic security updates not configured | Low |
 
-- Docker Desktop (or Docker Engine + Compose plugin)
-- `postlab-server` built (`cargo build -p postlab-server`)
-
-### Setup (one-time)
-
-```bash
-# 1. Generate an SSH keypair for the test containers
-make docker-keygen
-
-# 2. Start Ubuntu (:2222) and Fedora (:2223) containers
-make docker-up
+Applying a fix always creates a `.bak.<timestamp>` copy of the config file first, e.g.:
 ```
-
-Output:
+/etc/ssh/sshd_config.bak.20260303T142031
 ```
-Containers ready:
-  Ubuntu  → localhost:2222  (user: postlab, key: docker/test_key)
-  Fedora  → localhost:2223  (user: postlab, key: docker/test_key)
-```
-
-### Run the full stack
-
-```bash
-# Terminal 1 — API server
-make server
-
-# Terminal 2 — CLI operations
-# Add the Ubuntu container
-cargo run -p postlab-cli -- server add \
-  --name ubuntu-test \
-  --host localhost \
-  --port 2222 \
-  --user postlab \
-  --key $(pwd)/docker/test_key
-
-# Add the Fedora container
-cargo run -p postlab-cli -- server add \
-  --name fedora-test \
-  --host localhost \
-  --port 2223 \
-  --user postlab \
-  --key $(pwd)/docker/test_key
-
-# List registered servers
-cargo run -p postlab-cli -- server list
-
-# Fetch live status (SSH connect + OS detection + metrics)
-cargo run -p postlab-cli -- server info <id>
-
-# Or using the API directly
-curl http://localhost:3000/api/servers
-curl http://localhost:3000/api/servers/<id>/status
-```
-
-### Open a shell into a container
-
-```bash
-make docker-ssh-ubuntu   # SSH into Ubuntu container
-make docker-ssh-fedora   # SSH into Fedora container
-```
-
-### Tear down
-
-```bash
-make docker-down   # Stop and remove containers
-```
-
-The test keypair (`docker/test_key`, `docker/test_key.pub`) is gitignored and must be regenerated per machine.
 
 ---
 
@@ -245,44 +142,44 @@ The test keypair (`docker/test_key`, `docker/test_key.pub`) is gitignored and mu
 
 ### Requirements
 
-- Rust 1.85+ (edition 2024)
-- Node.js 20+
-- SQLite (bundled via `libsqlite3-sys`)
+- Rust 1.75+
+- SQLite (bundled via `sqlx` / `libsqlite3-sys`)
 
-### Build everything
-
-```bash
-cargo build --workspace          # All three Rust crates
-cd web && npm install && npm run build   # SvelteKit frontend
-```
-
-### Run tests
+### Build & run
 
 ```bash
-cargo test --workspace           # Rust unit tests
-cd web && npm test               # Vitest
+# From workspace root
+cargo build -p postlab                 # dev build
+cargo run -p postlab                   # run TUI
+cargo run -p postlab -- info           # OS summary
+cargo run -p postlab -- list           # installed packages
+cargo build -p postlab --release       # release build (~8–15 MB)
+
+# From cli/ directory
+cargo build
+cargo run
+cargo run -- info
 ```
 
-### Crate overview
+### Release binary size
 
-| Crate | Type | Purpose |
-|-------|------|---------|
-| `postlab-core` | lib | DB, SSH (russh), task engine, OS detection, module stubs |
-| `postlab-cli` | bin | Interactive CLI, all commands call the API via reqwest |
-| `postlab-server` | bin | Axum REST API, SQLite via sqlx, task queue |
+The `[profile.release]` in `cli/Cargo.toml` is set to:
+
+```toml
+strip = true
+lto = true
+opt-level = "z"
+codegen-units = 1
+```
+
+Expected output: **8–15 MB** (ratatui + sysinfo + sqlx, no server framework).
 
 ---
 
 ## Roadmap
 
-Feature modules are stubs and will be implemented incrementally:
-
-- [ ] `packages` — `apt`/`dnf` install/upgrade/remove/list
-- [ ] `docker` — install Docker, manage containers and Compose stacks
-- [ ] `services` — systemd start/stop/restart/status
-- [ ] `firewall` — UFW / firewalld rule management
-- [ ] Password auth support for SSH
-- [ ] SSH known-hosts verification
-- [ ] Web UI actions (install, upgrade, harden buttons)
-- [ ] Task log streaming (SSE / WebSocket)
-- [ ] Multi-server bulk operations
+- [ ] Docker — install, container list, Compose stacks
+- [ ] Services — systemd start / stop / restart / status
+- [ ] Firewall — UFW / firewalld rule management UI
+- [ ] SSH key management
+- [ ] Web API (axum) — expose `core::Platform` over HTTP
