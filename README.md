@@ -1,145 +1,169 @@
 # Postlab
 
-Interactive bare metal server manager — runs directly on the machine it manages.
+<div align="center">
+  <img
+    src="https://github.com/user-attachments/assets/ee968adf-a1b8-4b75-8457-12337c776395"
+    height="140px"
+    width="600px"
+    style="object-fit:cover; object-position:center;mix-blend-mode: multiply;filter: brightness(1) invert(0);"
+    alt="Postlab Logo"
+  />
+
+  <p>
+    <b>Interactive bare metal server manager — runs directly on the machine it manages.</b>
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/version-0.2.0-blue.svg" alt="Version 0.2.0">
+    <img src="https://img.shields.io/badge/license-Apache--2.0-green.svg" alt="License Apache-2.0">
+    <img src="https://github.com/rifkyputra/postlab/actions/workflows/build.yml/badge.svg" alt="Build Status">
+  </p>
+</div>
 
 Single binary. Low memory. Cross-platform (Linux + macOS).
 
-  <img
-    src="https://github.com/user-attachments/assets/ee968adf-a1b8-4b75-8457-12337c776395"
-    style="width:100%; height:100%; object-fit:cover; object-position:center;"
-    alt="Postlab Logo High Resolution"
-  />
+> [!IMPORTANT]  
+> **Postlab must run as root** to manage packages, services, and system configuration files.
+
 ---
 
 ## Features
 
-| Screen | What it does |
-|--------|-------------|
-| **Dashboard** | Hostname, OS, uptime, live CPU cores, memory, disk gauges |
-| **Packages** | Install / remove / upgrade packages; curated quick-install list; operation queue |
-| **Processes** | Sortable process table; kill with confirmation |
-| **Security** | SSH, firewall, ASLR, update audits; one-key fix with `.bak` backup |
-| **Resources** | CPU sparklines per-core, memory %, network RX/TX history |
-| **Gateway** | Caddy install, route management (domain → port), TLS auto |
-| **Tunnel** | Cloudflare tunnel create, route, install as service |
+| Screen           | Tabs / Sub-features                      | What it does                                                                                                 |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **1. Dashboard** | Overview, Processes, Resources           | Live Hostname, OS, uptime, CPU cores, memory, disk gauges, and performance history.                          |
+| **2. Packages**  | Installed, Search, Quick, Queue          | Install / remove / upgrade packages; curated quick-install list; background operation queue.                 |
+| **3. Security**  | Findings, Firewall, Ports, SSH, Fail2Ban | SSH/ASLR audits; UFW/Firewall management; external port checker; authorized_keys manager; Fail2Ban list/ban. |
+| **4. Gateway**   | Caddy                                    | Caddy installation and route management (domain → port) with automatic TLS.                                  |
+| **5. Tunnel**    | Cloudflare                               | Cloudflare tunnel creation, route management, and ingress configuration.                                     |
+| **6. Docker**    | Containers, Images, Compose              | Manage Docker lifecycle, view image sizes, and control Docker Compose stacks.                                |
+| **7. wasmCloud** | Hosts, Components, Apps                  | Manage wasmCloud lattices, host nodes, components, and applications.                                         |
+| **8. Ghosts**    | Services Hunter                          | Identifies "ghost" services or abandoned processes that may be using resources or ports.                     |
 
-All operations are non-blocking — the TUI stays responsive while packages install.
+All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
 Every destructive change to config files creates a timestamped `.bak` backup first.
 
 ---
 
 ## Quick Start
 
+### Installation
+
 ```bash
-# Build
-cargo build -p postlab --release
-
-# Run TUI (default)
-./target/release/postlab
-
-# One-shot commands
-./target/release/postlab info    # print system summary
-./target/release/postlab list    # print installed packages
+# Build and install to /usr/local/bin
+make install
 ```
 
-Or use `make`:
+### Usage
 
 ```bash
-make build          # dev build
-make run            # run TUI
-make release        # optimised release build (~8–15 MB)
+# Launch interactive TUI (default)
+sudo postlab
+
+# One-shot commands (no TUI)
+sudo postlab info    # Print system summary
+sudo postlab list    # Print installed packages
 ```
 
 ---
 
 ## Keybindings
 
-| Key | Action |
-|-----|--------|
-| `1`–`7` | Switch screens |
-| `Tab` / `Shift+Tab` | Next / previous screen |
-| `↑` `↓` | Navigate list |
-| `Space` | Toggle selection |
-| `Enter` | Confirm / execute |
-| `/` | Search (packages screen) |
-| `r` | Refresh |
-| `k` | Kill process (processes screen) |
-| `a` | Add route / create tunnel |
-| `D` | Delete selected route / tunnel |
-| `q` | Quit |
+### Navigation
+
+| Key                  | Action                         |
+| -------------------- | ------------------------------ |
+| `1`–`8`              | Switch screens                 |
+| `Tab` / `Shift+Tab`  | Next / previous screen         |
+| `H` / `L` or `←` `→` | Switch tabs within a screen    |
+| `↑` `↓`              | Navigate lists or tables       |
+| `Enter`              | Confirm / execute / drill-down |
+| `q`                  | Quit                           |
+
+### Actions
+
+| Key     | Context            | Action                                          |
+| ------- | ------------------ | ----------------------------------------------- |
+| `Space` | Lists              | Toggle selection                                |
+| `/`     | Packages           | Search / Filter                                 |
+| `r`     | Global             | Refresh current screen/tab data                 |
+| `k`     | Processes / Ghosts | Kill selected process                           |
+| `a`     | Gateway / Tunnel   | Add route / create tunnel                       |
+| `D`     | Gateway / Tunnel   | Delete selected route / ingress entry           |
+| `f`     | Tunnel             | Toggle focus between Tunnels and Ingress panels |
+| `s`     | Security           | Start new security scan                         |
 
 ---
 
 ## Architecture
 
+Postlab is built with a clean separation between the core logic and the TUI. The `core/` layer can be used independently (e.g., by an API or a future web interface).
+
 ```
 cli/src/
 ├── main.rs                  # clap entry: info | list | tui (default)
 ├── core/
-│   ├── platform.rs          # Platform { system, packages, processes,
-│   │                        #            security, gateway, tunnel }
+│   ├── platform.rs          # Platform { system, packages, processes, ... }
 │   │                        # detect() — auto-selects right impls at runtime
-│   ├── models.rs            # shared data types
+│   ├── models.rs            # Shared data types
 │   ├── system/              # SystemInfo trait + sysinfo 0.30 impl
 │   ├── packages/            # PackageManager trait + apt / dnf / pacman / brew
 │   ├── processes/           # ProcessManager trait + sysinfo impl
-│   ├── security/            # SecurityAuditor trait + SSH/firewall/sysctl checks
+│   ├── security/            # SecurityAuditor trait + SSH/ASLR checks
+│   ├── firewall/            # FirewallManager trait + ufw / firewalld
+│   ├── ssh/                 # SshKeyManager trait + authorized_keys / ssh-keygen
+│   ├── docker/              # DockerManager trait + Docker Engine API
+│   ├── wasm_cloud/          # wasmCloud management
+│   ├── ghost/               # Ghost service detection logic
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   └── tunnel/              # TunnelManager trait + cloudflared impl
 ├── db/
-│   ├── mod.rs               # init_db (SQLite, auto-create)
-│   └── audit.rs             # log_action(), recent() — audit log
+│   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
+│   └── audit.rs             # Log actions for audit history
 └── tui/
-    ├── mod.rs               # run() — terminal init + event loop
-    ├── app.rs               # App state machine, background task channel
-    ├── events.rs            # keyboard dispatch
-    └── screens/             # dashboard, packages, processes, security,
-                             # resources, gateway, tunnel
+    ├── mod.rs               # Terminal init + main event loop
+    ├── app.rs               # App state machine and background task management
+    ├── events.rs            # Keyboard dispatch (global + screen-specific)
+    └── screens/             # UI implementation for all 8 screens
 ```
-
-The `core/` layer has no TUI dependency — it can be imported by a future axum API with no code changes.
 
 ---
 
-## Package Manager Support
+## Support
+
+### Package Managers
 
 Detected automatically at startup:
 
-| OS | Package manager |
-|----|----------------|
-| Debian / Ubuntu | `apt` |
-| Fedora / RHEL | `dnf` / `yum` |
-| Arch | `pacman` |
-| macOS | `brew` |
+- **Debian / Ubuntu**: `apt`
+- **Fedora / RHEL**: `dnf` / `yum`
+- **Arch**: `pacman`
+- **macOS**: `brew`
 
-Curated quick-install categories: **Web Servers**, **Databases**, **System Tools**, **Runtimes**, **Security**.
+### Security Hardening Audits
 
----
+| Check                               | Severity | Action        |
+| ----------------------------------- | -------- | ------------- |
+| SSH root login enabled              | Critical | One-click fix |
+| SSH password auth enabled           | High     | One-click fix |
+| Firewall (ufw / firewalld) inactive | High     | One-click fix |
+| ASLR not fully enabled              | Medium   | One-click fix |
+| Auto-updates not configured         | Low      | One-click fix |
 
-## Security Hardening
-
-The security screen runs these checks:
-
-| Check | Severity |
-|-------|----------|
-| SSH root login enabled | Critical |
+Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/etc/ssh/sshd_config.bak.20260303T142031`.
 
 ---
 
-## License
+## Roadmap
 
-This project is licensed under the Apache License, Version 2.0.
-See the [LICENSE](LICENSE) file for details.
-
-| SSH password authentication enabled | High |
-| Firewall (ufw / firewalld) inactive | High |
-| ASLR not fully enabled | Medium |
-| Automatic security updates not configured | Low |
-
-Applying a fix always creates a `.bak.<timestamp>` copy of the config file first, e.g.:
-```
-/etc/ssh/sshd_config.bak.20260303T142031
-```
+- [x] **Docker** — Management of containers, images, and Compose.
+- [x] **wasmCloud** — Host and component management.
+- [x] **SSH Keys** — Interactive authorized_keys manager.
+- [x] **Firewall** — UFW/firewalld rule management.
+- [x] **Ghost Hunter** — Detect abandoned services.
+- [ ] **Services** — Full systemd start / stop / restart / status manager.
+- [ ] **Snapshots** — Btrfs/ZFS snapshot management.
+- [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
 
 ---
 
@@ -148,43 +172,19 @@ Applying a fix always creates a `.bak.<timestamp>` copy of the config file first
 ### Requirements
 
 - Rust 1.75+
-- SQLite (bundled via `sqlx` / `libsqlite3-sys`)
+- SQLite
 
-### Build & run
+### Local Build
 
 ```bash
-# From workspace root
-cargo build -p postlab                 # dev build
-cargo run -p postlab                   # run TUI
-cargo run -p postlab -- info           # OS summary
-cargo run -p postlab -- list           # installed packages
-cargo build -p postlab --release       # release build (~8–15 MB)
-
-# From cli/ directory
-cargo build
-cargo run
-cargo run -- info
+make build   # Dev build
+make release # Optimized release binary (~8–15 MB)
+make run     # Build and run interactive mode
 ```
-
-### Release binary size
-
-The `[profile.release]` in `cli/Cargo.toml` is set to:
-
-```toml
-strip = true
-lto = true
-opt-level = "z"
-codegen-units = 1
-```
-
-Expected output: **8–15 MB** (ratatui + sysinfo + sqlx, no server framework).
 
 ---
 
-## Roadmap
+## License
 
-- [ ] Docker — install, container list, Compose stacks
-- [ ] Services — systemd start / stop / restart / status
-- [ ] Firewall — UFW / firewalld rule management UI
-- [ ] SSH key management
-- [ ] Web API (axum) — expose `core::Platform` over HTTP
+This project is licensed under the Apache License, Version 2.0.
+See the [LICENSE](LICENSE) file for details.

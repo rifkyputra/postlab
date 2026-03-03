@@ -143,6 +143,7 @@ fn render_nav(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+    let msg = app.status_msg.as_deref().unwrap_or("[q] quit  [1-8] screens  [Tab] next  [←/→] switch tabs");
     let style = if app.status_msg.is_some() {
         Style::default().fg(Color::Yellow)
     } else {

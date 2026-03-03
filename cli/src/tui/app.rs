@@ -847,6 +847,13 @@ impl App {
         self.set_screen(s);
     }
 
+    pub fn set_screen_by_index(&mut self, idx: usize) {
+        if let Some(s) = Screen::all().get(idx) {
+            let s = s.clone();
+            self.set_screen(s);
+        }
+    }
+
     pub fn spawn_load_security_tab(&mut self, tab: SecurityTab) {
         match tab {
             SecurityTab::Findings => {

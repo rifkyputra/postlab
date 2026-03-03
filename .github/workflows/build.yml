@@ -47,13 +47,13 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build (cross)
-        if: matrix.use-cross == 'true'
+        if: matrix.use-cross
         run: |
           cargo install cross --locked || true
           cross build --release --target ${{ matrix.target }}
 
       - name: Build (native)
-        if: matrix.use-cross == 'false'
+        if: !matrix.use-cross
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package artifact
