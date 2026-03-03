@@ -4,8 +4,13 @@ Interactive bare metal server manager — runs directly on the machine it manage
 
 Single binary. Low memory. Cross-platform (Linux + macOS).
 
-<img width="600" height="300" alt="Postlab Logo High Resolution" src="https://github.com/user-attachments/assets/ee968adf-a1b8-4b75-8457-12337c776395" />
-
+<div style="width:600px; height:300px; overflow:hidden;">
+  <img
+    src="https://github.com/user-attachments/assets/ee968adf-a1b8-4b75-8457-12337c776395"
+    style="width:100%; height:100%; object-fit:cover; object-position:center;"
+    alt="Postlab Logo High Resolution"
+  />
+</div>
 ---
 
 ## Features
