@@ -42,10 +42,10 @@ impl TunnelManager for CloudflareManager {
 
     async fn install(&self) -> Result<String> {
         if crate::core::packages::which("apt-get") {
-            // Cloudflare's official apt repo method
+            // Cloudflare's cloudflare-main.gpg is already a binary DER keyring (not ASCII-armored).
+            // Download it directly — do NOT pipe through `gpg --dearmor` or it errors.
             let script = r#"
-                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || \
-                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
+                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
                 echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list
                 apt-get update && apt-get install -y cloudflared
             "#;
@@ -107,9 +107,9 @@ EOF
     ) -> Result<String> {
         use crate::core::packages::run_cmd_streaming;
         if crate::core::packages::which("apt-get") {
+            // cloudflare-main.gpg is a binary DER keyring — download directly, no dearmoring.
             let script = concat!(
-                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || ",
-                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null && ",
+                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg && ",
                 "echo \"deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg]",
                 " https://pkg.cloudflare.com/ $(lsb_release -cs) main\"",
                 " | tee /etc/apt/sources.list.d/cloudflared.list && ",

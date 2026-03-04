@@ -238,12 +238,4 @@ impl GatewayManager for CaddyManager {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim())
         }
     }
-
-    async fn verify_domain(&self, domain: &str) -> Result<bool> {
-        let out = tokio::process::Command::new("nslookup")
-            .arg(domain)
-            .output()
-            .await;
-        Ok(out.map(|o| o.status.success()).unwrap_or(false))
-    }
 }

@@ -24,16 +24,14 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
     match app.docker.active_tab {
         DockerTab::Containers => render_containers(f, app, chunks[2]),
-        DockerTab::Images     => render_images(f, app, chunks[2]),
-        DockerTab::Compose    => render_compose(f, app, chunks[2]),
+        DockerTab::Images => render_images(f, app, chunks[2]),
+        DockerTab::Compose => render_compose(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
 
     // Compose path input popup
-    if app.docker.active_tab == DockerTab::Compose
-        && app.docker.active_tab == DockerTab::Compose
-    {
+    if false {
         // (future: could render a path-edit popup here)
     }
 }
@@ -45,15 +43,22 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         (Color::Red, "○")
     };
     let version = app.docker.version.as_deref().unwrap_or("not installed");
-    let loading = if app.docker.loading { "  Loading…" } else { "" };
+    let loading = if app.docker.loading {
+        "  Loading…"
+    } else {
+        ""
+    };
     let text = Line::from(vec![
         Span::styled(dot, Style::default().fg(dot_color)),
         Span::raw(" Docker  "),
         Span::styled(version, Style::default().fg(Color::DarkGray)),
         Span::styled(loading, Style::default().fg(Color::Yellow)),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().title(" Docker Manager ").borders(Borders::ALL));
+    let p = Paragraph::new(text).block(
+        Block::default()
+            .title(" Docker Manager ")
+            .borders(Borders::ALL),
+    );
     f.render_widget(p, area);
 }
 
@@ -83,7 +88,9 @@ fn render_containers(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let headers = Row::new([
         Cell::from("Name"),
         Cell::from("Image"),
@@ -92,21 +99,30 @@ fn render_containers(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(header_style);
 
-    let rows: Vec<Row> = app.docker.containers.iter().map(|c| {
-        let status_color = if c.status.contains("Up") || c.status.contains("running") {
-            Color::Green
-        } else if c.status.contains("Paused") || c.status.contains("paused") {
-            Color::Yellow
-        } else {
-            Color::Red
-        };
-        Row::new([
-            Cell::from(c.name.as_str()).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-            Cell::from(c.image.as_str()).style(Style::default().fg(Color::Cyan)),
-            Cell::from(c.status.as_str()).style(Style::default().fg(status_color)),
-            Cell::from(c.ports.as_str()).style(Style::default().fg(Color::DarkGray)),
-        ])
-    }).collect();
+    let rows: Vec<Row> = app
+        .docker
+        .containers
+        .iter()
+        .map(|c| {
+            let status_color = if c.status.contains("Up") || c.status.contains("running") {
+                Color::Green
+            } else if c.status.contains("Paused") || c.status.contains("paused") {
+                Color::Yellow
+            } else {
+                Color::Red
+            };
+            Row::new([
+                Cell::from(c.name.as_str()).style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(c.image.as_str()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(c.status.as_str()).style(Style::default().fg(status_color)),
+                Cell::from(c.ports.as_str()).style(Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .collect();
 
     let count = rows.len();
     let widths = [
@@ -117,7 +133,11 @@ fn render_containers(f: &mut Frame, app: &App, area: Rect) {
     ];
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Containers ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Containers ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -138,7 +158,9 @@ fn render_images(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let headers = Row::new([
         Cell::from("Repository"),
         Cell::from("Tag"),
@@ -148,16 +170,26 @@ fn render_images(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(header_style);
 
-    let rows: Vec<Row> = app.docker.images.iter().map(|img| {
-        let repo_color = if img.repository == "<none>" { Color::DarkGray } else { Color::White };
-        Row::new([
-            Cell::from(img.repository.as_str()).style(Style::default().fg(repo_color).add_modifier(Modifier::BOLD)),
-            Cell::from(img.tag.as_str()).style(Style::default().fg(Color::Cyan)),
-            Cell::from(img.id.as_str()).style(Style::default().fg(Color::DarkGray)),
-            Cell::from(img.size.as_str()).style(Style::default().fg(Color::Yellow)),
-            Cell::from(img.created.as_str()).style(Style::default().fg(Color::DarkGray)),
-        ])
-    }).collect();
+    let rows: Vec<Row> = app
+        .docker
+        .images
+        .iter()
+        .map(|img| {
+            let repo_color = if img.repository == "<none>" {
+                Color::DarkGray
+            } else {
+                Color::White
+            };
+            Row::new([
+                Cell::from(img.repository.as_str())
+                    .style(Style::default().fg(repo_color).add_modifier(Modifier::BOLD)),
+                Cell::from(img.tag.as_str()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(img.id.as_str()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(img.size.as_str()).style(Style::default().fg(Color::Yellow)),
+                Cell::from(img.created.as_str()).style(Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .collect();
 
     let count = rows.len();
     let widths = [
@@ -169,7 +201,11 @@ fn render_images(f: &mut Frame, app: &App, area: Rect) {
     ];
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Images ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Images ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -190,7 +226,11 @@ fn render_compose(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("File: ", Style::default().fg(Color::DarkGray)),
         Span::styled(&app.docker.compose_path, Style::default().fg(Color::Yellow)),
     ]))
-    .block(Block::default().borders(Borders::ALL).title(" Compose File "));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Compose File "),
+    );
     f.render_widget(path_bar, chunks[0]);
 
     if !app.docker.installed {
@@ -203,7 +243,9 @@ fn render_compose(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let headers = Row::new([
         Cell::from("Service"),
         Cell::from("Status"),
@@ -212,21 +254,30 @@ fn render_compose(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(header_style);
 
-    let rows: Vec<Row> = app.docker.compose_services.iter().map(|svc| {
-        let status_color = if svc.status.to_lowercase().contains("running") {
-            Color::Green
-        } else if svc.status.is_empty() || svc.status.to_lowercase().contains("exit") {
-            Color::Red
-        } else {
-            Color::Yellow
-        };
-        Row::new([
-            Cell::from(svc.name.as_str()).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-            Cell::from(svc.status.as_str()).style(Style::default().fg(status_color)),
-            Cell::from(svc.image.as_str()).style(Style::default().fg(Color::Cyan)),
-            Cell::from(svc.ports.as_str()).style(Style::default().fg(Color::DarkGray)),
-        ])
-    }).collect();
+    let rows: Vec<Row> = app
+        .docker
+        .compose_services
+        .iter()
+        .map(|svc| {
+            let status_color = if svc.status.to_lowercase().contains("running") {
+                Color::Green
+            } else if svc.status.is_empty() || svc.status.to_lowercase().contains("exit") {
+                Color::Red
+            } else {
+                Color::Yellow
+            };
+            Row::new([
+                Cell::from(svc.name.as_str()).style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(svc.status.as_str()).style(Style::default().fg(status_color)),
+                Cell::from(svc.image.as_str()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(svc.ports.as_str()).style(Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .collect();
 
     let count = rows.len();
     let widths = [
@@ -237,7 +288,11 @@ fn render_compose(f: &mut Frame, app: &App, area: Rect) {
     ];
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Services ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Services ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -252,20 +307,11 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         DockerTab::Containers => {
             " [←/→] tabs  [↑/↓] select  [s] start  [x] stop  [R] restart  [D] remove  [r] refresh "
         }
-        DockerTab::Images => {
-            " [←/→] tabs  [↑/↓] select  [D] remove image  [r] refresh "
-        }
+        DockerTab::Images => " [←/→] tabs  [↑/↓] select  [D] remove image  [r] refresh ",
         DockerTab::Compose => {
             " [←/→] tabs  [↑/↓] select  [u] up  [d] down  [R] restart  [r] refresh "
         }
     };
     let p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
-}
-
-pub fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
-    let x = r.x + (r.width.saturating_sub(r.width * percent_x / 100)) / 2;
-    let w = r.width * percent_x / 100;
-    let y = r.y + (r.height.saturating_sub(height)) / 2;
-    Rect { x, y, width: w, height }
 }

@@ -14,7 +14,6 @@ pub trait GatewayManager: Send + Sync {
     async fn add_route(&self, route: Route) -> Result<()>;
     async fn remove_route(&self, domain: &str) -> Result<()>;
     async fn reload(&self) -> Result<()>;
-    async fn verify_domain(&self, domain: &str) -> Result<bool>;
 
     /// Install with line-by-line progress forwarded to `tx`. Default falls back to `install()`.
     async fn install_streamed(
