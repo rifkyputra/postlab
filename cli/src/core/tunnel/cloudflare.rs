@@ -42,12 +42,13 @@ impl TunnelManager for CloudflareManager {
 
     async fn install(&self) -> Result<String> {
         if crate::core::packages::which("apt-get") {
-            // Cloudflare's cloudflare-main.gpg is already a binary DER keyring (not ASCII-armored).
-            // Download it directly — do NOT pipe through `gpg --dearmor` or it errors.
+            // cloudflare-main.gpg is a binary DER keyring — download to /tmp first, then
+            // move with sudo (writing /usr/share/keyrings/ requires root).
             let script = r#"
-                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
-                echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list
-                apt-get update && apt-get install -y cloudflared
+                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /tmp/cloudflare-main.gpg
+                sudo mv /tmp/cloudflare-main.gpg /usr/share/keyrings/cloudflare-main.gpg
+                echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+                sudo apt-get update && sudo apt-get install -y cloudflared
             "#;
             let out = tokio::process::Command::new("sh")
                 .args(["-c", script])
@@ -59,19 +60,13 @@ impl TunnelManager for CloudflareManager {
             return Ok(String::from_utf8_lossy(&out.stdout).to_string());
         }
         if crate::core::packages::which("dnf") || crate::core::packages::which("yum") {
-            // Cloudflare's official RPM repo method
+            // Official Cloudflare method: use the pre-built .repo file.
+            // This lets dnf/yum handle GPG verification — no manual rpm --import needed.
             let pm = if crate::core::packages::which("dnf") { "dnf" } else { "yum" };
             let script = format!(r#"
-                rpm --import https://pkg.cloudflare.com/cloudflare-main.gpg
-                cat > /etc/yum.repos.d/cloudflared.repo << 'EOF'
-[cloudflared]
-name=cloudflared
-baseurl=https://pkg.cloudflare.com/cloudflared/rpm/
-enabled=1
-gpgcheck=1
-gpgkey=https://pkg.cloudflare.com/cloudflare-main.gpg
-EOF
-                {pm} install -y cloudflared
+                curl -fsSL https://pkg.cloudflare.com/cloudflared.repo | sudo tee /etc/yum.repos.d/cloudflared.repo
+                sudo {pm} update -y
+                sudo {pm} install -y cloudflared
             "#, pm = pm);
             let out = tokio::process::Command::new("sh")
                 .args(["-c", &script])
@@ -107,25 +102,25 @@ EOF
     ) -> Result<String> {
         use crate::core::packages::run_cmd_streaming;
         if crate::core::packages::which("apt-get") {
-            // cloudflare-main.gpg is a binary DER keyring — download directly, no dearmoring.
+            // cloudflare-main.gpg is binary DER — download to /tmp then sudo mv (keyrings dir is root-owned).
             let script = concat!(
-                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg && ",
+                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /tmp/cloudflare-main.gpg && ",
+                "sudo mv /tmp/cloudflare-main.gpg /usr/share/keyrings/cloudflare-main.gpg && ",
                 "echo \"deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg]",
                 " https://pkg.cloudflare.com/ $(lsb_release -cs) main\"",
-                " | tee /etc/apt/sources.list.d/cloudflared.list && ",
-                "apt-get update && apt-get install -y cloudflared",
+                " | sudo tee /etc/apt/sources.list.d/cloudflared.list && ",
+                "sudo apt-get update && sudo apt-get install -y cloudflared",
             );
             return run_cmd_streaming("sh", &["-c", script], tx).await;
         }
         if crate::core::packages::which("dnf") || crate::core::packages::which("yum") {
+            // Official Cloudflare method: use the pre-built .repo file.
+            // This lets dnf/yum handle GPG verification — no manual rpm --import needed.
             let pm = if crate::core::packages::which("dnf") { "dnf" } else { "yum" };
             let script = format!(
-                "rpm --import https://pkg.cloudflare.com/cloudflare-main.gpg && \
-                 printf '[cloudflared]\\nname=cloudflared\\n\
-                 baseurl=https://pkg.cloudflare.com/cloudflared/rpm/\\nenabled=1\\n\
-                 gpgcheck=1\\ngpgkey=https://pkg.cloudflare.com/cloudflare-main.gpg\\n' \
-                 > /etc/yum.repos.d/cloudflared.repo && \
-                 {pm} install -y cloudflared",
+                "curl -fsSL https://pkg.cloudflare.com/cloudflared.repo | sudo tee /etc/yum.repos.d/cloudflared.repo && \
+                 sudo {pm} update -y && \
+                 sudo {pm} install -y cloudflared",
                 pm = pm,
             );
             return run_cmd_streaming("sh", &["-c", &script], tx).await;
