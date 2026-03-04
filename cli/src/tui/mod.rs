@@ -75,6 +75,7 @@ async fn run_loop(
                 Screen::Docker      => screens::docker::render(f, app, chunks[1]),
                 Screen::WasmCloud => screens::wasmcloud::render(f, app, chunks[1]),
                 Screen::Ghosts    => screens::ghost::render(f, app, chunks[1]),
+                Screen::Users     => screens::users::render(f, app, chunks[1]),
             }
 
             render_status_bar(f, app, chunks[2]);

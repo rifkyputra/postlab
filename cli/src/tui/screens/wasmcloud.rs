@@ -54,7 +54,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
             app.wasm_cloud.version.as_deref().unwrap_or("unknown")
         )
     } else {
-        " wash not found | install wasmCloud to continue ".to_string()
+        " wash not found | [i] Install wasmCloud ".to_string()
     };
     let footer = Paragraph::new(info)
         .block(Block::default().borders(Borders::ALL));
@@ -65,7 +65,15 @@ fn render_not_installed(f: &mut Frame, _app: &App, area: Rect) {
     let text = vec![
         Line::from(Span::styled("wasmCloud (wash) is not installed", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))),
         Line::from(""),
-        Line::from("To use wasmCloud features, please install the wash CLI:"),
+        Line::from("To use wasmCloud features, please install the wash CLI."),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("Press "),
+            Span::styled("i", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" to install automatically"),
+        ]),
+        Line::from(""),
+        Line::from("Alternatively, run these commands:"),
         Line::from(Span::styled("curl -s https://packagecloud.io/install/repositories/wasmcloud/core/script.deb.sh | sudo bash", Style::default().fg(Color::Yellow))),
         Line::from(Span::styled("sudo apt install wash", Style::default().fg(Color::Yellow))),
     ];

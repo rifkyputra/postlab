@@ -211,6 +211,16 @@ pub struct WasmCloudApp {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub username: String,
+    pub uid: u32,
+    pub gid: u32,
+    pub home: String,
+    pub shell: String,
+    pub groups: Vec<String>,
+}
+
 // ── Ghost Services Hunter ──────────────────────────────────────────────────
 
 /// Why a process was classified as a ghost.

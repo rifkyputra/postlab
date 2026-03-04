@@ -11,6 +11,7 @@ pub mod security;
 pub mod ssh;
 pub mod system;
 pub mod tunnel;
+pub mod users;
 pub mod wasm_cloud;
 
 pub use platform::Platform;

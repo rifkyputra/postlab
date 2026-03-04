@@ -14,6 +14,7 @@ use crate::core::{
     ssh::{DefaultSshKeyManager, SshKeyManager},
     system::{SysinfoManager, SystemInfo},
     tunnel::{CloudflareManager, TunnelManager},
+    users::{UnixUserManager, UserManager},
     wasm_cloud::{WasmCloudCliManager, WasmCloudManager},
 };
 
@@ -70,6 +71,7 @@ pub struct Platform {
     pub docker: Arc<dyn DockerManager>,
     pub wasm_cloud: Arc<dyn WasmCloudManager>,
     pub ssh: Arc<dyn SshKeyManager>,
+    pub users: Arc<dyn UserManager>,
 }
 
 pub fn detect() -> Result<Platform> {
@@ -86,6 +88,7 @@ pub fn detect() -> Result<Platform> {
     let packages: Arc<dyn PackageManager> = detect_package_manager()?;
     let firewall: Arc<dyn FirewallManager> = detect_firewall();
     let ssh = Arc::new(DefaultSshKeyManager);
+    let users = Arc::new(UnixUserManager);
 
     Ok(Platform {
         os,
@@ -100,6 +103,7 @@ pub fn detect() -> Result<Platform> {
         docker,
         wasm_cloud,
         ssh,
+        users,
     })
 }
 

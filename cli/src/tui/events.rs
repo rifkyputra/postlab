@@ -61,6 +61,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('6') => { app.set_screen_by_index(5); return false; }
         KeyCode::Char('7') => { app.set_screen_by_index(6); return false; }
         KeyCode::Char('8') => { app.set_screen_by_index(7); return false; }
+        KeyCode::Char('9') => { app.set_screen_by_index(8); return false; }
         KeyCode::Tab => { app.next_screen(); return false; }
         KeyCode::BackTab => { app.prev_screen(); return false; }
         _ => {}
@@ -76,6 +77,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::Docker      => handle_docker_key(app, key),
         Screen::WasmCloud   => handle_wasm_cloud_key(app, key),
         Screen::Ghosts      => handle_ghost_key(app, key),
+        Screen::Users       => handle_users_key(app, key),
     }
     false
 }
@@ -1550,9 +1552,38 @@ fn handle_ssh_input(app: &mut App, key: KeyEvent) {
 
 // ── WasmCloud ─────────────────────────────────────────────────────────────
 
+fn handle_users_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('r') => app.spawn_load_users(),
+        KeyCode::Down => {
+            let n = app.users.users.len();
+            table_next(&mut app.users.table_state, n);
+        }
+        KeyCode::Up => table_prev(&mut app.users.table_state),
+        KeyCode::Char('d') => {
+            if let Some(idx) = app.users.table_state.selected() {
+                if let Some(u) = app.users.users.get(idx) {
+                    let username = u.username.clone();
+                    app.spawn_user_action("delete".to_string(), username);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
     use super::app::WasmCloudTab;
+
+    if !app.wasm_cloud.installed {
+        if key.code == KeyCode::Char('i') {
+            app.spawn_install_wash();
+        }
+        return;
+    }
+
     match key.code {
+        KeyCode::Char('i') => app.spawn_install_wash(),
         KeyCode::Char('r') => app.spawn_load_wasm_cloud(),
         KeyCode::Left => {
             let idx = app.wasm_cloud.active_tab.index();

@@ -10,19 +10,48 @@ use crate::core::{
 pub struct DockerCliManager;
 
 impl DockerCliManager {
+    fn get_field(v: &serde_json::Value, keys: &[&str]) -> String {
+        for &key in keys {
+            let val = &v[key];
+            if let Some(s) = val.as_str() {
+                return s.to_string();
+            }
+            if let Some(arr) = val.as_array() {
+                let parts: Vec<String> = arr
+                    .iter()
+                    .filter_map(|x| {
+                        if x.is_string() {
+                            x.as_str().map(|s| s.to_string())
+                        } else {
+                            Some(x.to_string())
+                        }
+                    })
+                    .collect();
+                if !parts.is_empty() {
+                    return parts.join(", ");
+                }
+            }
+            if !val.is_null() && !val.is_object() {
+                return val.to_string().trim_matches('"').to_string();
+            }
+        }
+        String::new()
+    }
+
     fn parse_containers(output: &str) -> Vec<DockerContainer> {
-        // `docker ps -a --format` outputs JSON lines — one per container
         output
             .lines()
             .filter_map(|line| {
                 let v: serde_json::Value = serde_json::from_str(line).ok()?;
                 Some(DockerContainer {
-                    id: v["ID"].as_str().unwrap_or("").to_string(),
-                    name: v["Names"].as_str().unwrap_or("").trim_start_matches('/').to_string(),
-                    image: v["Image"].as_str().unwrap_or("").to_string(),
-                    status: v["Status"].as_str().unwrap_or("").to_string(),
-                    ports: v["Ports"].as_str().unwrap_or("").to_string(),
-                    created: v["CreatedAt"].as_str().unwrap_or("").to_string(),
+                    id: Self::get_field(&v, &["ID", "Id", "id"]),
+                    name: Self::get_field(&v, &["Names", "names", "Name", "name"])
+                        .trim_start_matches('/')
+                        .to_string(),
+                    image: Self::get_field(&v, &["Image", "image"]),
+                    status: Self::get_field(&v, &["Status", "status", "State", "state"]),
+                    ports: Self::get_field(&v, &["Ports", "ports"]),
+                    created: Self::get_field(&v, &["CreatedAt", "created_at", "Created", "created"]),
                     cpu_pct: 0.0,
                     mem_usage: String::new(),
                 })
@@ -36,11 +65,11 @@ impl DockerCliManager {
             .filter_map(|line| {
                 let v: serde_json::Value = serde_json::from_str(line).ok()?;
                 Some(DockerImage {
-                    id: v["ID"].as_str().unwrap_or("").to_string(),
-                    repository: v["Repository"].as_str().unwrap_or("").to_string(),
-                    tag: v["Tag"].as_str().unwrap_or("").to_string(),
-                    size: v["Size"].as_str().unwrap_or("").to_string(),
-                    created: v["CreatedAt"].as_str().unwrap_or("").to_string(),
+                    id: Self::get_field(&v, &["ID", "Id", "id"]),
+                    repository: Self::get_field(&v, &["Repository", "repository", "Repo", "repo"]),
+                    tag: Self::get_field(&v, &["Tag", "tag"]),
+                    size: Self::get_field(&v, &["Size", "size"]),
+                    created: Self::get_field(&v, &["CreatedAt", "created_at", "Created", "created"]),
                 })
             })
             .collect()
@@ -51,29 +80,38 @@ impl DockerCliManager {
             .lines()
             .filter_map(|line| {
                 let v: serde_json::Value = serde_json::from_str(line).ok()?;
+                let name = Self::get_field(&v, &["Name", "name"]);
+                if name.is_empty() { return None; }
+
                 Some(DockerComposeService {
-                    name: v["Name"].as_str().unwrap_or("").to_string(),
-                    status: v["Status"].as_str().unwrap_or("").to_string(),
-                    image: v["Image"].as_str().unwrap_or("").to_string(),
+                    name,
+                    status: Self::get_field(&v, &["Status", "status", "State", "state"]),
+                    image: Self::get_field(&v, &["Image", "image"]),
                     ports: v["Publishers"]
                         .as_array()
+                        .or_else(|| v["publishers"].as_array())
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|p| {
-                                    let pub_port = p["PublishedPort"].as_u64()?;
-                                    let tgt_port = p["TargetPort"].as_u64()?;
-                                    if pub_port == 0 { None } else {
+                                    let pub_port = p["PublishedPort"].as_u64()
+                                        .or_else(|| p["published_port"].as_u64())?;
+                                    let tgt_port = p["TargetPort"].as_u64()
+                                        .or_else(|| p["target_port"].as_u64())?;
+                                    if pub_port == 0 {
+                                        None
+                                    } else {
                                         Some(format!("{}:{}", pub_port, tgt_port))
                                     }
                                 })
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         })
-                        .unwrap_or_default(),
+                        .unwrap_or_else(|| Self::get_field(&v, &["Ports", "ports"])),
                 })
             })
             .collect()
     }
+
 }
 
 #[async_trait]

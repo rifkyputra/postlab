@@ -10,7 +10,30 @@ pub use cli::WasmCloudCliManager;
 pub trait WasmCloudManager: Send + Sync {
     async fn is_installed(&self) -> bool;
     async fn version(&self) -> Option<String>;
+    async fn install(&self) -> Result<String>;
     
+    /// Install with line-by-line progress forwarded to `tx`. Default falls back to `install()`.
+    async fn install_streamed(
+        &self,
+        tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<String> {
+        match self.install().await {
+            Ok(out) => {
+                for line in out.lines() {
+                    let _ = tx.send(line.to_string());
+                }
+                Ok(out)
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                for line in msg.lines() {
+                    let _ = tx.send(line.to_string());
+                }
+                Err(e)
+            }
+        }
+    }
+
     // Host management
     async fn list_hosts(&self) -> Result<Vec<WasmCloudHost>>;
     async fn start_host(&self) -> Result<()>;

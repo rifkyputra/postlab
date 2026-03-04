@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
-    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudLink, WasmCloudApp},
+    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudLink, WasmCloudApp, UserInfo},
     portcheck::{PortEntry, PortStatus, default_entries},
     Platform,
 };
@@ -24,6 +24,7 @@ pub enum Screen {
     Docker,
     WasmCloud,
     Ghosts,
+    Users,
 }
 
 impl Screen {
@@ -37,6 +38,7 @@ impl Screen {
             Screen::Docker,
             Screen::WasmCloud,
             Screen::Ghosts,
+            Screen::Users,
         ]
     }
 
@@ -44,12 +46,13 @@ impl Screen {
         match self {
             Screen::Dashboard   => "1. Dashboard",
             Screen::Packages    => "2. Packages",
-            Screen::Security    => "3. Security", // SSH, Firewall, Ports are now tabs here
+            Screen::Security    => "3. Security", 
             Screen::Gateway     => "4. Gateway",
             Screen::Tunnel      => "5. Tunnel",
             Screen::Docker      => "6. Docker",
             Screen::WasmCloud   => "7. wasmCloud",
             Screen::Ghosts      => "8. Ghosts",
+            Screen::Users       => "9. Users",
         }
     }
 
@@ -150,6 +153,7 @@ pub enum TaskResult {
     SshOpDone { op: String, success: bool, output: String },
     WasmCloudInspect(String),
     GhostScan(Vec<GhostProcess>),
+    UserList(Vec<UserInfo>),
     Status(String),
     Error(String),
 }
@@ -741,6 +745,23 @@ impl Default for GhostState {
     }
 }
 
+// ── Users state ─────────────────────────────────────────────────────────────
+pub struct UsersState {
+    pub users: Vec<UserInfo>,
+    pub table_state: TableState,
+    pub loading: bool,
+}
+
+impl Default for UsersState {
+    fn default() -> Self {
+        Self {
+            users: Vec::new(),
+            table_state: TableState::default(),
+            loading: false,
+        }
+    }
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────
 
 pub struct App {
@@ -762,6 +783,7 @@ pub struct App {
     pub portchecker: PortCheckerState,
     pub wasm_cloud: WasmCloudState,
     pub ghost: GhostState,
+    pub users: UsersState,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
@@ -794,6 +816,7 @@ impl App {
             portchecker: PortCheckerState::default(),
             wasm_cloud: WasmCloudState::default(),
             ghost: GhostState::default(),
+            users: UsersState::default(),
             task_tx,
             task_rx,
             confirm: None,
@@ -824,8 +847,19 @@ impl App {
                 self.spawn_tunnel_extras(id);
             }
             Screen::Docker => self.spawn_load_docker(),
-            Screen::WasmCloud => self.spawn_load_wasm_cloud(),
+                self.spawn_load_wasm_cloud();
+            }
             Screen::Ghosts => {
+                if self.ghost.ghosts.is_empty() {
+                    self.spawn_ghost_scan();
+                }
+            }
+            Screen::Users => {
+                self.spawn_load_users();
+            }
+            _ => {}
+        }
+    }
                 if !self.ghost.scanning {
                     self.spawn_ghost_scan();
                 }
@@ -1216,6 +1250,44 @@ impl App {
         });
     }
 
+    pub fn spawn_install_wash(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.status_msg = Some("Installing wash CLI…".to_string());
+        tokio::spawn(async move {
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::InstallProgress {
+                        target: "wash".to_string(),
+                        line,
+                    });
+                }
+            });
+            let result = platform.wasm_cloud.install_streamed(ptx).await;
+            let _ = fwd.await;
+            match result {
+                Ok(_) => {
+                    let installed = platform.wasm_cloud.is_installed().await;
+                    let version = platform.wasm_cloud.version().await;
+                    let _ = tx.send(TaskResult::WasmCloudStatus { installed, version });
+                    let _ = tx.send(TaskResult::InstallDone {
+                        target: "wash".to_string(),
+                        success: true,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::InstallDone {
+                        target: "wash".to_string(),
+                        success: false,
+                    });
+                    let _ = tx.send(TaskResult::Error(format!("wash install failed: {}", e)));
+                }
+            }
+        });
+    }
+
     // ── Docker loaders ────────────────────────────────────────────────────
 
     pub fn spawn_load_docker(&mut self) {
@@ -1523,7 +1595,40 @@ impl App {
 
     // ── Process incoming task results ─────────────────────────────────────
 
-     pub fn spawn_load_wasm_cloud(&mut self) {
+    pub fn spawn_load_users(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.users.loading = true;
+        tokio::spawn(async move {
+            match platform.users.list_users().await {
+                Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
+                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+            }
+        });
+    }
+
+    pub fn spawn_user_action(&mut self, action: String, username: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = match action.as_str() {
+                "delete" => platform.users.delete_user(&username).await,
+                _ => Ok(()),
+            };
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!("User {} {} success", username, action)));
+                    match platform.users.list_users().await {
+                        Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
+                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    }
+                }
+                Err(e) => { let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e))); }
+            }
+        });
+    }
+
+    pub fn spawn_load_wasm_cloud(&mut self) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
         self.wasm_cloud.loading = true;
@@ -1865,6 +1970,13 @@ impl App {
             }
             TaskResult::WasmCloudInspect(output) => {
                 self.wasm_cloud.inspect_output = Some(output);
+            }
+            TaskResult::UserList(users) => {
+                self.users.users = users;
+                self.users.loading = false;
+                if self.users.table_state.selected().is_none() && !self.users.users.is_empty() {
+                    self.users.table_state.select(Some(0));
+                }
             }
             TaskResult::GhostScan(ghosts) => {
                 self.ghost.scanning = false;

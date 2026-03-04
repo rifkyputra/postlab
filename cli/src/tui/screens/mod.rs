@@ -11,3 +11,4 @@ pub mod security;
 pub mod ssh;
 pub mod tunnel;
 pub mod wasmcloud;
+pub mod users;
