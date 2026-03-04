@@ -44,6 +44,7 @@ impl TunnelManager for CloudflareManager {
         if crate::core::packages::which("apt-get") {
             // Cloudflare's official apt repo method
             let script = r#"
+                curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || \
                 curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
                 echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list
                 apt-get update && apt-get install -y cloudflared
@@ -107,8 +108,8 @@ EOF
         use crate::core::packages::run_cmd_streaming;
         if crate::core::packages::which("apt-get") {
             let script = concat!(
-                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg",
-                " | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null && ",
+                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || ",
+                "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null && ",
                 "echo \"deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg]",
                 " https://pkg.cloudflare.com/ $(lsb_release -cs) main\"",
                 " | tee /etc/apt/sources.list.d/cloudflared.list && ",

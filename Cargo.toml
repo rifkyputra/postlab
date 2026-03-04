@@ -4,9 +4,6 @@ members = [
     "cli",
 ]
 
-# SPDX license identifier for workspace
-license = "Apache-2.0"
-
 [workspace.dependencies]
 tokio              = { version = "1", features = ["full"] }
 anyhow             = "1"

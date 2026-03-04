@@ -847,8 +847,7 @@ impl App {
                 self.spawn_tunnel_extras(id);
             }
             Screen::Docker => self.spawn_load_docker(),
-                self.spawn_load_wasm_cloud();
-            }
+            Screen::WasmCloud => self.spawn_load_wasm_cloud(),
             Screen::Ghosts => {
                 if self.ghost.ghosts.is_empty() {
                     self.spawn_ghost_scan();
@@ -856,13 +855,6 @@ impl App {
             }
             Screen::Users => {
                 self.spawn_load_users();
-            }
-            _ => {}
-        }
-    }
-                if !self.ghost.scanning {
-                    self.spawn_ghost_scan();
-                }
             }
             _ => {}
         }
