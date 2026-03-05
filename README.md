@@ -1,13 +1,8 @@
 # Postlab
 
 <div align="center">
-  <img
-    src="https://github.com/user-attachments/assets/ee968adf-a1b8-4b75-8457-12337c776395"
-    height="140px"
-    width="600px"
-    style="object-fit:cover; object-position:center;mix-blend-mode: multiply;filter: brightness(1) invert(0);"
-    alt="Postlab Logo"
-  />
+<img width="600" alt="Postlab Logo High Resolution" src="https://github.com/user-attachments/assets/edbb6950-8aef-4c5d-9f95-e0e0e51074c5" />
+  
 
   <p>
     <b>Interactive bare metal server manager — runs directly on the machine it manages.</b>
