@@ -267,3 +267,53 @@ pub struct GhostProcess {
     pub cgroup: String,
     pub reason: GhostReason,
 }
+
+// ── Git Deployments ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DeploymentType {
+    DockerCompose,
+    WasmCloud,
+    Unknown,
+}
+
+impl DeploymentType {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DeploymentType::DockerCompose => "Docker Compose",
+            DeploymentType::WasmCloud => "wasmCloud",
+            DeploymentType::Unknown => "Unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DeploymentStatus {
+    Cloning,
+    Deploying,
+    Running,
+    Stopped,
+    Failed(String),
+}
+
+impl DeploymentStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DeploymentStatus::Cloning => "Cloning",
+            DeploymentStatus::Deploying => "Deploying",
+            DeploymentStatus::Running => "Running",
+            DeploymentStatus::Stopped => "Stopped",
+            DeploymentStatus::Failed(_) => "Failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Deployment {
+    pub id: String, // UUID or short hash
+    pub repo_url: String,
+    pub path: String, // Local clone path
+    pub deploy_type: DeploymentType,
+    pub status: DeploymentStatus,
+    pub last_updated: String,
+}

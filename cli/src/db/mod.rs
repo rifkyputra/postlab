@@ -3,6 +3,7 @@ use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::str::FromStr;
 
 pub mod audit;
+pub mod deployments;
 
 pub async fn init_db(db_url: &str) -> Result<SqlitePool> {
     let options = SqliteConnectOptions::from_str(db_url)?.create_if_missing(true);
@@ -16,6 +17,19 @@ pub async fn init_db(db_url: &str) -> Result<SqlitePool> {
             output  TEXT,
             success INTEGER NOT NULL DEFAULT 1,
             ts      INTEGER NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS deployments (
+            id           TEXT PRIMARY KEY,
+            repo_url     TEXT NOT NULL,
+            path         TEXT NOT NULL,
+            deploy_type  TEXT NOT NULL,
+            status       TEXT NOT NULL,
+            last_updated TEXT NOT NULL
         )",
     )
     .execute(&pool)
