@@ -14,7 +14,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([
             Constraint::Length(3), // Tabs
             Constraint::Min(0),    // Content
-            Constraint::Length(3), // Status/Footer
+            Constraint::Length(5), // Backbone health + hints
         ])
         .split(area);
 
@@ -47,17 +47,54 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // ── Footer ──
-    let info = if app.wasm_cloud.installed {
-        format!(
-            " wash v{} | [Tab] Next Tab | [r] Refresh | [Enter] Select ",
-            app.wasm_cloud.version.as_deref().unwrap_or("unknown")
+    // ── Backbone Health + Footer ──
+    let mut footer_text = vec![];
+
+    // NATS health row — always visible so the user can provision before wash is installed
+    let nats_indicator = if app.wasm_cloud.nats_running {
+        Span::styled("🟢 NATS Up (Port 4222)  ", Style::default().fg(Color::Green))
+    } else {
+        Span::styled("🔴 NATS Down  ", Style::default().fg(Color::Red))
+    };
+    let js_indicator = if let Some(usage) = app.wasm_cloud.nats_storage_usage {
+        let mb = usage / 1_000_000;
+        Span::styled(
+            format!("🟢 JetStream Active ({}MB / 2048MB)  ", mb),
+            Style::default().fg(Color::Green),
         )
     } else {
-        " wash not found | [i] Install wasmCloud ".to_string()
+        Span::styled("🔴 JetStream Inactive  ", Style::default().fg(Color::Red))
     };
-    let footer = Paragraph::new(info)
-        .block(Block::default().borders(Borders::ALL));
+    let lattice_indicator = if app.wasm_cloud.nats_synced {
+        Span::styled(
+            format!("🟡 Lattice synced ({} host(s) connected)", app.wasm_cloud.hosts.len()),
+            Style::default().fg(Color::Yellow),
+        )
+    } else {
+        Span::styled("🔴 Lattice not synced", Style::default().fg(Color::Red))
+    };
+    footer_text.push(Line::from(vec![nats_indicator, js_indicator, lattice_indicator]));
+
+    // Key-hint row
+    if app.wasm_cloud.installed {
+        footer_text.push(Line::from(format!(
+            " wash v{}  |  [←/→] Switch tab  [r] Refresh  [n] Provision NATS  [N] Poll NATS  [i] Reinstall wash",
+            app.wasm_cloud.version.as_deref().unwrap_or("unknown")
+        )));
+    } else {
+        footer_text.push(Line::from(vec![
+            Span::raw(" wash not found  |  "),
+            Span::styled("[i]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Install wash  "),
+            Span::styled("[n]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" Provision NATS Backbone  "),
+            Span::styled("[←/→]", Style::default().fg(Color::DarkGray)),
+            Span::raw(" Switch tab"),
+        ]));
+    }
+
+    let footer = Paragraph::new(footer_text)
+        .block(Block::default().borders(Borders::ALL).title(" 🐛 NATS Backbone "));
     f.render_widget(footer, chunks[2]);
 }
 
@@ -183,6 +220,7 @@ fn render_apps(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_inspector(f: &mut Frame, app: &mut App, area: Rect) {
+    use crate::tui::app::InputMode;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -191,8 +229,13 @@ fn render_inspector(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(area);
 
+    let (style, title) = match app.wasm_cloud.input_mode {
+        InputMode::Editing => (Style::default().fg(Color::Yellow), " [ EDITING ] Wasm Component Path / URL (Esc to exit) "),
+        _ => (Style::default(), " Wasm Component Path / URL (Press Enter/i to edit) "),
+    };
+
     let input = Paragraph::new(app.wasm_cloud.inspect_target.as_str())
-        .block(Block::default().borders(Borders::ALL).title(" Wasm Component Path / URL "));
+        .block(Block::default().borders(Borders::ALL).title(title).style(style));
     f.render_widget(input, chunks[0]);
 
     let output = Paragraph::new(app.wasm_cloud.inspect_output.as_deref().unwrap_or("Enter a path and press Enter to inspect component capabilities..."))

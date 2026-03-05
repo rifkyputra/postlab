@@ -50,14 +50,7 @@ impl TunnelManager for CloudflareManager {
                 echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
                 sudo apt-get update && sudo apt-get install -y cloudflared
             "#;
-            let out = tokio::process::Command::new("sh")
-                .args(["-c", script])
-                .output()
-                .await?;
-            if !out.status.success() {
-                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
-            }
-            return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+            return crate::core::packages::run_cmd("sh", &["-c", script]).await;
         }
         if crate::core::packages::which("dnf") || crate::core::packages::which("yum") {
             // Official Cloudflare method: use the pre-built .repo file.
@@ -68,24 +61,10 @@ impl TunnelManager for CloudflareManager {
                 sudo {pm} update -y
                 sudo {pm} install -y cloudflared
             "#, pm = pm);
-            let out = tokio::process::Command::new("sh")
-                .args(["-c", &script])
-                .output()
-                .await?;
-            if !out.status.success() {
-                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
-            }
-            return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+            return crate::core::packages::run_cmd("sh", &["-c", &script]).await;
         }
         if crate::core::packages::which("pacman") {
-            let out = tokio::process::Command::new("sh")
-                .args(["-c", "pacman -Sy --noconfirm cloudflared"])
-                .output()
-                .await?;
-            if !out.status.success() {
-                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
-            }
-            return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+            return crate::core::packages::run_cmd("sh", &["-c", "pacman -Sy --noconfirm cloudflared"]).await;
         }
         if crate::core::packages::which("brew") {
             // Delegate to BrewManager which handles the root→sudo-u-SUDO_USER case.

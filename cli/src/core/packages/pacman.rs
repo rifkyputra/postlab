@@ -61,4 +61,8 @@ impl PackageManager for PacmanManager {
     async fn update_cache(&self) -> Result<()> {
         run_cmd("pacman", &["-Sy"]).await.map(|_| ())
     }
+
+    async fn clean_cache(&self) -> Result<String> {
+        run_cmd("pacman", &["-Sc", "--noconfirm"]).await
+    }
 }

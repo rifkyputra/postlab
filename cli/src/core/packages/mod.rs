@@ -21,6 +21,7 @@ pub trait PackageManager: Send + Sync {
     async fn remove(&self, name: &str) -> Result<String>;
     async fn upgrade_all(&self) -> Result<String>;
     async fn update_cache(&self) -> Result<()>;
+    async fn clean_cache(&self) -> Result<String>;
 
     /// Install with line-by-line progress forwarded to `tx`. Default falls back to `install()`.
     async fn install_streamed(
@@ -106,16 +107,41 @@ pub const CURATED: &[CuratedCategory] = &[
 ];
 
 pub async fn run_cmd(program: &str, args: &[&str]) -> Result<String> {
-    let output = tokio::process::Command::new(program)
-        .args(args)
-        .output()
-        .await?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        anyhow::bail!("{}", stderr)
+    let mut retries = 0;
+    let max_retries = 5;
+
+    loop {
+        let output = tokio::process::Command::new(program)
+            .args(args)
+            .output()
+            .await?;
+
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if is_lock_error(&stderr) && retries < max_retries {
+                retries += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            }
+            anyhow::bail!("{}", stderr)
+        }
     }
+}
+
+fn is_lock_error(stderr: &str) -> bool {
+    let errors = [
+        "Failed to obtain rpm transaction lock",
+        "Another transaction is in progress",
+        "Could not get lock",
+        "Unable to acquire the dpkg frontend lock",
+        "unable to lock database",
+        "Resource temporarily unavailable",
+        "dpkg status database is locked",
+        "is locked by another process",
+    ];
+    errors.iter().any(|e| stderr.contains(e))
 }
 
 /// Spawn a process, stream every stdout/stderr line to `tx`, and return Ok/Err when done.
@@ -124,46 +150,62 @@ pub async fn run_cmd_streaming(
     args: &[&str],
     tx: tokio::sync::mpsc::UnboundedSender<String>,
 ) -> Result<String> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
+    let mut retries = 0;
+    let max_retries = 5;
 
-    let mut child = tokio::process::Command::new(program)
-        .args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+    loop {
+        use tokio::io::{AsyncBufReadExt, BufReader};
 
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
+        let mut child = tokio::process::Command::new(program)
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
 
-    let tx1 = tx.clone();
-    let tx2 = tx.clone();
+        let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
 
-    let stdout_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            let _ = tx1.send(line);
+        let tx1 = tx.clone();
+        let tx2 = tx.clone();
+
+        let stdout_task = tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                let _ = tx1.send(line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            let mut all = String::new();
+            while let Ok(Some(line)) = reader.next_line().await {
+                let _ = tx2.send(line.clone());
+                if !all.is_empty() {
+                    all.push('\n');
+                }
+                all.push_str(&line);
+            }
+            all
+        });
+
+        let status = child.wait().await?;
+        let _ = stdout_task.await;
+        let stderr_out = stderr_task.await.unwrap_or_default();
+
+        if status.success() {
+            return Ok(String::new());
+        } else {
+            if is_lock_error(&stderr_out) && retries < max_retries {
+                retries += 1;
+                let _ = tx.send(format!(
+                    "Retrying in 5s... (lock in progress, attempt {}/{})",
+                    retries, max_retries
+                ));
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            }
+            anyhow::bail!("{}", stderr_out)
         }
-    });
-
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr).lines();
-        let mut all = String::new();
-        while let Ok(Some(line)) = reader.next_line().await {
-            let _ = tx2.send(line.clone());
-            if !all.is_empty() { all.push('\n'); }
-            all.push_str(&line);
-        }
-        all
-    });
-
-    let status = child.wait().await?;
-    let _ = stdout_task.await;
-    let stderr_out = stderr_task.await.unwrap_or_default();
-
-    if status.success() {
-        Ok(String::new())
-    } else {
-        anyhow::bail!("{}", stderr_out)
     }
 }
 

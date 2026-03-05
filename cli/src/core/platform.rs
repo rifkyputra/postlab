@@ -11,19 +11,13 @@ use crate::core::{
     },
     processes::{ProcessManager, SysinfoProcessManager},
     security::{DefaultFail2Ban, DefaultSecurityAuditor, Fail2BanManager, SecurityAuditor},
+    services::{ServiceManager, SystemdServiceManager, MacosServiceManager, is_systemd_available},
     ssh::{DefaultSshKeyManager, SshKeyManager},
     system::{SysinfoManager, SystemInfo},
     tunnel::{CloudflareManager, TunnelManager},
     users::{UnixUserManager, UserManager},
     wasm_cloud::{WasmCloudCliManager, WasmCloudManager},
 };
-
-/// Returns true when systemd is the init system (PID 1).
-/// Checks `/run/systemd/private` — a directory created by systemd at boot that
-/// is absent in Docker containers and other non-systemd environments.
-pub fn is_systemd_available() -> bool {
-    std::path::Path::new("/run/systemd/private").exists()
-}
 
 /// Coarse OS family used to gate security checks and fixes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +65,9 @@ pub struct Platform {
     pub docker: Arc<dyn DockerManager>,
     pub wasm_cloud: Arc<dyn WasmCloudManager>,
     pub ssh: Arc<dyn SshKeyManager>,
+    pub services: Arc<dyn ServiceManager>,
     pub users: Arc<dyn UserManager>,
+    pub nats: Arc<crate::core::nats::NatsManager>,
 }
 
 pub fn detect() -> Result<Platform> {
@@ -88,7 +84,13 @@ pub fn detect() -> Result<Platform> {
     let packages: Arc<dyn PackageManager> = detect_package_manager()?;
     let firewall: Arc<dyn FirewallManager> = detect_firewall();
     let ssh = Arc::new(DefaultSshKeyManager);
+    let services: Arc<dyn ServiceManager> = if is_systemd_available() {
+        Arc::new(SystemdServiceManager)
+    } else {
+        Arc::new(MacosServiceManager)
+    };
     let users = Arc::new(UnixUserManager);
+    let nats = Arc::new(crate::core::nats::NatsManager::new());
 
     Ok(Platform {
         os,
@@ -103,7 +105,9 @@ pub fn detect() -> Result<Platform> {
         docker,
         wasm_cloud,
         ssh,
+        services,
         users,
+        nats,
     })
 }
 

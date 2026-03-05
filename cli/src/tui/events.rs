@@ -13,7 +13,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 
     // 2. Text-entry (input mode) consumes all keys — global shortcuts are blocked
     //    so the user can type freely without triggering screen switches or quit.
-    if app.screen == Screen::WasmCloud && app.wasm_cloud.active_tab == crate::tui::app::WasmCloudTab::Inspector {
+    if app.screen == Screen::WasmCloud && app.wasm_cloud.input_mode == InputMode::Editing {
         handle_wasm_cloud_inspector_input(app, key);
         return false;
     }
@@ -30,6 +30,10 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.screen == Screen::Tunnel && matches!(app.tunnel.input_mode, InputMode::Editing | InputMode::AddingDomain | InputMode::EditingIngress) {
         handle_tunnel_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Services && app.services.filter_mode == InputMode::Editing {
+        handle_services_key(app, key);
         return false;
     }
     if app.screen == Screen::Security {
@@ -62,6 +66,8 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('7') => { app.set_screen_by_index(6); return false; }
         KeyCode::Char('8') => { app.set_screen_by_index(7); return false; }
         KeyCode::Char('9') => { app.set_screen_by_index(8); return false; }
+        KeyCode::Char('0') => { app.set_screen_by_index(9); return false; }
+        KeyCode::Char('m') | KeyCode::Char('M') => { app.set_screen_by_index(10); return false; }
         KeyCode::Tab => { app.next_screen(); return false; }
         KeyCode::BackTab => { app.prev_screen(); return false; }
         _ => {}
@@ -78,6 +84,8 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::WasmCloud   => handle_wasm_cloud_key(app, key),
         Screen::Ghosts      => handle_ghost_key(app, key),
         Screen::Users       => handle_users_key(app, key),
+        Screen::Services    => handle_services_key(app, key),
+        Screen::Maintenance => handle_maintenance_key(app, key),
     }
     false
 }
@@ -173,6 +181,8 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
                 }));
             });
         }
+        ConfirmAction::ServiceAction { name, op } => app.spawn_service_action(name, op),
+        ConfirmAction::MaintenanceAction { op } => app.spawn_maintenance_action(op),
     }
 }
 
@@ -681,6 +691,80 @@ fn handle_gateway_input(app: &mut App, key: KeyEvent) {
         KeyCode::Char(c) => {
             if app.gateway.input_focus == 0 { app.gateway.input_domain.push(c); }
             else if c.is_ascii_digit() { app.gateway.input_port.push(c); }
+        }
+        _ => {}
+    }
+}
+
+// ── Services ─────────────────────────────────────────────────────────────
+
+fn handle_services_key(app: &mut App, key: KeyEvent) {
+    if app.services.filter_mode == InputMode::Editing {
+        match key.code {
+            KeyCode::Esc | KeyCode::Enter => app.services.filter_mode = InputMode::Normal,
+            KeyCode::Backspace => { app.services.filter.pop(); }
+            KeyCode::Char(c) => app.services.filter.push(c),
+            _ => {}
+        }
+        return;
+    }
+
+    match key.code {
+        KeyCode::Char('/') => {
+            app.services.filter_mode = InputMode::Editing;
+        }
+        KeyCode::Char('R') => app.spawn_load_services(),
+        KeyCode::Down => {
+            let filter = app.services.filter.to_lowercase();
+            let n = app.services.list.iter()
+                .filter(|s| filter.is_empty() || s.name.to_lowercase().contains(&filter) || s.description.to_lowercase().contains(&filter))
+                .count();
+            table_next(&mut app.services.table_state, n);
+        }
+        KeyCode::Up => table_prev(&mut app.services.table_state),
+        KeyCode::Char('s') => service_action(app, "start"),
+        KeyCode::Char('k') => service_action(app, "stop"),
+        KeyCode::Char('r') => service_action(app, "restart"),
+        KeyCode::Char('e') => service_action(app, "enable"),
+        KeyCode::Char('d') => service_action(app, "disable"),
+        _ => {}
+    }
+}
+
+fn service_action(app: &mut App, op: &'static str) {
+    let filter = app.services.filter.to_lowercase();
+    let visible: Vec<_> = app.services.list.iter()
+        .filter(|s| filter.is_empty() || s.name.to_lowercase().contains(&filter) || s.description.to_lowercase().contains(&filter))
+        .collect();
+
+    if let Some(idx) = app.services.table_state.selected() {
+        if let Some(svc) = visible.get(idx) {
+            let name = svc.name.clone();
+            if matches!(op, "stop" | "restart" | "disable") {
+                app.confirm = Some(ConfirmDialog {
+                    message: format!("{} service {}? (y/N)", op.to_uppercase(), name),
+                    action: ConfirmAction::ServiceAction { name, op: op.to_string() },
+                });
+            } else {
+                app.spawn_service_action(name, op.to_string());
+            }
+        }
+    }
+}
+
+// ── Maintenance ──────────────────────────────────────────────────────────
+
+fn handle_maintenance_key(app: &mut App, key: KeyEvent) {
+    if app.maintenance.running_op.is_some() {
+        return; // Block input while running
+    }
+
+    match key.code {
+        KeyCode::Char('c') => {
+            app.confirm = Some(ConfirmDialog {
+                message: "Clean all package manager caches? (y/N)".to_string(),
+                action: ConfirmAction::MaintenanceAction { op: "clean_pkg_cache".to_string() },
+            });
         }
         _ => {}
     }
@@ -1575,6 +1659,16 @@ fn handle_users_key(app: &mut App, key: KeyEvent) {
 fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
     use super::app::WasmCloudTab;
 
+    // NATS provisioning is available regardless of wash install state
+    if key.code == KeyCode::Char('n') {
+        app.spawn_nats_provision();
+        return;
+    }
+    if key.code == KeyCode::Char('N') {
+        app.spawn_poll_nats_status();
+        return;
+    }
+
     if !app.wasm_cloud.installed {
         if key.code == KeyCode::Char('i') {
             app.spawn_install_wash();
@@ -1583,7 +1677,6 @@ fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
     }
 
     match key.code {
-        KeyCode::Char('i') => app.spawn_install_wash(),
         KeyCode::Char('r') => app.spawn_load_wasm_cloud(),
         KeyCode::Left => {
             let idx = app.wasm_cloud.active_tab.index();
@@ -1638,6 +1731,9 @@ fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
             }
             WasmCloudTab::Inspector => {}
         },
+        KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('e') if app.wasm_cloud.active_tab == WasmCloudTab::Inspector => {
+            app.wasm_cloud.input_mode = InputMode::Editing;
+        }
         _ => {}
     }
 }
@@ -1650,6 +1746,7 @@ fn handle_wasm_cloud_inspector_input(app: &mut App, key: KeyEvent) {
                 app.wasm_cloud.inspect_output = Some("Inspecting...".to_string());
                 app.spawn_inspect_component(target);
             }
+            app.wasm_cloud.input_mode = InputMode::Normal;
         }
         KeyCode::Char(c) => {
             app.wasm_cloud.inspect_target.push(c);
@@ -1658,8 +1755,7 @@ fn handle_wasm_cloud_inspector_input(app: &mut App, key: KeyEvent) {
             app.wasm_cloud.inspect_target.pop();
         }
         KeyCode::Esc => {
-            app.wasm_cloud.inspect_target.clear();
-            app.wasm_cloud.inspect_output = None;
+            app.wasm_cloud.input_mode = InputMode::Normal;
         }
         _ => {}
     }

@@ -73,4 +73,8 @@ impl PackageManager for DnfManager {
     async fn update_cache(&self) -> Result<()> {
         run_cmd(self.bin, &["makecache"]).await.map(|_| ())
     }
+
+    async fn clean_cache(&self) -> Result<String> {
+        run_cmd(self.bin, &["clean", "all"]).await
+    }
 }

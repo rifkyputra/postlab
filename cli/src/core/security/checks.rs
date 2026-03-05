@@ -1,7 +1,8 @@
 use super::SecurityAuditor;
 use crate::core::{
     models::{SecurityFinding, Severity},
-    platform::{is_systemd_available, OsFamily},
+    platform::OsFamily,
+    services::is_systemd_available,
 };
 use anyhow::Result;
 use async_trait::async_trait;

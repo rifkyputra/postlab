@@ -70,4 +70,8 @@ impl PackageManager for BrewManager {
     async fn update_cache(&self) -> Result<()> {
         brew(&["update"]).await.map(|_| ())
     }
+
+    async fn clean_cache(&self) -> Result<String> {
+        brew(&["cleanup"]).await
+    }
 }

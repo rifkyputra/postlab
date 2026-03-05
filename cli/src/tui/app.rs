@@ -7,7 +7,8 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
-    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudLink, WasmCloudApp, UserInfo},
+    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudApp, UserInfo},
+    services::{ServiceUnit},
     portcheck::{PortEntry, PortStatus, default_entries},
     Platform,
 };
@@ -25,6 +26,8 @@ pub enum Screen {
     WasmCloud,
     Ghosts,
     Users,
+    Services,
+    Maintenance,
 }
 
 impl Screen {
@@ -39,6 +42,8 @@ impl Screen {
             Screen::WasmCloud,
             Screen::Ghosts,
             Screen::Users,
+            Screen::Services,
+            Screen::Maintenance,
         ]
     }
 
@@ -53,6 +58,8 @@ impl Screen {
             Screen::WasmCloud   => "7. wasmCloud",
             Screen::Ghosts      => "8. Ghosts",
             Screen::Users       => "9. Users",
+            Screen::Services    => "0. Services",
+            Screen::Maintenance => "M. Janitor",
         }
     }
 
@@ -148,12 +155,16 @@ pub enum TaskResult {
     WasmCloudHostList(Vec<WasmCloudHost>),
     WasmCloudComponentList(Vec<WasmCloudComponent>),
     WasmCloudAppList(Vec<WasmCloudApp>),
+    WasmCloudNatsStatus { running: bool, storage_usage: Option<u64>, synced: bool },
     SshLocalKeys(Vec<SshKey>),
     SshAuthorizedKeys(Vec<SshKey>),
     SshOpDone { op: String, success: bool, output: String },
     WasmCloudInspect(String),
     GhostScan(Vec<GhostProcess>),
     UserList(Vec<UserInfo>),
+    ServiceList(Vec<ServiceUnit>),
+    ServiceOpDone { name: String, op: String, success: bool },
+    MaintenanceDone { op: String, output: String, success: bool },
     Status(String),
     Error(String),
 }
@@ -177,6 +188,8 @@ pub enum ConfirmAction {
     DeauthorizeKey { fingerprint: String, name: String },
     AuthorizeLocalKey { content: String, name: String },
     KillGhost { pid: u32, name: String },
+    ServiceAction { name: String, op: String },
+    MaintenanceAction { op: String },
 }
 
 #[derive(Debug)]
@@ -704,6 +717,13 @@ pub struct WasmCloudState {
     pub inspect_target: String,
     pub inspect_output: Option<String>,
     pub loading: bool,
+    pub nats_running: bool,
+    pub nats_storage_usage: Option<u64>,
+    pub nats_synced: bool,
+    /// Tick counter for throttled NATS health polls (fires every 20 ticks ≈ 5 s)
+    pub nats_poll_counter: u8,
+    /// Whether the Inspector text field is active
+    pub input_mode: InputMode,
 }
 
 impl Default for WasmCloudState {
@@ -721,6 +741,11 @@ impl Default for WasmCloudState {
             inspect_target: String::new(),
             inspect_output: None,
             loading: false,
+            nats_running: false,
+            nats_storage_usage: None,
+            nats_synced: false,
+            nats_poll_counter: 0,
+            input_mode: InputMode::Normal,
         }
     }
 }
@@ -762,6 +787,42 @@ impl Default for UsersState {
     }
 }
 
+// ── Services state ────────────────────────────────────────────────────────
+pub struct ServicesState {
+    pub list: Vec<ServiceUnit>,
+    pub table_state: TableState,
+    pub loading: bool,
+    pub filter: String,
+    pub filter_mode: InputMode,
+}
+
+impl Default for ServicesState {
+    fn default() -> Self {
+        Self {
+            list: Vec::new(),
+            table_state: TableState::default(),
+            loading: false,
+            filter: String::new(),
+            filter_mode: InputMode::Normal,
+        }
+    }
+}
+
+// ── Maintenance state ─────────────────────────────────────────────────────
+pub struct MaintenanceState {
+    pub running_op: Option<String>,
+    pub last_output: String,
+}
+
+impl Default for MaintenanceState {
+    fn default() -> Self {
+        Self {
+            running_op: None,
+            last_output: String::new(),
+        }
+    }
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────
 
 pub struct App {
@@ -784,6 +845,8 @@ pub struct App {
     pub wasm_cloud: WasmCloudState,
     pub ghost: GhostState,
     pub users: UsersState,
+    pub services: ServicesState,
+    pub maintenance: MaintenanceState,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
@@ -817,6 +880,8 @@ impl App {
             wasm_cloud: WasmCloudState::default(),
             ghost: GhostState::default(),
             users: UsersState::default(),
+            services: ServicesState::default(),
+            maintenance: MaintenanceState::default(),
             task_tx,
             task_rx,
             confirm: None,
@@ -847,7 +912,10 @@ impl App {
                 self.spawn_tunnel_extras(id);
             }
             Screen::Docker => self.spawn_load_docker(),
-            Screen::WasmCloud => self.spawn_load_wasm_cloud(),
+            Screen::WasmCloud => {
+                self.spawn_load_wasm_cloud();
+                self.spawn_poll_nats_status();
+            }
             Screen::Ghosts => {
                 if self.ghost.ghosts.is_empty() {
                     self.spawn_ghost_scan();
@@ -855,6 +923,9 @@ impl App {
             }
             Screen::Users => {
                 self.spawn_load_users();
+            }
+            Screen::Services => {
+                self.spawn_load_services();
             }
             _ => {}
         }
@@ -1639,6 +1710,15 @@ impl App {
                 if let Ok(apps) = platform.wasm_cloud.list_apps().await {
                     let _ = tx.send(TaskResult::WasmCloudAppList(apps));
                 }
+                
+                let nats_running = platform.nats.is_running();
+                let storage_usage = platform.nats.get_storage_usage();
+                let synced = platform.nats.is_synced();
+                let _ = tx.send(TaskResult::WasmCloudNatsStatus { 
+                    running: nats_running, 
+                    storage_usage, 
+                    synced 
+                });
             }
         });
     }
@@ -1681,6 +1761,124 @@ impl App {
                 Ok(output) => { let _ = tx.send(TaskResult::WasmCloudInspect(output)); }
                 Err(e) => { let _ = tx.send(TaskResult::WasmCloudInspect(format!("Error: {}", e))); }
             }
+        });
+    }
+
+    /// Auto-provision NATS: download if missing → write config → start sidecar → init KC buckets.
+    pub fn spawn_nats_provision(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.status_msg = Some("NATS: provisioning backbone…".to_string());
+        tokio::spawn(async move {
+            // 1. Auto-download nats-server if not found (spawn_blocking internally)
+            if let Err(e) = platform.nats.auto_download().await {
+                let _ = tx.send(TaskResult::Status(format!("NATS download failed: {}", e)));
+                return;
+            }
+
+            // 2 + 3. Write config + start sidecar (spawn_blocking internally)
+            if let Err(e) = platform.nats.start_async().await {
+                let _ = tx.send(TaskResult::Status(format!("NATS start failed: {}", e)));
+                return;
+            }
+
+            // 4. Give the server time to bind ports
+            tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+
+            // 5. Initialise JetStream buckets + streams (spawn_blocking internally)
+            if let Err(e) = platform.nats.init_wasmcloud_buckets_async().await {
+                let _ = tx.send(TaskResult::Status(format!("NATS bucket init failed: {}", e)));
+            }
+
+            // 6. Emit health snapshot (TCP probe — fast, non-blocking)
+            let nats = Arc::clone(&platform.nats);
+            let (running, storage_usage, synced) = tokio::task::spawn_blocking(move || {
+                let r = nats.is_running();
+                let s = nats.get_storage_usage();
+                let y = nats.is_synced();
+                (r, s, y)
+            })
+            .await
+            .unwrap_or((false, None, false));
+
+            let _ = tx.send(TaskResult::WasmCloudNatsStatus { running, storage_usage, synced });
+            let _ = tx.send(TaskResult::Status(if running {
+                "✅ NATS backbone is running (port 4222)".to_string()
+            } else {
+                "⚠️  NATS started but port 4222 not yet open — retry in a moment".to_string()
+            }));
+        });
+    }
+
+    /// Lightweight NATS health poll — TCP probe, fully non-blocking.
+    pub fn spawn_poll_nats_status(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let nats = Arc::clone(&platform.nats);
+            let (running, storage_usage, synced) = tokio::task::spawn_blocking(move || {
+                let r = nats.is_running();
+                let s = nats.get_storage_usage();
+                let y = nats.is_synced();
+                (r, s, y)
+            })
+            .await
+            .unwrap_or((false, None, false));
+            let _ = tx.send(TaskResult::WasmCloudNatsStatus { running, storage_usage, synced });
+        });
+    }
+
+    pub fn spawn_load_services(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.services.loading = true;
+        tokio::spawn(async move {
+            match platform.services.list_services().await {
+                Ok(services) => { let _ = tx.send(TaskResult::ServiceList(services)); }
+                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+            }
+        });
+    }
+
+    pub fn spawn_service_action(&mut self, name: String, op: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = match op.as_str() {
+                "start" => platform.services.start(&name).await,
+                "stop" => platform.services.stop(&name).await,
+                "restart" => platform.services.restart(&name).await,
+                "enable" => platform.services.enable(&name).await,
+                "disable" => platform.services.disable(&name).await,
+                _ => Ok(()),
+            };
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::ServiceOpDone { name, op, success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("service {} failed: {}", op, e)));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_maintenance_action(&mut self, op: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        let pool = self.pool.clone();
+        self.maintenance.running_op = Some(op.clone());
+        tokio::spawn(async move {
+            let result = match op.as_str() {
+                "clean_pkg_cache" => platform.packages.clean_cache().await,
+                _ => Ok("Unknown action".to_string()),
+            };
+            let (output, success) = match result {
+                Ok(out) => (out, true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = crate::db::audit::log_action(&pool, "maintenance", Some(&op), &output, success).await;
+            let _ = tx.send(TaskResult::MaintenanceDone { op, output, success });
         });
     }
 
@@ -1963,12 +2161,41 @@ impl App {
             TaskResult::WasmCloudInspect(output) => {
                 self.wasm_cloud.inspect_output = Some(output);
             }
+            TaskResult::WasmCloudNatsStatus { running, storage_usage, synced } => {
+                self.wasm_cloud.nats_running = running;
+                self.wasm_cloud.nats_storage_usage = storage_usage;
+                self.wasm_cloud.nats_synced = synced;
+            }
             TaskResult::UserList(users) => {
                 self.users.users = users;
                 self.users.loading = false;
                 if self.users.table_state.selected().is_none() && !self.users.users.is_empty() {
                     self.users.table_state.select(Some(0));
                 }
+            }
+            TaskResult::ServiceList(services) => {
+                self.services.list = services;
+                self.services.loading = false;
+                if self.services.table_state.selected().is_none() && !self.services.list.is_empty() {
+                    self.services.table_state.select(Some(0));
+                }
+            }
+            TaskResult::ServiceOpDone { name, op, success } => {
+                self.status_msg = Some(if success {
+                    format!("Service {} {} success", name, op)
+                } else {
+                    format!("Service {} {} FAILED", name, op)
+                });
+                self.spawn_load_services();
+            }
+            TaskResult::MaintenanceDone { op, output, success } => {
+                self.maintenance.running_op = None;
+                self.maintenance.last_output = output;
+                self.status_msg = Some(if success {
+                    format!("Maintenance action {} done", op)
+                } else {
+                    format!("Maintenance action {} FAILED", op)
+                });
             }
             TaskResult::GhostScan(ghosts) => {
                 self.ghost.scanning = false;
@@ -2042,6 +2269,13 @@ impl App {
                 }
                 if self.dashboard.active_tab == DashboardTab::Processes {
                     self.spawn_load_processes();
+                }
+            }
+            Screen::WasmCloud => {
+                // Poll NATS health every 20 ticks (~5 s)
+                self.wasm_cloud.nats_poll_counter = self.wasm_cloud.nats_poll_counter.wrapping_add(1);
+                if self.wasm_cloud.nats_poll_counter % 20 == 0 {
+                    self.spawn_poll_nats_status();
                 }
             }
             _ => {}

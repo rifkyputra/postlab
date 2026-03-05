@@ -113,4 +113,8 @@ impl PackageManager for AptManager {
     async fn update_cache(&self) -> Result<()> {
         run_cmd("apt-get", &["update"]).await.map(|_| ())
     }
+
+    async fn clean_cache(&self) -> Result<String> {
+        run_cmd("apt-get", &["clean"]).await
+    }
 }

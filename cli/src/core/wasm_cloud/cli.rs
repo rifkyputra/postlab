@@ -30,22 +30,35 @@ impl WasmCloudManager for WasmCloudCliManager {
     }
 
     async fn install(&self) -> Result<String> {
+        // macOS — correct tap is wasmcloud/wasmcloud
+        if crate::core::packages::which("brew") {
+            let mgr = crate::core::packages::BrewManager;
+            use crate::core::packages::PackageManager;
+            return mgr.install("wasmcloud/wasmcloud/wash").await;
+        }
+
+        // Debian/Ubuntu
         if crate::core::packages::which("apt-get") {
-            let script = "curl -s https://packagecloud.io/install/repositories/wasmcloud/core/script.deb.sh | sudo bash && sudo apt install -y wash";
+            // Official install script from wasmcloud docs
+            let script = "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
             let out = Command::new("sh")
                 .args(["-c", script])
                 .output()?;
-            
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
             }
             return Ok(String::from_utf8_lossy(&out.stdout).to_string());
         }
 
-        if crate::core::packages::which("brew") {
-            let mgr = crate::core::packages::BrewManager;
-            use crate::core::packages::PackageManager;
-            return mgr.install("wasmcloud/tap/wash").await;
+        // Fallback: cargo binstall (fast, no build required)
+        if crate::core::packages::which("cargo-binstall") || crate::core::packages::which("cargo") {
+            let out = Command::new("cargo")
+                .args(["install", "wash-cli"])
+                .output()?;
+            if !out.status.success() {
+                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+            }
+            return Ok(String::from_utf8_lossy(&out.stdout).to_string());
         }
 
         anyhow::bail!("Please install wash CLI manually: https://wasmcloud.com/docs/installation")
@@ -56,17 +69,24 @@ impl WasmCloudManager for WasmCloudCliManager {
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) -> Result<String> {
         use crate::core::packages::run_cmd_streaming;
-        
-        if crate::core::packages::which("apt-get") {
-            let script = "curl -s https://packagecloud.io/install/repositories/wasmcloud/core/script.deb.sh | sudo bash && sudo apt install -y wash";
-            return run_cmd_streaming("sh", &["-c", script], tx).await;
-        }
 
+        // macOS — correct tap is wasmcloud/wasmcloud
         if crate::core::packages::which("brew") {
             use crate::core::packages::PackageManager;
             return crate::core::packages::BrewManager
-                .install_streamed("wasmcloud/tap/wash", tx)
+                .install_streamed("wasmcloud/wasmcloud/wash", tx)
                 .await;
+        }
+
+        // Debian/Ubuntu
+        if crate::core::packages::which("apt-get") {
+            let script = "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
+            return run_cmd_streaming("sh", &["-c", script], tx).await;
+        }
+
+        // Fallback: cargo install
+        if crate::core::packages::which("cargo") {
+            return run_cmd_streaming("cargo", &["install", "wash-cli"], tx).await;
         }
 
         anyhow::bail!("Please install wash CLI manually: https://wasmcloud.com/docs/installation")
