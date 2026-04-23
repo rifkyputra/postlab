@@ -140,17 +140,26 @@ impl TunnelManager for CloudflareManager {
     }
 
     async fn create(&self, name: &str) -> Result<Tunnel> {
-        let out = run(&["tunnel", "create", name]).await?;
-        // Output (multi-line): "INF Created tunnel <name> with id <uuid>"
-        // Find the line containing "with id" and take the last token (the UUID).
-        let id = out
+        // cloudflared writes "INF Created tunnel <name> with id <uuid>" to stderr, not stdout.
+        let raw = tokio::process::Command::new("cloudflared")
+            .args(["tunnel", "create", name])
+            .output().await?;
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&raw.stdout),
+            String::from_utf8_lossy(&raw.stderr),
+        );
+        if !raw.status.success() {
+            anyhow::bail!("{}", combined.trim());
+        }
+        let id = combined
             .lines()
             .find(|l| l.contains("with id"))
             .and_then(|l| l.split_whitespace().last())
             .unwrap_or("")
             .to_string();
         if id.is_empty() {
-            anyhow::bail!("could not parse tunnel id from: {}", out);
+            anyhow::bail!("could not parse tunnel id from cloudflared output: {}", combined.trim());
         }
         Ok(Tunnel { name: name.to_string(), id, status: "created".to_string() })
     }
