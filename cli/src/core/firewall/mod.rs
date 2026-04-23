@@ -4,7 +4,12 @@ use async_trait::async_trait;
 use crate::core::models::FirewallRule;
 
 pub mod ufw;
+pub mod firewalld;
+pub mod pf;
+
 pub use ufw::UfwManager;
+pub use firewalld::FirewalldManager;
+pub use pf::PfManager;
 
 /// Minimal firewall backend abstraction.
 #[async_trait]

@@ -3,7 +3,7 @@ use anyhow::Result;
 
 use crate::core::{
     docker::{DockerCliManager, DockerManager},
-    firewall::{FirewallManager, NoneManager, UfwManager},
+    firewall::{FirewallManager, FirewalldManager, NoneManager, PfManager, UfwManager},
     gateway::{CaddyManager, GatewayManager},
     packages::{
         AptManager, BrewManager, DnfManager, PackageManager, PacmanManager,
@@ -78,7 +78,7 @@ pub fn detect() -> Result<Platform> {
     let fail2ban = Arc::new(DefaultFail2Ban) as Arc<dyn Fail2BanManager>;
     let gateway = Arc::new(CaddyManager);
     let tunnel = Arc::new(CloudflareManager);
-    let docker: Arc<dyn DockerManager> = Arc::new(DockerCliManager);
+    let docker: Arc<dyn DockerManager> = Arc::new(DockerCliManager::detect());
     let wasm_cloud: Arc<dyn WasmCloudManager> = Arc::new(WasmCloudCliManager);
 
     let packages: Arc<dyn PackageManager> = detect_package_manager()?;
@@ -114,6 +114,12 @@ pub fn detect() -> Result<Platform> {
 fn detect_firewall() -> Arc<dyn FirewallManager> {
     if which("ufw") {
         return Arc::new(UfwManager);
+    }
+    if which("firewall-cmd") {
+        return Arc::new(FirewalldManager);
+    }
+    if which("pfctl") {
+        return Arc::new(PfManager);
     }
     Arc::new(NoneManager)
 }

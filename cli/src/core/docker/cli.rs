@@ -7,9 +7,18 @@ use crate::core::{
     models::{DockerComposeService, DockerContainer, DockerImage, ManagedDockerService},
 };
 
-pub struct DockerCliManager;
+pub struct DockerCliManager {
+    /// "docker" or "podman", whichever was found first on PATH.
+    bin: &'static str,
+}
 
 impl DockerCliManager {
+    pub fn detect() -> Self {
+        use crate::core::packages::which;
+        let bin = if which("docker") { "docker" } else { "podman" };
+        Self { bin }
+    }
+
     fn get_field(v: &serde_json::Value, keys: &[&str]) -> String {
         for &key in keys {
             let val = &v[key];
@@ -117,7 +126,7 @@ impl DockerCliManager {
 #[async_trait]
 impl DockerManager for DockerCliManager {
     async fn is_installed(&self) -> bool {
-        Command::new("docker")
+        Command::new(self.bin)
             .arg("version")
             .output()
             .await
@@ -126,7 +135,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn version(&self) -> Option<String> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["version", "--format", "{{.Client.Version}}"])
             .output()
             .await
@@ -139,7 +148,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn list_containers(&self) -> Result<Vec<DockerContainer>> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["ps", "-a", "--format", "{{json .}}"])
             .output()
             .await
@@ -148,7 +157,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn list_images(&self) -> Result<Vec<DockerImage>> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["images", "--format", "{{json .}}"])
             .output()
             .await
@@ -157,42 +166,42 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn start_container(&self, id: &str) -> Result<()> {
-        let out = Command::new("docker").args(["start", id]).output().await?;
+        let out = Command::new(self.bin).args(["start", id]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn stop_container(&self, id: &str) -> Result<()> {
-        let out = Command::new("docker").args(["stop", id]).output().await?;
+        let out = Command::new(self.bin).args(["stop", id]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn restart_container(&self, id: &str) -> Result<()> {
-        let out = Command::new("docker").args(["restart", id]).output().await?;
+        let out = Command::new(self.bin).args(["restart", id]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn remove_container(&self, id: &str) -> Result<()> {
-        let out = Command::new("docker").args(["rm", "-f", id]).output().await?;
+        let out = Command::new(self.bin).args(["rm", "-f", id]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn remove_image(&self, id: &str) -> Result<()> {
-        let out = Command::new("docker").args(["rmi", id]).output().await?;
+        let out = Command::new(self.bin).args(["rmi", id]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn list_compose_services(&self, path: &str) -> Result<Vec<DockerComposeService>> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["compose", "-f", path, "ps", "--format", "json"])
             .output()
             .await
@@ -210,7 +219,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn compose_up(&self, path: &str) -> Result<()> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["compose", "-f", path, "up", "-d"])
             .output()
             .await?;
@@ -220,7 +229,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn compose_down(&self, path: &str) -> Result<()> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["compose", "-f", path, "down"])
             .output()
             .await?;
@@ -230,7 +239,7 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn compose_restart(&self, path: &str) -> Result<()> {
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["compose", "-f", path, "restart"])
             .output()
             .await?;
@@ -243,7 +252,7 @@ impl DockerManager for DockerCliManager {
         let catalog = Self::managed_catalog();
 
         // Get all running container names in a single call
-        let out = Command::new("docker")
+        let out = Command::new(self.bin)
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.Status}}"])
             .output()
             .await
@@ -282,14 +291,14 @@ impl DockerManager for DockerCliManager {
 
     async fn start_managed_service(&self, container_name: &str, image: &str, ports: &str) -> Result<()> {
         // If container already exists, just start it. Otherwise, run a new one.
-        let exists_out = Command::new("docker")
+        let exists_out = Command::new(self.bin)
             .args(["ps", "-a", "--filter", &format!("name=^{}$", container_name), "--format", "{{.Names}}"])
             .output()
             .await?;
         let exists = !String::from_utf8_lossy(&exists_out.stdout).trim().is_empty();
 
         if exists {
-            let out = Command::new("docker").args(["start", container_name]).output().await?;
+            let out = Command::new(self.bin).args(["start", container_name]).output().await?;
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
             }
@@ -303,7 +312,7 @@ impl DockerManager for DockerCliManager {
             }
             args.push("--restart=unless-stopped");
             args.push(image);
-            let out = Command::new("docker").args(&args).output().await?;
+            let out = Command::new(self.bin).args(&args).output().await?;
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
             }
@@ -312,14 +321,14 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn stop_managed_service(&self, container_name: &str) -> Result<()> {
-        let out = Command::new("docker").args(["stop", container_name]).output().await?;
+        let out = Command::new(self.bin).args(["stop", container_name]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn restart_managed_service(&self, container_name: &str) -> Result<()> {
-        let out = Command::new("docker").args(["restart", container_name]).output().await?;
+        let out = Command::new(self.bin).args(["restart", container_name]).output().await?;
         if out.status.success() { Ok(()) } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
