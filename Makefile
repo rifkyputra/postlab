@@ -13,7 +13,7 @@ else
   RELEASE_DIR := target/$(TARGET)/release
 endif
 
-.PHONY: help build release build-linux build-all run dev info list check test clean install link link-release docker-build docker-shell docker-cp docker-release
+.PHONY: help build build-release release build-linux build-all run dev info list check test clean install link link-release docker-build docker-shell docker-cp docker-release
 
 LINUX_TARGET := x86_64-unknown-linux-gnu
 
@@ -34,10 +34,12 @@ help: ## Show this help
 build: ## Dev build
 	cargo build -p postlab $(if $(filter-out $(HOST_TRIPLE),$(TARGET)),--target $(TARGET))
 
-release: ## Release build (stripped, LTO, ~8–15 MB)
+build-release: ## Release build (stripped, LTO, ~8–15 MB)
 	cargo build -p postlab --release $(if $(filter-out $(HOST_TRIPLE),$(TARGET)),--target $(TARGET))
 	@echo "  Binary: $(RELEASE_DIR)/postlab"
 	@ls -lh $(RELEASE_DIR)/postlab
+
+release: build-release ## Alias for build-release
 
 build-linux: ## Release build for x86_64 Linux via zigbuild (requires: cargo install cargo-zigbuild)
 	cargo zigbuild -p postlab --release --target $(LINUX_TARGET)
@@ -49,9 +51,11 @@ build-linux: ## Release build for x86_64 Linux via zigbuild (requires: cargo ins
 
 build-all: ## Build release binaries for all targets (native + x86_64 Linux)
 	$(MAKE) release
+	@mkdir -p binaries/$(TARGET)
+	@cp $(RELEASE_DIR)/postlab binaries/$(TARGET)/postlab
 	$(MAKE) build-linux
 	@echo; echo "  Binaries:"
-	@cp $(RELEASE_DIR)/postlab binaries/$(LINUX_TARGET)/postlab
+	@ls -lh binaries/*/postlab
 
 link: ## Symlink dev binary → binaries/<triple>/postlab
 	@mkdir -p binaries/$(TARGET)

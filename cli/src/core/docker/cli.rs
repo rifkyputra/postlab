@@ -4,7 +4,7 @@ use tokio::process::Command;
 
 use crate::core::{
     docker::DockerManager,
-    models::{DockerComposeService, DockerContainer, DockerImage},
+    models::{DockerComposeService, DockerContainer, DockerImage, ManagedDockerService},
 };
 
 pub struct DockerCliManager;
@@ -238,4 +238,108 @@ impl DockerManager for DockerCliManager {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
+
+    async fn list_managed_services(&self) -> Result<Vec<ManagedDockerService>> {
+        let catalog = Self::managed_catalog();
+
+        // Get all running container names in a single call
+        let out = Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}\t{{.Status}}"])
+            .output()
+            .await
+            .unwrap_or_else(|_| std::process::Output {
+                status: std::process::ExitStatus::default(),
+                stdout: vec![],
+                stderr: vec![],
+            });
+
+        let container_statuses: std::collections::HashMap<String, String> = 
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|line| {
+                    let mut parts = line.splitn(2, '\t');
+                    let name = parts.next()?.trim().to_string();
+                    let status = parts.next().unwrap_or("").trim().to_string();
+                    Some((name, status))
+                })
+                .collect();
+
+        Ok(catalog.into_iter().map(|(name, container_name, image, ports, description)| {
+            let status = container_statuses
+                .get(container_name)
+                .cloned()
+                .unwrap_or_else(|| "not found".to_string());
+            ManagedDockerService {
+                name: name.to_string(),
+                container_name: container_name.to_string(),
+                image: image.to_string(),
+                ports: ports.to_string(),
+                status,
+                description: description.to_string(),
+            }
+        }).collect())
+    }
+
+    async fn start_managed_service(&self, container_name: &str, image: &str, ports: &str) -> Result<()> {
+        // If container already exists, just start it. Otherwise, run a new one.
+        let exists_out = Command::new("docker")
+            .args(["ps", "-a", "--filter", &format!("name=^{}$", container_name), "--format", "{{.Names}}"])
+            .output()
+            .await?;
+        let exists = !String::from_utf8_lossy(&exists_out.stdout).trim().is_empty();
+
+        if exists {
+            let out = Command::new("docker").args(["start", container_name]).output().await?;
+            if !out.status.success() {
+                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
+            }
+        } else {
+            // Build port args: "6379:6379" → ["-p", "6379:6379", ...]
+            let mut args = vec!["run", "-d", "--name", container_name];
+            let port_pairs: Vec<&str> = ports.split(',').map(|p| p.trim()).collect();
+            for p in &port_pairs {
+                args.push("-p");
+                args.push(p);
+            }
+            args.push("--restart=unless-stopped");
+            args.push(image);
+            let out = Command::new("docker").args(&args).output().await?;
+            if !out.status.success() {
+                anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
+            }
+        }
+        Ok(())
+    }
+
+    async fn stop_managed_service(&self, container_name: &str) -> Result<()> {
+        let out = Command::new("docker").args(["stop", container_name]).output().await?;
+        if out.status.success() { Ok(()) } else {
+            anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
+        }
+    }
+
+    async fn restart_managed_service(&self, container_name: &str) -> Result<()> {
+        let out = Command::new("docker").args(["restart", container_name]).output().await?;
+        if out.status.success() { Ok(()) } else {
+            anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
+        }
+    }
 }
+
+impl DockerCliManager {
+    /// Catalog of predefined managed dev services:
+    /// (display_name, container_name, image, ports, description)
+    fn managed_catalog() -> Vec<(&'static str, &'static str, &'static str, &'static str, &'static str)> {
+        vec![
+            ("PostgreSQL",  "postlab-postgres",  "postgres:16-alpine",       "5432:5432", "Relational database (PostgreSQL 16)"),
+            ("Redis",       "postlab-redis",     "redis:7-alpine",            "6379:6379", "In-memory key-value store & cache"),
+            ("RabbitMQ",    "postlab-rabbitmq",  "rabbitmq:3-management",     "5672:5672,15672:15672", "Message broker with management UI"),
+            ("MySQL",       "postlab-mysql",     "mysql:8",                   "3306:3306", "Relational database (MySQL 8)"),
+            ("MongoDB",     "postlab-mongo",     "mongo:7",                   "27017:27017", "NoSQL document database"),
+            ("Elasticsearch","postlab-elastic",  "elasticsearch:8.13.0",      "9200:9200,9300:9300", "Full-text search & analytics"),
+            ("MinIO",       "postlab-minio",     "minio/minio",               "9000:9000,9001:9001", "S3-compatible object storage"),
+            ("MailHog",     "postlab-mailhog",   "mailhog/mailhog",           "1025:1025,8025:8025", "Email testing (SMTP + web UI)"),
+        ]
+    }
+}
+

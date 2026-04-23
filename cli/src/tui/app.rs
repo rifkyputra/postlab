@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
-    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudApp, UserInfo},
+    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, ManagedDockerService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudApp, UserInfo},
     services::{ServiceUnit},
     portcheck::{PortEntry, PortStatus, default_entries},
     Platform,
@@ -75,17 +75,19 @@ pub enum DockerTab {
     Containers,
     Images,
     Compose,
+    Managed,
 }
 
 impl DockerTab {
     pub fn all() -> &'static [DockerTab] {
-        &[DockerTab::Containers, DockerTab::Images, DockerTab::Compose]
+        &[DockerTab::Containers, DockerTab::Images, DockerTab::Compose, DockerTab::Managed]
     }
     pub fn title(&self) -> &'static str {
         match self {
             DockerTab::Containers => "Containers",
             DockerTab::Images => "Images",
             DockerTab::Compose => "Compose",
+            DockerTab::Managed => "Managed",
         }
     }
     pub fn index(&self) -> usize {
@@ -147,6 +149,7 @@ pub enum TaskResult {
     DockerContainerList(Vec<DockerContainer>),
     DockerImageList(Vec<DockerImage>),
     DockerComposeList(Vec<DockerComposeService>),
+    ManagedServiceList(Vec<ManagedDockerService>),
     FirewallStatus { enabled: bool, backend: String },
     FirewallRules(Vec<FirewallRule>),
     PublicIp(String),
@@ -574,6 +577,9 @@ pub struct DockerState {
     pub compose_services: Vec<DockerComposeService>,
     pub compose_state: TableState,
     pub compose_path: String,
+    // Managed dev services tab
+    pub managed_services: Vec<ManagedDockerService>,
+    pub managed_state: TableState,
     pub loading: bool,
 }
 
@@ -590,6 +596,8 @@ impl Default for DockerState {
             compose_services: Vec::new(),
             compose_state: TableState::default(),
             compose_path: String::from("docker-compose.yml"),
+            managed_services: Vec::new(),
+            managed_state: TableState::default(),
             loading: false,
         }
     }
@@ -1452,6 +1460,41 @@ impl App {
         });
     }
 
+    pub fn spawn_load_managed_services(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.docker.list_managed_services().await {
+                Ok(services) => { let _ = tx.send(TaskResult::ManagedServiceList(services)); }
+                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+            }
+        });
+    }
+
+    pub fn spawn_managed_service_action(&mut self, action: &'static str, container_name: String, image: String, ports: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = match action {
+                "start"   => platform.docker.start_managed_service(&container_name, &image, &ports).await,
+                "stop"    => platform.docker.stop_managed_service(&container_name).await,
+                "restart" => platform.docker.restart_managed_service(&container_name).await,
+                _         => Ok(()),
+            };
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!("{} {} — done", action, container_name)));
+                    // Refresh the list
+                    match platform.docker.list_managed_services().await {
+                        Ok(services) => { let _ = tx.send(TaskResult::ManagedServiceList(services)); }
+                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    }
+                }
+                Err(e) => { let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e))); }
+            }
+        });
+    }
+
     // ── Firewall loaders ──────────────────────────────────────────────────
 
     pub fn spawn_load_firewall(&mut self) {
@@ -2082,6 +2125,12 @@ impl App {
                 self.docker.compose_services = services;
                 if self.docker.compose_state.selected().is_none() && !self.docker.compose_services.is_empty() {
                     self.docker.compose_state.select(Some(0));
+                }
+            }
+            TaskResult::ManagedServiceList(services) => {
+                self.docker.managed_services = services;
+                if self.docker.managed_state.selected().is_none() && !self.docker.managed_services.is_empty() {
+                    self.docker.managed_state.select(Some(0));
                 }
             }
             TaskResult::FirewallStatus { enabled, backend } => {

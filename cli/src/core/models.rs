@@ -156,6 +156,23 @@ pub struct DockerComposeService {
     pub ports: String,
 }
 
+/// A predefined, managed Docker service for local development (e.g. Redis, Postgres).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedDockerService {
+    /// Display name (e.g. "Redis")
+    pub name: String,
+    /// Container name used in `docker run --name`
+    pub container_name: String,
+    /// Docker image (e.g. "redis:7-alpine")
+    pub image: String,
+    /// Human-readable port mapping (e.g. "6379:6379")
+    pub ports: String,
+    /// Current running status — "running", "stopped", "not found", etc.
+    pub status: String,
+    /// Optional description of what this service is for
+    pub description: String,
+}
+
 /// A currently-banned IP as reported by fail2ban.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JailedIp {

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::core::models::{DockerComposeService, DockerContainer, DockerImage};
+use crate::core::models::{DockerComposeService, DockerContainer, DockerImage, ManagedDockerService};
 
 pub mod cli;
 pub use cli::DockerCliManager;
@@ -21,4 +21,9 @@ pub trait DockerManager: Send + Sync {
     async fn compose_up(&self, path: &str) -> Result<()>;
     async fn compose_down(&self, path: &str) -> Result<()>;
     async fn compose_restart(&self, path: &str) -> Result<()>;
+    // ── Managed dev services ──────────────────────────────────────────────
+    async fn list_managed_services(&self) -> Result<Vec<ManagedDockerService>>;
+    async fn start_managed_service(&self, container_name: &str, image: &str, ports: &str) -> Result<()>;
+    async fn stop_managed_service(&self, container_name: &str) -> Result<()>;
+    async fn restart_managed_service(&self, container_name: &str) -> Result<()>;
 }

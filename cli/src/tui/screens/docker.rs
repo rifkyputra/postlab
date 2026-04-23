@@ -26,6 +26,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         DockerTab::Containers => render_containers(f, app, chunks[2]),
         DockerTab::Images => render_images(f, app, chunks[2]),
         DockerTab::Compose => render_compose(f, app, chunks[2]),
+        DockerTab::Managed => render_managed(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
@@ -311,7 +312,95 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         DockerTab::Compose => {
             " [←/→] tabs  [↑/↓] select  [u] up  [d] down  [R] restart  [r] refresh "
         }
+        DockerTab::Managed => {
+            " [←/→] tabs  [↑/↓] select  [s] start  [x] stop  [R] restart  [r] refresh "
+        }
     };
     let p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
+}
+
+// ── Managed dev services tab ──────────────────────────────────────────────
+
+fn render_managed(f: &mut Frame, app: &App, area: Rect) {
+    if !app.docker.installed {
+        let p = Paragraph::new(Span::styled(
+            "Docker is not installed or not running.",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .block(Block::default().title(" Managed Services ").borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let headers = Row::new([
+        Cell::from("Service"),
+        Cell::from("Image"),
+        Cell::from("Ports"),
+        Cell::from("Status"),
+        Cell::from("Description"),
+    ])
+    .style(header_style);
+
+    let rows: Vec<Row> = app
+        .docker
+        .managed_services
+        .iter()
+        .map(|svc| {
+            let status_lower = svc.status.to_lowercase();
+            let status_color = if status_lower.starts_with("up") || status_lower.contains("running") {
+                Color::Green
+            } else if status_lower == "not found" {
+                Color::DarkGray
+            } else if status_lower.contains("exit") || status_lower.contains("dead") {
+                Color::Red
+            } else {
+                Color::Yellow
+            };
+
+            let status_icon = if status_lower.starts_with("up") || status_lower.contains("running") {
+                "● "
+            } else if status_lower == "not found" {
+                "○ "
+            } else {
+                "◌ "
+            };
+
+            Row::new([
+                Cell::from(svc.name.as_str()).style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(svc.image.as_str()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(svc.ports.as_str()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(format!("{}{}", status_icon, svc.status)).style(Style::default().fg(status_color)),
+                Cell::from(svc.description.as_str()).style(Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .collect();
+
+    let widths = [
+        Constraint::Length(14),
+        Constraint::Fill(1),
+        Constraint::Length(22),
+        Constraint::Length(20),
+        Constraint::Fill(2),
+    ];
+
+    let table = Table::new(rows, widths)
+        .header(headers)
+        .block(
+            Block::default()
+                .title(" Managed Dev Services — start/stop common local infrastructure ")
+                .borders(Borders::ALL),
+        )
+        .row_highlight_style(Style::default().bg(Color::DarkGray))
+        .highlight_symbol("› ");
+
+    let mut state = app.docker.managed_state.clone();
+    f.render_stateful_widget(table, area, &mut state);
 }

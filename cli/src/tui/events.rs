@@ -1277,8 +1277,10 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
         KeyCode::Right | KeyCode::Char('l') => {
             let idx = (app.docker.active_tab.index() + 1) % DockerTab::all().len();
             app.docker.active_tab = DockerTab::all()[idx].clone();
-            if app.docker.active_tab == DockerTab::Compose {
-                app.spawn_load_compose();
+            match app.docker.active_tab {
+                DockerTab::Compose => app.spawn_load_compose(),
+                DockerTab::Managed => app.spawn_load_managed_services(),
+                _ => {}
             }
             return;
         }
@@ -1286,8 +1288,10 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
             let idx = app.docker.active_tab.index();
             let prev = if idx == 0 { DockerTab::all().len() - 1 } else { idx - 1 };
             app.docker.active_tab = DockerTab::all()[prev].clone();
-            if app.docker.active_tab == DockerTab::Compose {
-                app.spawn_load_compose();
+            match app.docker.active_tab {
+                DockerTab::Compose => app.spawn_load_compose(),
+                DockerTab::Managed => app.spawn_load_managed_services(),
+                _ => {}
             }
             return;
         }
@@ -1298,6 +1302,52 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
         DockerTab::Containers => handle_docker_containers_key(app, key),
         DockerTab::Images     => handle_docker_images_key(app, key),
         DockerTab::Compose    => handle_docker_compose_key(app, key),
+        DockerTab::Managed    => handle_docker_managed_key(app, key),
+    }
+}
+
+fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down      => table_next(&mut app.docker.managed_state, app.docker.managed_services.len()),
+        KeyCode::Up        => table_prev(&mut app.docker.managed_state),
+        KeyCode::Char('r') => app.spawn_load_managed_services(),
+        KeyCode::Char('s') => {
+            if let Some(idx) = app.docker.managed_state.selected() {
+                if let Some(svc) = app.docker.managed_services.get(idx) {
+                    app.spawn_managed_service_action(
+                        "start",
+                        svc.container_name.clone(),
+                        svc.image.clone(),
+                        svc.ports.clone()
+                    );
+                }
+            }
+        }
+        KeyCode::Char('x') => {
+            if let Some(idx) = app.docker.managed_state.selected() {
+                if let Some(svc) = app.docker.managed_services.get(idx) {
+                    app.spawn_managed_service_action(
+                        "stop",
+                        svc.container_name.clone(),
+                        svc.image.clone(),
+                        svc.ports.clone()
+                    );
+                }
+            }
+        }
+        KeyCode::Char('R') => {
+            if let Some(idx) = app.docker.managed_state.selected() {
+                if let Some(svc) = app.docker.managed_services.get(idx) {
+                    app.spawn_managed_service_action(
+                        "restart",
+                        svc.container_name.clone(),
+                        svc.image.clone(),
+                        svc.ports.clone()
+                    );
+                }
+            }
+        }
+        _ => {}
     }
 }
 

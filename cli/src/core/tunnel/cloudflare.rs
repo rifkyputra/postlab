@@ -171,7 +171,7 @@ impl TunnelManager for CloudflareManager {
         {
             // Write the LaunchAgent plist pointing to this tunnel's per-tunnel config,
             // then load it. Uses `cloudflared tunnel run` — no cert.pem required.
-            let home = std::env::var("HOME").unwrap_or_default();
+            let home = real_home();
             let cfg  = tunnel_config_path(tunnel_id);
 
             let which = tokio::process::Command::new("which")
@@ -224,7 +224,7 @@ impl TunnelManager for CloudflareManager {
             // If the per-tunnel config doesn't exist yet, create a minimal one so
             // cloudflared can authenticate even before routes are added via [d].
             if !std::path::Path::new(&src).exists() {
-                let home = std::env::var("HOME").unwrap_or_default();
+                let home = real_home();
                 let minimal = format!(
                     "tunnel: {id}\ncredentials-file: {home}/.cloudflared/{id}.json\n\ningress:\n  - service: http_status:404\n",
                     id = tunnel_id,
@@ -317,7 +317,7 @@ const CF_PLIST: &str = "com.cloudflare.cloudflared.plist";
 async fn svc_status() -> Result<(bool, bool)> {
     #[cfg(target_os = "macos")]
     {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = real_home();
         // Enabled = LaunchAgent or LaunchDaemon plist exists
         let user_plist  = format!("{}/Library/LaunchAgents/{}", home, CF_PLIST);
         let sys_plist   = format!("/Library/LaunchDaemons/{}", CF_PLIST);
@@ -402,13 +402,27 @@ async fn svc_action(action: &str) -> Result<()> {
     }
 }
 
+/// Returns the real user's home directory.
+/// When running via `sudo`, $HOME is /root but the cloudflared config lives
+/// under the invoking user's home. Use SUDO_USER → getpwnam to find it.
+fn real_home() -> String {
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if !sudo_user.is_empty() {
+            if let Ok(Some(user)) = nix::unistd::User::from_name(&sudo_user) {
+                return user.dir.to_string_lossy().to_string();
+            }
+        }
+    }
+    std::env::var("HOME").unwrap_or_default()
+}
+
 fn cf_dir() -> String {
-    format!("{}/.cloudflared", std::env::var("HOME").unwrap_or_default())
+    format!("{}/.cloudflared", real_home())
 }
 
 /// Per-tunnel config path: `~/.cloudflared/<tunnel-id>.yaml`
 fn tunnel_config_path(tunnel_id: &str) -> String {
-    format!("{}/.cloudflared/{}.yaml", std::env::var("HOME").unwrap_or_default(), tunnel_id)
+    format!("{}/.cloudflared/{}.yaml", real_home(), tunnel_id)
 }
 
 /// Appends a hostname+service ingress entry to `~/.cloudflared/<tunnel-id>.yaml`.
@@ -441,7 +455,7 @@ async fn add_domain_to_config(config_path: &str, route: &TunnelRoute) -> Result<
         }
         Err(_) => {
             // File doesn't exist — create from scratch with correct tunnel header.
-            let home = std::env::var("HOME").unwrap_or_default();
+            let home = real_home();
             let config = format!(
                 "tunnel: {id}\ncredentials-file: {home}/.cloudflared/{id}.json\n\ningress:\n{entry}  - service: http_status:404\n",
                 id = route.tunnel_id,
