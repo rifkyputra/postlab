@@ -7,7 +7,6 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
-    docker::ContainerInspect,
     models::{
         DiskInfo, DockerComposeService, DockerContainer, DockerImage, FirewallRule, GhostProcess,
         JailedIp, ManagedDockerService, ManagedWorkload, ManagedWorkloadCapabilities,
@@ -34,6 +33,7 @@ pub enum Screen {
     Users,
     Services,
     Maintenance,
+    Automation,
 }
 
 impl Screen {
@@ -50,6 +50,7 @@ impl Screen {
             Screen::Users,
             Screen::Services,
             Screen::Maintenance,
+            Screen::Automation,
         ]
     }
 
@@ -66,6 +67,7 @@ impl Screen {
             Screen::Users => "9. Users",
             Screen::Services => "0. Services",
             Screen::Maintenance => "M. Janitor",
+            Screen::Automation => "A. Automation",
         }
     }
 
@@ -83,7 +85,6 @@ pub enum DockerTab {
     Compose,
     Workloads,
     Managed,
-    OpenClaw,
 }
 
 impl DockerTab {
@@ -94,7 +95,6 @@ impl DockerTab {
             DockerTab::Compose,
             DockerTab::Workloads,
             DockerTab::Managed,
-            DockerTab::OpenClaw,
         ]
     }
     pub fn title(&self) -> &'static str {
@@ -104,7 +104,6 @@ impl DockerTab {
             DockerTab::Compose => "Compose",
             DockerTab::Workloads => "Workloads",
             DockerTab::Managed => "Managed",
-            DockerTab::OpenClaw => "OpenClaw",
         }
     }
     pub fn index(&self) -> usize {
@@ -143,6 +142,41 @@ impl DashboardTab {
             .iter()
             .position(|t| t == self)
             .unwrap_or(0)
+    }
+}
+
+// ── Zeroclaw / Automation tabs ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ZeroclawTab {
+    Overview,
+    Channels,
+    Cron,
+    Memory,
+    Config,
+}
+
+impl ZeroclawTab {
+    pub fn all() -> &'static [ZeroclawTab] {
+        &[
+            ZeroclawTab::Overview,
+            ZeroclawTab::Channels,
+            ZeroclawTab::Cron,
+            ZeroclawTab::Memory,
+            ZeroclawTab::Config,
+        ]
+    }
+    pub fn title(&self) -> &'static str {
+        match self {
+            ZeroclawTab::Overview => "Overview",
+            ZeroclawTab::Channels => "Channels",
+            ZeroclawTab::Cron => "Cron",
+            ZeroclawTab::Memory => "Memory",
+            ZeroclawTab::Config => "Config",
+        }
+    }
+    pub fn index(&self) -> usize {
+        ZeroclawTab::all().iter().position(|t| t == self).unwrap_or(0)
     }
 }
 
@@ -210,15 +244,6 @@ pub enum TaskResult {
     DockerImageList(Vec<DockerImage>),
     DockerComposeList(Vec<DockerComposeService>),
     ManagedServiceList(Vec<ManagedDockerService>),
-    OpenClawStatus {
-        installed: bool,
-        health: OpenClawHealth,
-        container: Option<DockerContainer>,
-        ports: Vec<String>,
-        volumes: Vec<String>,
-        env_vars: Vec<(String, String)>,
-    },
-    OpenClawLogs(Vec<String>),
     WorkloadCapabilities(ManagedWorkloadCapabilities),
     WorkloadList(Vec<ManagedWorkload>),
     FirewallStatus {
@@ -263,6 +288,17 @@ pub enum TaskResult {
         output: String,
         success: bool,
     },
+    ZeroclawInfo(crate::core::zeroclaw::ZeroclawInfo),
+    ZeroclawStatus(crate::core::zeroclaw::ZeroclawStatus),
+    ZeroclawChannels(Vec<crate::core::zeroclaw::ZeroclawChannel>),
+    ZeroclawCron(Vec<crate::core::zeroclaw::CronJob>),
+    ZeroclawMemory(Vec<crate::core::zeroclaw::MemoryEntry>),
+    ZeroclawConfig(String),
+    ZeroclawActionDone {
+        action: String,
+        output: String,
+        success: bool,
+    },
     Status(String),
     Error(String),
 }
@@ -289,6 +325,9 @@ pub enum ConfirmAction {
     KillGhost { pid: u32, name: String },
     ServiceAction { name: String, op: String },
     MaintenanceAction { op: String },
+    DeleteCronJob { id: String, schedule: String },
+    DeleteMemoryEntry { key: String },
+    ZeroclawDaemonStop,
 }
 
 #[derive(Debug)]
@@ -752,46 +791,6 @@ impl Default for TunnelState {
 
 // ── Docker state ─────────────────────────────────────────────────────────
 
-// ── OpenClaw state ────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum OpenClawHealth {
-    Unknown,
-    NotInstalled,
-    ContainerStopped,
-    ContainerRunning,
-    HttpHealthOk,
-    HttpHealthFail(String),
-}
-
-pub struct OpenClawState {
-    pub installed: bool,
-    pub health: OpenClawHealth,
-    pub container: Option<DockerContainer>,
-    pub ports: Vec<String>,
-    pub volumes: Vec<String>,
-    pub env_vars: Vec<(String, String)>,
-    pub logs: Vec<String>,
-    pub log_scroll: usize,
-    pub loading: bool,
-}
-
-impl Default for OpenClawState {
-    fn default() -> Self {
-        Self {
-            installed: false,
-            health: OpenClawHealth::Unknown,
-            container: None,
-            ports: Vec::new(),
-            volumes: Vec::new(),
-            env_vars: Vec::new(),
-            logs: Vec::new(),
-            log_scroll: 0,
-            loading: false,
-        }
-    }
-}
-
 pub struct DockerState {
     pub installed: bool,
     pub version: Option<String>,
@@ -811,8 +810,6 @@ pub struct DockerState {
     // Managed dev services tab
     pub managed_services: Vec<ManagedDockerService>,
     pub managed_state: TableState,
-    // OpenClaw tab
-    pub openclaw: OpenClawState,
     pub loading: bool,
 }
 
@@ -832,8 +829,60 @@ impl Default for DockerState {
             workloads: DockerWorkloadsState::default(),
             managed_services: Vec::new(),
             managed_state: TableState::default(),
-            openclaw: OpenClawState::default(),
             loading: false,
+        }
+    }
+}
+
+// ── Automation / Zeroclaw state ───────────────────────────────────────────
+
+pub struct AutomationState {
+    pub active_tab: ZeroclawTab,
+    pub info: crate::core::zeroclaw::ZeroclawInfo,
+    pub status: crate::core::zeroclaw::ZeroclawStatus,
+    pub channels: Vec<crate::core::zeroclaw::ZeroclawChannel>,
+    pub channels_state: TableState,
+    pub cron: Vec<crate::core::zeroclaw::CronJob>,
+    pub cron_state: TableState,
+    pub memory: Vec<crate::core::zeroclaw::MemoryEntry>,
+    pub memory_state: ListState,
+    pub config_text: String,
+    pub config_scroll: u16,
+    pub loading: bool,
+    pub action_output: Option<String>,
+    /// Tick counter for periodic status refresh
+    pub poll_counter: u32,
+    // Cron-add form
+    pub cron_form_mode: InputMode,
+    pub cron_form_schedule: String,
+    pub cron_form_command: String,
+    pub cron_form_focus: usize,
+}
+
+impl Default for AutomationState {
+    fn default() -> Self {
+        Self {
+            active_tab: ZeroclawTab::Overview,
+            info: crate::core::zeroclaw::ZeroclawInfo {
+                installed: false,
+                version: None,
+            },
+            status: crate::core::zeroclaw::ZeroclawStatus::default(),
+            channels: Vec::new(),
+            channels_state: TableState::default(),
+            cron: Vec::new(),
+            cron_state: TableState::default(),
+            memory: Vec::new(),
+            memory_state: ListState::default(),
+            config_text: String::new(),
+            config_scroll: 0,
+            loading: false,
+            action_output: None,
+            poll_counter: 0,
+            cron_form_mode: InputMode::Normal,
+            cron_form_schedule: String::new(),
+            cron_form_command: String::new(),
+            cron_form_focus: 0,
         }
     }
 }
@@ -1109,6 +1158,7 @@ pub struct App {
     pub users: UsersState,
     pub services: ServicesState,
     pub maintenance: MaintenanceState,
+    pub automation: AutomationState,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
@@ -1144,6 +1194,7 @@ impl App {
             users: UsersState::default(),
             services: ServicesState::default(),
             maintenance: MaintenanceState::default(),
+            automation: AutomationState::default(),
             task_tx,
             task_rx,
             confirm: None,
@@ -1191,6 +1242,9 @@ impl App {
             }
             Screen::Services => {
                 self.spawn_load_services();
+            }
+            Screen::Automation => {
+                self.spawn_load_zeroclaw_overview();
             }
             _ => {}
         }
@@ -1864,374 +1918,6 @@ impl App {
                     let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e)));
                 }
             }
-        });
-    }
-
-    // ── OpenClaw ──────────────────────────────────────────────────────────
-
-    pub fn spawn_load_openclaw(&mut self) {
-        let platform = Arc::clone(&self.platform);
-        let tx = self.task_tx.clone();
-        self.docker.openclaw.loading = true;
-        tokio::spawn(async move {
-            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
-
-            // Find container in the list
-            let containers = platform.docker.list_containers().await.unwrap_or_default();
-            let container = containers
-                .into_iter()
-                .find(|c| c.name.trim_start_matches('/') == NAME);
-
-            let installed = container.is_some();
-            let is_running = container.as_ref().map(|c| {
-                let s = c.status.to_lowercase();
-                s.starts_with("up") || s.contains("running")
-            }).unwrap_or(false);
-
-            let (inspect, logs) = if installed {
-                let inspect = platform
-                    .docker
-                    .inspect_container(NAME)
-                    .await
-                    .unwrap_or(ContainerInspect {
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                        docker_health: String::new(),
-                    });
-                let logs = platform
-                    .docker
-                    .fetch_container_logs(NAME, 50)
-                    .await
-                    .unwrap_or_default();
-                (inspect, logs)
-            } else {
-                (
-                    ContainerInspect {
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                        docker_health: String::new(),
-                    },
-                    Vec::new(),
-                )
-            };
-
-            let health = if !installed {
-                OpenClawHealth::NotInstalled
-            } else if !is_running {
-                OpenClawHealth::ContainerStopped
-            } else {
-                match inspect.docker_health.as_str() {
-                    "healthy" => OpenClawHealth::HttpHealthOk,
-                    "unhealthy" => {
-                        OpenClawHealth::HttpHealthFail("Docker health check failed".to_string())
-                    }
-                    _ => OpenClawHealth::ContainerRunning,
-                }
-            };
-
-            let _ = tx.send(TaskResult::OpenClawStatus {
-                installed,
-                health,
-                container,
-                ports: inspect.ports,
-                volumes: inspect.volumes,
-                env_vars: inspect.env_vars,
-            });
-            let _ = tx.send(TaskResult::OpenClawLogs(logs));
-        });
-    }
-
-    pub fn spawn_openclaw_action(&mut self, action: &'static str) {
-        let platform = Arc::clone(&self.platform);
-        let tx = self.task_tx.clone();
-        self.docker.openclaw.loading = true;
-        tokio::spawn(async move {
-            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
-            let result = match action {
-                "start" => platform.docker.start_container(NAME).await,
-                "stop" => platform.docker.stop_container(NAME).await,
-                "restart" => platform.docker.restart_container(NAME).await,
-                _ => Ok(()),
-            };
-            match result {
-                Ok(()) => {
-                    let _ =
-                        tx.send(TaskResult::Status(format!("OpenClaw {} — done", action)));
-                }
-                Err(e) => {
-                    let _ = tx.send(TaskResult::Error(format!(
-                        "OpenClaw {} failed: {}",
-                        action, e
-                    )));
-                }
-            }
-            // Always reload after action
-            let containers = platform.docker.list_containers().await.unwrap_or_default();
-            let container = containers
-                .into_iter()
-                .find(|c| c.name.trim_start_matches('/') == NAME);
-            let installed = container.is_some();
-            let is_running = container.as_ref().map(|c| {
-                let s = c.status.to_lowercase();
-                s.starts_with("up") || s.contains("running")
-            }).unwrap_or(false);
-            let inspect = if installed {
-                platform
-                    .docker
-                    .inspect_container(NAME)
-                    .await
-                    .unwrap_or(ContainerInspect {
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                        docker_health: String::new(),
-                    })
-            } else {
-                ContainerInspect {
-                    ports: Vec::new(),
-                    volumes: Vec::new(),
-                    env_vars: Vec::new(),
-                    docker_health: String::new(),
-                }
-            };
-            let health = if !installed {
-                OpenClawHealth::NotInstalled
-            } else if !is_running {
-                OpenClawHealth::ContainerStopped
-            } else {
-                match inspect.docker_health.as_str() {
-                    "healthy" => OpenClawHealth::HttpHealthOk,
-                    "unhealthy" => OpenClawHealth::HttpHealthFail(
-                        "Docker health check failed".to_string(),
-                    ),
-                    _ => OpenClawHealth::ContainerRunning,
-                }
-            };
-            let _ = tx.send(TaskResult::OpenClawStatus {
-                installed,
-                health,
-                container,
-                ports: inspect.ports,
-                volumes: inspect.volumes,
-                env_vars: inspect.env_vars,
-            });
-        });
-    }
-
-    pub fn spawn_openclaw_install(&mut self) {
-        let platform = Arc::clone(&self.platform);
-        let tx = self.task_tx.clone();
-        self.docker.openclaw.loading = true;
-        tokio::spawn(async move {
-            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
-            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
-            const HOST_PORT: u16 = crate::core::docker::OPENCLAW_HOST_PORT;
-            const CONTAINER_PORT: u16 = crate::core::docker::OPENCLAW_CONTAINER_PORT;
-
-            // Pull first so `run --pull=never` works under Podman without a TTY
-            let _ = tx.send(TaskResult::Status("Pulling docker.io/alpine/openclaw:main…".to_string()));
-            if let Err(e) = platform.docker.pull_image(IMAGE).await {
-                let _ = tx.send(TaskResult::Error(format!("OpenClaw pull failed: {}", e)));
-                let _ = tx.send(TaskResult::OpenClawStatus {
-                    installed: false,
-                    health: OpenClawHealth::NotInstalled,
-                    container: None,
-                    ports: Vec::new(),
-                    volumes: Vec::new(),
-                    env_vars: Vec::new(),
-                });
-                return;
-            }
-
-            let host_port = HOST_PORT.to_string();
-            let container_port = CONTAINER_PORT.to_string();
-            let result = platform
-                .docker
-                .run_named_container(
-                    NAME,
-                    IMAGE,
-                    &[(&host_port, &container_port)],
-                    "unless-stopped",
-                )
-                .await;
-
-            match result {
-                Ok(()) => {
-                    let _ = tx.send(TaskResult::Status("OpenClaw installed and started".to_string()));
-                }
-                Err(e) => {
-                    let _ = tx.send(TaskResult::Error(format!("OpenClaw install failed: {}", e)));
-                    let _ = tx.send(TaskResult::OpenClawStatus {
-                        installed: false,
-                        health: OpenClawHealth::NotInstalled,
-                        container: None,
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                    });
-                    return;
-                }
-            }
-
-            // Reload after install
-            let containers = platform.docker.list_containers().await.unwrap_or_default();
-            let container = containers
-                .into_iter()
-                .find(|c| c.name.trim_start_matches('/') == NAME);
-            let inspect = if container.is_some() {
-                platform
-                    .docker
-                    .inspect_container(NAME)
-                    .await
-                    .unwrap_or(ContainerInspect {
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                        docker_health: String::new(),
-                    })
-            } else {
-                ContainerInspect {
-                    ports: Vec::new(),
-                    volumes: Vec::new(),
-                    env_vars: Vec::new(),
-                    docker_health: String::new(),
-                }
-            };
-            let installed = container.is_some();
-            let health = if installed {
-                OpenClawHealth::ContainerRunning
-            } else {
-                OpenClawHealth::NotInstalled
-            };
-            let _ = tx.send(TaskResult::OpenClawStatus {
-                installed,
-                health,
-                container,
-                ports: inspect.ports,
-                volumes: inspect.volumes,
-                env_vars: inspect.env_vars,
-            });
-        });
-    }
-
-    pub fn spawn_openclaw_uninstall(&mut self) {
-        let platform = Arc::clone(&self.platform);
-        let tx = self.task_tx.clone();
-        self.docker.openclaw.loading = true;
-        tokio::spawn(async move {
-            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
-            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
-
-            // Stop (ignore error if not running)
-            let _ = platform.docker.stop_container(NAME).await;
-            // Remove container
-            if let Err(e) = platform.docker.remove_container(NAME).await {
-                let _ = tx.send(TaskResult::Error(format!(
-                    "OpenClaw remove failed: {}",
-                    e
-                )));
-            }
-            // Remove image
-            let _ = platform.docker.remove_image(IMAGE).await;
-
-            let _ = tx.send(TaskResult::Status("OpenClaw uninstalled".to_string()));
-            let _ = tx.send(TaskResult::OpenClawStatus {
-                installed: false,
-                health: OpenClawHealth::NotInstalled,
-                container: None,
-                ports: Vec::new(),
-                volumes: Vec::new(),
-                env_vars: Vec::new(),
-            });
-            let _ = tx.send(TaskResult::OpenClawLogs(Vec::new()));
-        });
-    }
-
-    pub fn spawn_openclaw_update(&mut self) {
-        let platform = Arc::clone(&self.platform);
-        let tx = self.task_tx.clone();
-        self.docker.openclaw.loading = true;
-        tokio::spawn(async move {
-            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
-            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
-            const HOST_PORT: u16 = crate::core::docker::OPENCLAW_HOST_PORT;
-            const CONTAINER_PORT: u16 = crate::core::docker::OPENCLAW_CONTAINER_PORT;
-
-            let _ = tx.send(TaskResult::Status("Pulling latest openclaw image…".to_string()));
-
-            if let Err(e) = platform.docker.pull_image(IMAGE).await {
-                let _ = tx.send(TaskResult::Error(format!("Pull failed: {}", e)));
-                return;
-            }
-
-            // Stop + remove old container, then re-run with fresh image
-            let _ = platform.docker.stop_container(NAME).await;
-            let _ = platform.docker.remove_container(NAME).await;
-
-            let host_port = HOST_PORT.to_string();
-            let container_port = CONTAINER_PORT.to_string();
-            if let Err(e) = platform
-                .docker
-                .run_named_container(
-                    NAME,
-                    IMAGE,
-                    &[(&host_port, &container_port)],
-                    "unless-stopped",
-                )
-                .await
-            {
-                let _ = tx.send(TaskResult::Error(format!("OpenClaw restart failed: {}", e)));
-                return;
-            }
-
-            let _ = tx.send(TaskResult::Status("OpenClaw updated and restarted".to_string()));
-
-            // Reload state
-            let containers = platform.docker.list_containers().await.unwrap_or_default();
-            let container = containers
-                .into_iter()
-                .find(|c| c.name.trim_start_matches('/') == NAME);
-            let installed = container.is_some();
-            let inspect = if installed {
-                platform
-                    .docker
-                    .inspect_container(NAME)
-                    .await
-                    .unwrap_or(ContainerInspect {
-                        ports: Vec::new(),
-                        volumes: Vec::new(),
-                        env_vars: Vec::new(),
-                        docker_health: String::new(),
-                    })
-            } else {
-                ContainerInspect {
-                    ports: Vec::new(),
-                    volumes: Vec::new(),
-                    env_vars: Vec::new(),
-                    docker_health: String::new(),
-                }
-            };
-            let health = if installed {
-                OpenClawHealth::ContainerRunning
-            } else {
-                OpenClawHealth::NotInstalled
-            };
-            let _ = tx.send(TaskResult::OpenClawStatus {
-                installed,
-                health,
-                container,
-                ports: inspect.ports,
-                volumes: inspect.volumes,
-                env_vars: inspect.env_vars,
-            });
-            let logs = platform
-                .docker
-                .fetch_container_logs(NAME, 50)
-                .await
-                .unwrap_or_default();
-            let _ = tx.send(TaskResult::OpenClawLogs(logs));
         });
     }
 
@@ -2991,6 +2677,128 @@ impl App {
         });
     }
 
+    // ── Zeroclaw spawn methods ────────────────────────────────────────────
+
+    pub fn spawn_load_zeroclaw_overview(&mut self) {
+        let tx = self.task_tx.clone();
+        self.automation.loading = true;
+        tokio::spawn(async move {
+            let info = crate::core::zeroclaw::get_info().await;
+            let _ = tx.send(TaskResult::ZeroclawInfo(info));
+            let status = crate::core::zeroclaw::get_status().await;
+            let _ = tx.send(TaskResult::ZeroclawStatus(status));
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_channels(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let channels = crate::core::zeroclaw::list_channels().await;
+            let _ = tx.send(TaskResult::ZeroclawChannels(channels));
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_cron(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let jobs = crate::core::zeroclaw::list_cron().await;
+            let _ = tx.send(TaskResult::ZeroclawCron(jobs));
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_memory(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let entries = crate::core::zeroclaw::list_memory().await;
+            let _ = tx.send(TaskResult::ZeroclawMemory(entries));
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_config(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let config = crate::core::zeroclaw::get_config().await;
+            let _ = tx.send(TaskResult::ZeroclawConfig(config));
+        });
+    }
+
+    pub fn spawn_zeroclaw_action(&mut self, action: &'static str) {
+        let tx = self.task_tx.clone();
+        let pool = self.pool.clone();
+        tokio::spawn(async move {
+            let result: anyhow::Result<String> = match action {
+                "daemon_start" => crate::core::zeroclaw::daemon_start().await,
+                "daemon_stop" => crate::core::zeroclaw::daemon_stop().await,
+                "service_install" => crate::core::zeroclaw::service_install().await,
+                "service_start" => crate::core::zeroclaw::service_start().await,
+                "service_stop" => crate::core::zeroclaw::service_stop().await,
+                "update_check" => crate::core::zeroclaw::update_check().await,
+                "update_apply" => crate::core::zeroclaw::update_apply().await,
+                "doctor" => crate::core::zeroclaw::run_doctor().await,
+                _ => Ok("Unknown action".to_string()),
+            };
+            let (output, success) = match result {
+                Ok(o) => (o, true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = crate::db::audit::log_action(&pool, "zeroclaw", Some(action), &output, success)
+                .await;
+            let _ = tx.send(TaskResult::ZeroclawActionDone {
+                action: action.to_string(),
+                output,
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_zeroclaw_add_cron(&mut self, schedule: String, command: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::core::zeroclaw::add_cron(&schedule, &command).await;
+            let (output, success) = match result {
+                Ok(()) => ("Cron job added".to_string(), true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = tx.send(TaskResult::ZeroclawActionDone {
+                action: "add_cron".to_string(),
+                output,
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_zeroclaw_delete_cron(&mut self, id: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::core::zeroclaw::delete_cron(&id).await;
+            let (output, success) = match result {
+                Ok(()) => (format!("Cron job {} removed", id), true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = tx.send(TaskResult::ZeroclawActionDone {
+                action: "delete_cron".to_string(),
+                output,
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_zeroclaw_delete_memory(&mut self, key: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::core::zeroclaw::delete_memory(&key).await;
+            let (output, success) = match result {
+                Ok(()) => (format!("Memory entry '{}' deleted", key), true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = tx.send(TaskResult::ZeroclawActionDone {
+                action: "delete_memory".to_string(),
+                output,
+                success,
+            });
+        });
+    }
+
     pub fn drain_task_results(&mut self) {
         while let Ok(result) = self.task_rx.try_recv() {
             self.handle_result(result);
@@ -3262,25 +3070,6 @@ impl App {
                     self.docker.managed_state.select(Some(0));
                 }
             }
-            TaskResult::OpenClawStatus {
-                installed,
-                health,
-                container,
-                ports,
-                volumes,
-                env_vars,
-            } => {
-                self.docker.openclaw.installed = installed;
-                self.docker.openclaw.health = health;
-                self.docker.openclaw.container = container;
-                self.docker.openclaw.ports = ports;
-                self.docker.openclaw.volumes = volumes;
-                self.docker.openclaw.env_vars = env_vars;
-                self.docker.openclaw.loading = false;
-            }
-            TaskResult::OpenClawLogs(lines) => {
-                self.docker.openclaw.logs = lines;
-            }
             TaskResult::FirewallStatus { enabled, backend } => {
                 self.firewall.enabled = Some(enabled);
                 self.firewall.backend = backend;
@@ -3429,6 +3218,61 @@ impl App {
                     self.ghost.ghosts.len()
                 ));
             }
+            TaskResult::ZeroclawInfo(info) => {
+                self.automation.loading = false;
+                self.automation.info = info;
+            }
+            TaskResult::ZeroclawStatus(status) => {
+                self.automation.status = status;
+            }
+            TaskResult::ZeroclawChannels(channels) => {
+                self.automation.channels = channels;
+                if self.automation.channels_state.selected().is_none()
+                    && !self.automation.channels.is_empty()
+                {
+                    self.automation.channels_state.select(Some(0));
+                }
+            }
+            TaskResult::ZeroclawCron(jobs) => {
+                self.automation.cron = jobs;
+                if self.automation.cron_state.selected().is_none()
+                    && !self.automation.cron.is_empty()
+                {
+                    self.automation.cron_state.select(Some(0));
+                }
+            }
+            TaskResult::ZeroclawMemory(entries) => {
+                self.automation.memory = entries;
+                if self.automation.memory_state.selected().is_none()
+                    && !self.automation.memory.is_empty()
+                {
+                    self.automation.memory_state.select(Some(0));
+                }
+            }
+            TaskResult::ZeroclawConfig(text) => {
+                self.automation.config_text = text;
+                self.automation.config_scroll = 0;
+            }
+            TaskResult::ZeroclawActionDone {
+                action,
+                output,
+                success,
+            } => {
+                self.automation.action_output = Some(output.clone());
+                self.status_msg = Some(if success {
+                    format!("zeroclaw {} — done", action)
+                } else {
+                    format!("zeroclaw {} FAILED: {}", action, output.lines().next().unwrap_or(""))
+                });
+                // Refresh relevant tab after action
+                match action.as_str() {
+                    "add_cron" | "delete_cron" => self.spawn_load_zeroclaw_cron(),
+                    "delete_memory" => self.spawn_load_zeroclaw_memory(),
+                    "daemon_start" | "daemon_stop" | "service_start" | "service_stop"
+                    | "service_install" => self.spawn_load_zeroclaw_overview(),
+                    _ => {}
+                }
+            }
             TaskResult::Error(e) => {
                 self.portchecker.ip_loading = false;
                 self.portchecker.checking = false;
@@ -3512,6 +3356,14 @@ impl App {
                     self.wasm_cloud.nats_poll_counter.wrapping_add(1);
                 if self.wasm_cloud.nats_poll_counter % 20 == 0 {
                     self.spawn_poll_nats_status();
+                }
+            }
+            Screen::Automation => {
+                // Refresh zeroclaw status every 40 ticks (~10 s)
+                self.automation.poll_counter =
+                    self.automation.poll_counter.wrapping_add(1);
+                if self.automation.poll_counter % 40 == 0 {
+                    self.spawn_load_zeroclaw_overview();
                 }
             }
             _ => {}

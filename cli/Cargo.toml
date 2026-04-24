@@ -24,6 +24,9 @@ crossterm = "0.28"
 # System info
 sysinfo = "0.30"
 
+# Config parsing
+toml = "0.8"
+
 # Utilities
 unicode-width = "0.2"
 whoami = "1.5"

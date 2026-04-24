@@ -1,3 +1,4 @@
+pub mod automation;
 pub mod dashboard;
 pub mod docker;
 pub mod firewall;

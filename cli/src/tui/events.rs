@@ -4,7 +4,7 @@ use crate::core::models::{Route, TunnelRoute};
 
 use super::app::{
     App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, PackageTab, ProcessSort, Screen,
-    SecurityTab, TunnelPanel, ACTIONS, PROTOS,
+    SecurityTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -58,6 +58,12 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.screen == Screen::Services && app.services.filter_mode == InputMode::Editing {
         handle_services_key(app, key);
+        return false;
+    }
+    if app.screen == Screen::Automation
+        && app.automation.cron_form_mode == InputMode::Editing
+    {
+        handle_automation_cron_input(app, key);
         return false;
     }
     if app.screen == Screen::Security {
@@ -125,6 +131,10 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(10);
             return false;
         }
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            app.set_screen_by_index(11);
+            return false;
+        }
         KeyCode::Tab => {
             app.next_screen();
             return false;
@@ -151,6 +161,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::Users => handle_users_key(app, key),
         Screen::Services => handle_services_key(app, key),
         Screen::Maintenance => handle_maintenance_key(app, key),
+        Screen::Automation => handle_automation_key(app, key),
     }
     false
 }
@@ -267,6 +278,9 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
         }
         ConfirmAction::ServiceAction { name, op } => app.spawn_service_action(name, op),
         ConfirmAction::MaintenanceAction { op } => app.spawn_maintenance_action(op),
+        ConfirmAction::DeleteCronJob { id, .. } => app.spawn_zeroclaw_delete_cron(id),
+        ConfirmAction::DeleteMemoryEntry { key } => app.spawn_zeroclaw_delete_memory(key),
+        ConfirmAction::ZeroclawDaemonStop => app.spawn_zeroclaw_action("daemon_stop"),
     }
 }
 
@@ -1572,7 +1586,6 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
                 DockerTab::Compose => app.spawn_load_compose(),
                 DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
-                DockerTab::OpenClaw => app.spawn_load_openclaw(),
                 _ => {}
             }
             return;
@@ -1589,7 +1602,6 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
                 DockerTab::Compose => app.spawn_load_compose(),
                 DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
-                DockerTab::OpenClaw => app.spawn_load_openclaw(),
                 _ => {}
             }
             return;
@@ -1603,54 +1615,6 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
         DockerTab::Compose => handle_docker_compose_key(app, key),
         DockerTab::Workloads => handle_docker_workloads_key(app, key),
         DockerTab::Managed => handle_docker_managed_key(app, key),
-        DockerTab::OpenClaw => handle_docker_openclaw_key(app, key),
-    }
-}
-
-fn handle_docker_openclaw_key(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Down => {
-            let max = app.docker.openclaw.logs.len().saturating_sub(1);
-            if app.docker.openclaw.log_scroll < max {
-                app.docker.openclaw.log_scroll += 1;
-            }
-        }
-        KeyCode::Up => {
-            app.docker.openclaw.log_scroll =
-                app.docker.openclaw.log_scroll.saturating_sub(1);
-        }
-        KeyCode::Char('r') => app.spawn_load_openclaw(),
-        KeyCode::Char('i') => {
-            if !app.docker.openclaw.installed {
-                app.spawn_openclaw_install();
-            }
-        }
-        KeyCode::Char('U') => {
-            if app.docker.openclaw.installed {
-                app.spawn_openclaw_uninstall();
-            }
-        }
-        KeyCode::Char('s') => {
-            if app.docker.openclaw.installed {
-                app.spawn_openclaw_action("start");
-            }
-        }
-        KeyCode::Char('x') => {
-            if app.docker.openclaw.installed {
-                app.spawn_openclaw_action("stop");
-            }
-        }
-        KeyCode::Char('R') => {
-            if app.docker.openclaw.installed {
-                app.spawn_openclaw_action("restart");
-            }
-        }
-        KeyCode::Char('u') => {
-            if app.docker.openclaw.installed {
-                app.spawn_openclaw_update();
-            }
-        }
-        _ => {}
     }
 }
 
@@ -2477,6 +2441,212 @@ fn handle_wasm_cloud_inspector_input(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Esc => {
             app.wasm_cloud.input_mode = InputMode::Normal;
+        }
+        _ => {}
+    }
+}
+
+// ── Automation / Zeroclaw ─────────────────────────────────────────────────
+
+fn handle_automation_key(app: &mut App, key: KeyEvent) {
+    // Tab cycling
+    match key.code {
+        KeyCode::Right | KeyCode::Char('L') => {
+            let idx = (app.automation.active_tab.index() + 1) % ZeroclawTab::all().len();
+            let new_tab = ZeroclawTab::all()[idx].clone();
+            switch_zeroclaw_tab(app, new_tab);
+            return;
+        }
+        KeyCode::Left | KeyCode::Char('H') => {
+            let idx = app.automation.active_tab.index();
+            let prev = if idx == 0 { ZeroclawTab::all().len() - 1 } else { idx - 1 };
+            let new_tab = ZeroclawTab::all()[prev].clone();
+            switch_zeroclaw_tab(app, new_tab);
+            return;
+        }
+        _ => {}
+    }
+
+    match app.automation.active_tab.clone() {
+        ZeroclawTab::Overview => handle_zeroclaw_overview_key(app, key),
+        ZeroclawTab::Channels => handle_zeroclaw_channels_key(app, key),
+        ZeroclawTab::Cron => handle_zeroclaw_cron_key(app, key),
+        ZeroclawTab::Memory => handle_zeroclaw_memory_key(app, key),
+        ZeroclawTab::Config => handle_zeroclaw_config_key(app, key),
+    }
+}
+
+fn switch_zeroclaw_tab(app: &mut App, tab: ZeroclawTab) {
+    app.automation.active_tab = tab.clone();
+    match tab {
+        ZeroclawTab::Overview => app.spawn_load_zeroclaw_overview(),
+        ZeroclawTab::Channels => app.spawn_load_zeroclaw_channels(),
+        ZeroclawTab::Cron => app.spawn_load_zeroclaw_cron(),
+        ZeroclawTab::Memory => app.spawn_load_zeroclaw_memory(),
+        ZeroclawTab::Config => app.spawn_load_zeroclaw_config(),
+    }
+}
+
+fn handle_zeroclaw_overview_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('r') | KeyCode::Char('R') => {
+            app.spawn_load_zeroclaw_overview();
+        }
+        KeyCode::Char('s') => {
+            app.spawn_zeroclaw_action("daemon_start");
+        }
+        KeyCode::Char('S') => {
+            app.confirm = Some(crate::tui::app::ConfirmDialog {
+                message: "Stop zeroclaw daemon? [y/n]".to_string(),
+                action: crate::tui::app::ConfirmAction::ZeroclawDaemonStop,
+            });
+        }
+        KeyCode::Char('i') => {
+            app.spawn_zeroclaw_action("service_install");
+        }
+        KeyCode::Char('u') => {
+            app.spawn_zeroclaw_action("update_check");
+        }
+        KeyCode::Char('U') => {
+            app.spawn_zeroclaw_action("update_apply");
+        }
+        KeyCode::Char('d') => {
+            app.spawn_zeroclaw_action("doctor");
+        }
+        _ => {}
+    }
+}
+
+fn handle_zeroclaw_channels_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.channels.len();
+    if len == 0 {
+        return;
+    }
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            let i = app.automation.channels_state.selected().unwrap_or(0);
+            app.automation.channels_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            let i = app.automation.channels_state.selected().unwrap_or(0);
+            app.automation.channels_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_channels();
+        }
+        _ => {}
+    }
+}
+
+fn handle_zeroclaw_cron_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.cron.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.automation.cron_state.selected().unwrap_or(0);
+            app.automation.cron_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.automation.cron_state.selected().unwrap_or(0);
+            app.automation.cron_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('a') => {
+            app.automation.cron_form_mode = InputMode::Editing;
+            app.automation.cron_form_schedule = String::new();
+            app.automation.cron_form_command = String::new();
+            app.automation.cron_form_focus = 0;
+        }
+        KeyCode::Char('d') => {
+            if let Some(idx) = app.automation.cron_state.selected() {
+                if let Some(job) = app.automation.cron.get(idx) {
+                    let id = job.id.clone();
+                    let schedule = job.schedule.clone();
+                    app.confirm = Some(crate::tui::app::ConfirmDialog {
+                        message: format!("Delete cron '{}' ({})? [y/n]", id, schedule),
+                        action: crate::tui::app::ConfirmAction::DeleteCronJob { id, schedule },
+                    });
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_cron();
+        }
+        _ => {}
+    }
+}
+
+fn handle_zeroclaw_memory_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.memory.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.automation.memory_state.selected().unwrap_or(0);
+            app.automation.memory_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.automation.memory_state.selected().unwrap_or(0);
+            app.automation.memory_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('d') => {
+            if let Some(idx) = app.automation.memory_state.selected() {
+                if let Some(entry) = app.automation.memory.get(idx) {
+                    let key_str = entry.key.clone();
+                    app.confirm = Some(crate::tui::app::ConfirmDialog {
+                        message: format!("Delete memory '{}'? [y/n]", key_str),
+                        action: crate::tui::app::ConfirmAction::DeleteMemoryEntry { key: key_str },
+                    });
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_memory();
+        }
+        _ => {}
+    }
+}
+
+fn handle_zeroclaw_config_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.automation.config_scroll = app.automation.config_scroll.saturating_add(1);
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.automation.config_scroll = app.automation.config_scroll.saturating_sub(1);
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_config();
+        }
+        _ => {}
+    }
+}
+
+fn handle_automation_cron_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Tab => {
+            app.automation.cron_form_focus = (app.automation.cron_form_focus + 1) % 2;
+        }
+        KeyCode::Enter => {
+            let schedule = app.automation.cron_form_schedule.trim().to_string();
+            let command = app.automation.cron_form_command.trim().to_string();
+            if !schedule.is_empty() && !command.is_empty() {
+                app.automation.cron_form_mode = InputMode::Normal;
+                app.spawn_zeroclaw_add_cron(schedule, command);
+            }
+        }
+        KeyCode::Esc => {
+            app.automation.cron_form_mode = InputMode::Normal;
+        }
+        KeyCode::Backspace => {
+            if app.automation.cron_form_focus == 0 {
+                app.automation.cron_form_schedule.pop();
+            } else {
+                app.automation.cron_form_command.pop();
+            }
+        }
+        KeyCode::Char(c) => {
+            if app.automation.cron_form_focus == 0 {
+                app.automation.cron_form_schedule.push(c);
+            } else {
+                app.automation.cron_form_command.push(c);
+            }
         }
         _ => {}
     }

@@ -1,4 +1,5 @@
 pub mod deploy;
+pub mod zeroclaw;
 pub mod docker;
 pub mod firewall;
 pub mod gateway;
