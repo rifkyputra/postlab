@@ -55,13 +55,61 @@ fn config_path() -> PathBuf {
     PathBuf::from(home).join(".zeroclaw").join("config.toml")
 }
 
-fn zeroclaw_bin() -> &'static str {
-    "zeroclaw"
+/// Resolve the full path to the zeroclaw binary by searching PATH and common
+/// installation locations (cargo, homebrew, local).  Returns None if not found.
+async fn find_zeroclaw() -> Option<String> {
+    // First: honour the user-set env variable
+    if let Ok(p) = std::env::var("ZEROCLAW_BIN") {
+        if tokio::fs::metadata(&p).await.is_ok() {
+            return Some(p);
+        }
+    }
+
+    // Second: try common hardcoded locations before falling back to PATH
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.cargo/bin/zeroclaw"),
+        format!("{home}/.local/bin/zeroclaw"),
+        "/usr/local/bin/zeroclaw".to_string(),
+        "/opt/homebrew/bin/zeroclaw".to_string(),
+        "/usr/bin/zeroclaw".to_string(),
+    ];
+    for path in &candidates {
+        if tokio::fs::metadata(path).await.is_ok() {
+            return Some(path.clone());
+        }
+    }
+
+    // Last: ask the shell (handles aliases / shims / nix / asdf etc.)
+    if let Ok(out) = Command::new("sh")
+        .args(["-c", "which zeroclaw 2>/dev/null || command -v zeroclaw 2>/dev/null"])
+        .output()
+        .await
+    {
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !path.is_empty() && out.status.success() {
+            return Some(path);
+        }
+    }
+
+    None
 }
 
 async fn run(args: &[&str]) -> Result<String> {
-    let out = Command::new(zeroclaw_bin())
+    let bin = find_zeroclaw()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("zeroclaw not found — install it first"))?;
+
+    // Ensure PATH includes cargo bin in case zeroclaw itself spawns subprocesses
+    let home = std::env::var("HOME").unwrap_or_default();
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{home}/.cargo/bin:{home}/.local/bin:/usr/local/bin:/opt/homebrew/bin:{current_path}"
+    );
+
+    let out = Command::new(&bin)
         .args(args)
+        .env("PATH", extended_path)
         .output()
         .await?;
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
@@ -77,23 +125,23 @@ async fn run(args: &[&str]) -> Result<String> {
 // ── Public API ────────────────────────────────────────────────────────────
 
 pub async fn get_info() -> ZeroclawInfo {
-    // Check binary presence
-    let installed = Command::new("which")
-        .arg(zeroclaw_bin())
-        .output()
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let bin = find_zeroclaw().await;
+    let installed = bin.is_some();
 
-    let version = if installed {
-        Command::new(zeroclaw_bin())
+    let version = if let Some(ref path) = bin {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let extended_path = format!(
+            "{home}/.cargo/bin:{home}/.local/bin:/usr/local/bin:/opt/homebrew/bin:{current_path}"
+        );
+        Command::new(path)
             .arg("--version")
+            .env("PATH", extended_path)
             .output()
             .await
             .ok()
             .and_then(|o| {
-                let s = String::from_utf8_lossy(&o.stdout).to_string();
-                let s = s.trim().to_string();
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
                 if s.is_empty() { None } else { Some(s) }
             })
     } else {
@@ -104,7 +152,11 @@ pub async fn get_info() -> ZeroclawInfo {
 }
 
 pub async fn get_status() -> ZeroclawStatus {
-    let out = match Command::new(zeroclaw_bin())
+    let bin = match find_zeroclaw().await {
+        Some(b) => b,
+        None => return ZeroclawStatus::default(),
+    };
+    let out = match Command::new(&bin)
         .args(["status"])
         .output()
         .await
@@ -270,7 +322,11 @@ pub async fn list_channels() -> Vec<ZeroclawChannel> {
 }
 
 pub async fn list_cron() -> Vec<CronJob> {
-    let out = match Command::new(zeroclaw_bin())
+    let bin = match find_zeroclaw().await {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    let out = match Command::new(&bin)
         .args(["cron", "list"])
         .output()
         .await
@@ -318,7 +374,11 @@ pub async fn delete_cron(id: &str) -> Result<()> {
 }
 
 pub async fn list_memory() -> Vec<MemoryEntry> {
-    let out = match Command::new(zeroclaw_bin())
+    let bin = match find_zeroclaw().await {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    let out = match Command::new(&bin)
         .args(["memory", "list"])
         .output()
         .await
