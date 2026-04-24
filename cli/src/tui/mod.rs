@@ -138,8 +138,9 @@ fn render_nav(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
         .iter()
         .map(|s| s.title())
         .collect();
+    let version = concat!(" postlab v", env!("CARGO_PKG_VERSION"), "-", env!("GIT_HASH"), " ");
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title(" postlab "))
+        .block(Block::default().borders(Borders::ALL).title(version))
         .select(app.screen.index())
         .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);
