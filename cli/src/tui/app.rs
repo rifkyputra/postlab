@@ -207,6 +207,7 @@ pub struct ConfirmDialog {
 pub enum InputMode {
     Normal,
     Editing,
+    SettingPassword,
     AddingDomain,
     EditingIngress, // editing an existing ingress entry (hostname + service)
 }
@@ -784,10 +785,16 @@ pub struct UsersState {
     pub table_state: TableState,
     pub loading: bool,
     pub input_mode: InputMode,
-    /// 0 = username, 1 = shell
+    /// 0 = username, 1 = shell  (add-user form)
     pub input_focus: usize,
     pub input_username: String,
     pub input_shell: String,
+    /// password popup fields: 0 = password, 1 = confirm
+    pub pw_focus: usize,
+    pub pw_password: String,
+    pub pw_confirm: String,
+    /// username targeted by the password popup
+    pub pw_target: String,
 }
 
 impl Default for UsersState {
@@ -800,6 +807,10 @@ impl Default for UsersState {
             input_focus: 0,
             input_username: String::new(),
             input_shell: String::new(),
+            pw_focus: 0,
+            pw_password: String::new(),
+            pw_confirm: String::new(),
+            pw_target: String::new(),
         }
     }
 }
@@ -1736,6 +1747,28 @@ impl App {
                     }
                 }
                 Err(e) => { let _ = tx.send(TaskResult::Error(format!("create user failed: {}", e))); }
+            }
+        });
+    }
+
+    pub fn spawn_set_password(&mut self, username: String, password: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.users.set_password(&username, &password).await {
+                Ok(()) => { let _ = tx.send(TaskResult::Status(format!("Password set for '{}'", username))); }
+                Err(e) => { let _ = tx.send(TaskResult::Error(format!("set password failed: {}", e))); }
+            }
+        });
+    }
+
+    pub fn spawn_add_to_sudoers(&mut self, username: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.users.add_to_sudoers(&username).await {
+                Ok(()) => { let _ = tx.send(TaskResult::Status(format!("'{}' added to sudoers", username))); }
+                Err(e) => { let _ = tx.send(TaskResult::Error(format!("add to sudoers failed: {}", e))); }
             }
         });
     }

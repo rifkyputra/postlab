@@ -32,7 +32,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_tunnel_input(app, key);
         return false;
     }
-    if app.screen == Screen::Users && app.users.input_mode == InputMode::Editing {
+    if app.screen == Screen::Users && matches!(app.users.input_mode, InputMode::Editing | InputMode::SettingPassword) {
         handle_users_input(app, key);
         return false;
     }
@@ -1704,6 +1704,25 @@ fn handle_users_key(app: &mut App, key: KeyEvent) {
             app.users.input_username.clear();
             app.users.input_shell.clear();
         }
+        KeyCode::Char('p') => {
+            if let Some(idx) = app.users.table_state.selected() {
+                if let Some(u) = app.users.users.get(idx) {
+                    app.users.pw_target = u.username.clone();
+                    app.users.pw_password.clear();
+                    app.users.pw_confirm.clear();
+                    app.users.pw_focus = 0;
+                    app.users.input_mode = InputMode::SettingPassword;
+                }
+            }
+        }
+        KeyCode::Char('s') => {
+            if let Some(idx) = app.users.table_state.selected() {
+                if let Some(u) = app.users.users.get(idx) {
+                    let username = u.username.clone();
+                    app.spawn_add_to_sudoers(username);
+                }
+            }
+        }
         KeyCode::Char('d') => {
             if let Some(idx) = app.users.table_state.selected() {
                 if let Some(u) = app.users.users.get(idx) {
@@ -1717,6 +1736,14 @@ fn handle_users_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_users_input(app: &mut App, key: KeyEvent) {
+    if app.users.input_mode == InputMode::SettingPassword {
+        handle_users_pw_input(app, key);
+    } else {
+        handle_users_add_input(app, key);
+    }
+}
+
+fn handle_users_add_input(app: &mut App, key: KeyEvent) {
     const NUM_FIELDS: usize = 2; // username, shell
 
     match key.code {
@@ -1752,6 +1779,55 @@ fn handle_users_input(app: &mut App, key: KeyEvent) {
             match app.users.input_focus {
                 0 => app.users.input_username.push(c),
                 1 => app.users.input_shell.push(c),
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_users_pw_input(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 2; // password, confirm
+
+    match key.code {
+        KeyCode::Esc => {
+            app.users.input_mode = InputMode::Normal;
+        }
+        KeyCode::Tab => {
+            app.users.pw_focus = (app.users.pw_focus + 1) % NUM_FIELDS;
+        }
+        KeyCode::Enter => {
+            if app.users.pw_focus == NUM_FIELDS - 1 {
+                let pw = app.users.pw_password.clone();
+                let confirm = app.users.pw_confirm.clone();
+                if pw.is_empty() {
+                    app.status_msg = Some("Password cannot be empty".to_string());
+                } else if pw != confirm {
+                    app.status_msg = Some("Passwords do not match".to_string());
+                    app.users.pw_password.clear();
+                    app.users.pw_confirm.clear();
+                    app.users.pw_focus = 0;
+                    return;
+                } else {
+                    let username = app.users.pw_target.clone();
+                    app.spawn_set_password(username, pw);
+                }
+                app.users.input_mode = InputMode::Normal;
+            } else {
+                app.users.pw_focus = (app.users.pw_focus + 1) % NUM_FIELDS;
+            }
+        }
+        KeyCode::Backspace => {
+            match app.users.pw_focus {
+                0 => { app.users.pw_password.pop(); }
+                1 => { app.users.pw_confirm.pop(); }
+                _ => {}
+            }
+        }
+        KeyCode::Char(c) => {
+            match app.users.pw_focus {
+                0 => app.users.pw_password.push(c),
+                1 => app.users.pw_confirm.push(c),
                 _ => {}
             }
         }

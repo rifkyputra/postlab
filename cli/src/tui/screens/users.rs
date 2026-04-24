@@ -7,6 +7,10 @@ use ratatui::{
 };
 use crate::tui::app::{App, InputMode};
 
+fn masked(s: &str) -> String {
+    "*".repeat(s.len())
+}
+
 pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -16,8 +20,10 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     render_table(f, app, chunks[0]);
     render_hints(f, app, chunks[1]);
 
-    if app.users.input_mode == InputMode::Editing {
-        render_add_popup(f, app, area);
+    match app.users.input_mode {
+        InputMode::Editing => render_add_popup(f, app, area),
+        InputMode::SettingPassword => render_pw_popup(f, app, area),
+        _ => {}
     }
 
     if app.users.loading {
@@ -75,7 +81,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn render_hints(f: &mut Frame, _app: &App, area: Rect) {
     let p = Paragraph::new(Span::styled(
-        " [a] add user  [d] delete  [r] refresh ",
+        " [a] add  [p] set password  [s] sudoers  [d] delete  [r] refresh ",
         Style::default().fg(Color::DarkGray),
     ));
     f.render_widget(p, area);
@@ -126,6 +132,63 @@ fn render_add_popup(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(shell_text)
             .style(focused(1))
             .block(Block::default().title(" Shell (blank=/bin/bash) ").borders(Borders::ALL)),
+        chunks[1],
+    );
+
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            " [Tab] next field  [Enter] confirm  [Esc] cancel ",
+            Style::default().fg(Color::DarkGray),
+        )),
+        chunks[2],
+    );
+}
+
+fn render_pw_popup(f: &mut Frame, app: &App, area: Rect) {
+    let popup_area = centered_rect(50, 9, area);
+    f.render_widget(Clear, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // password
+            Constraint::Length(3), // confirm
+            Constraint::Length(1), // hints
+        ])
+        .split(popup_area);
+
+    let cursor = "█";
+    let focused = |field: usize| {
+        if app.users.pw_focus == field {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        }
+    };
+
+    let title = format!(" Set Password — {} ", app.users.pw_target);
+
+    let pw_text = if app.users.pw_focus == 0 {
+        format!("{}{}", masked(&app.users.pw_password), cursor)
+    } else {
+        masked(&app.users.pw_password)
+    };
+    f.render_widget(
+        Paragraph::new(pw_text)
+            .style(focused(0))
+            .block(Block::default().title(title).borders(Borders::ALL)),
+        chunks[0],
+    );
+
+    let confirm_text = if app.users.pw_focus == 1 {
+        format!("{}{}", masked(&app.users.pw_confirm), cursor)
+    } else {
+        masked(&app.users.pw_confirm)
+    };
+    f.render_widget(
+        Paragraph::new(confirm_text)
+            .style(focused(1))
+            .block(Block::default().title(" Confirm Password ").borders(Borders::ALL)),
         chunks[1],
     );
 

@@ -9,6 +9,8 @@ pub trait UserManager: Send + Sync {
     async fn list_users(&self) -> Result<Vec<UserInfo>>;
     async fn create_user(&self, username: &str, shell: Option<&str>) -> Result<()>;
     async fn delete_user(&self, username: &str) -> Result<()>;
+    async fn set_password(&self, username: &str, password: &str) -> Result<()>;
+    async fn add_to_sudoers(&self, username: &str) -> Result<()>;
 }
 
 pub struct UnixUserManager;
@@ -89,13 +91,59 @@ impl UserManager for UnixUserManager {
 
     async fn delete_user(&self, username: &str) -> Result<()> {
         let status = Command::new("userdel")
-            .arg("-r") // Remove home directory
+            .arg("-r")
             .arg(username)
             .status()
             .await?;
 
         if !status.success() {
             anyhow::bail!("Failed to delete user: {}", username);
+        }
+        Ok(())
+    }
+
+    async fn set_password(&self, username: &str, password: &str) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        // `chpasswd` reads "username:password" from stdin — works on Linux and macOS.
+        let mut child = Command::new("chpasswd")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(format!("{}:{}", username, password).as_bytes()).await?;
+        }
+
+        let out = child.wait_with_output().await?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "chpasswd failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        Ok(())
+    }
+
+    async fn add_to_sudoers(&self, username: &str) -> Result<()> {
+        // Detect the right group: `sudo` on Debian/Ubuntu, `wheel` on RHEL/Arch/macOS.
+        let group = if tokio::fs::metadata("/etc/debian_version").await.is_ok() {
+            "sudo"
+        } else {
+            "wheel"
+        };
+
+        let out = Command::new("usermod")
+            .args(["-aG", group, username])
+            .output()
+            .await?;
+
+        if !out.status.success() {
+            anyhow::bail!(
+                "usermod failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
         }
         Ok(())
     }
