@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::core::models::{ManagedWorkloadBackend, ManagedWorkloadState};
-use crate::tui::app::{App, DockerTab, InputMode};
+use crate::tui::app::{App, DockerTab, InputMode, OpenClawHealth};
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
@@ -29,6 +29,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         DockerTab::Compose => render_compose(f, app, chunks[2]),
         DockerTab::Workloads => render_workloads(f, app, chunks[2]),
         DockerTab::Managed => render_managed(f, app, chunks[2]),
+        DockerTab::OpenClaw => render_openclaw(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
@@ -488,6 +489,9 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         DockerTab::Managed => {
             " [←/→] tabs  [↑/↓] select  [s] start  [x] stop  [R] restart  [r] refresh "
         }
+        DockerTab::OpenClaw => {
+            return render_openclaw_hints(f, app, area);
+        }
     };
     let p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
@@ -583,6 +587,213 @@ fn render_managed(f: &mut Frame, app: &App, area: Rect) {
 
     let mut state = app.docker.managed_state.clone();
     f.render_stateful_widget(table, area, &mut state);
+}
+
+// ── OpenClaw tab ─────────────────────────────────────────────────────────
+
+fn render_openclaw(f: &mut Frame, app: &App, area: Rect) {
+    if !app.docker.installed {
+        let p = Paragraph::new(Span::styled(
+            "Docker is not installed or not running.",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .block(Block::default().title(" OpenClaw ").borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let oc = &app.docker.openclaw;
+
+    if !oc.installed {
+        let loading = if oc.loading { "  Checking…" } else { "" };
+        let text = Line::from(vec![
+            Span::styled("○ ", Style::default().fg(Color::DarkGray)),
+            Span::raw("OpenClaw is not installed.  Press "),
+            Span::styled("[i]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" to install from "),
+            Span::styled(
+                crate::core::docker::OPENCLAW_IMAGE,
+                Style::default().fg(Color::Yellow),
+            ),
+            Span::styled(loading, Style::default().fg(Color::Yellow)),
+        ]);
+        let p = Paragraph::new(text)
+            .block(Block::default().title(" OpenClaw ").borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    // Split content into 4 panels
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4), // status + ports + volumes
+            Constraint::Length(3), // health
+            Constraint::Length(4), // env vars
+            Constraint::Min(6),    // logs
+        ])
+        .split(area);
+
+    render_openclaw_status(f, app, chunks[0]);
+    render_openclaw_health(f, app, chunks[1]);
+    render_openclaw_env(f, app, chunks[2]);
+    render_openclaw_logs(f, app, chunks[3]);
+}
+
+fn render_openclaw_status(f: &mut Frame, app: &App, area: Rect) {
+    let oc = &app.docker.openclaw;
+    let (dot_color, dot, state_text) = match &oc.health {
+        OpenClawHealth::ContainerRunning | OpenClawHealth::HttpHealthOk => {
+            (Color::Green, "●", "Running")
+        }
+        OpenClawHealth::HttpHealthFail(_) => (Color::Yellow, "●", "Running (unhealthy)"),
+        OpenClawHealth::ContainerStopped => (Color::Red, "○", "Stopped"),
+        _ => (Color::DarkGray, "○", "Unknown"),
+    };
+    let loading_span = if oc.loading {
+        Span::styled("  Updating…", Style::default().fg(Color::Yellow))
+    } else {
+        Span::raw("")
+    };
+
+    let ports_str = if oc.ports.is_empty() {
+        "—".to_string()
+    } else {
+        oc.ports.join("  ")
+    };
+    let vols_str = if oc.volumes.is_empty() {
+        "—".to_string()
+    } else {
+        oc.volumes.join("  ")
+    };
+
+    let image = oc
+        .container
+        .as_ref()
+        .map(|c| c.image.as_str())
+        .unwrap_or(crate::core::docker::OPENCLAW_IMAGE);
+
+    let text = vec![
+        Line::from(vec![
+            Span::styled(dot, Style::default().fg(dot_color)),
+            Span::raw(format!(" {}  ", state_text)),
+            Span::styled(image, Style::default().fg(Color::Cyan)),
+            loading_span,
+        ]),
+        Line::from(vec![
+            Span::styled("Ports:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(ports_str, Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("Volumes: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(vols_str, Style::default().fg(Color::White)),
+        ]),
+    ];
+
+    let p = Paragraph::new(text)
+        .block(Block::default().title(" Container ").borders(Borders::ALL));
+    f.render_widget(p, area);
+}
+
+fn render_openclaw_health(f: &mut Frame, app: &App, area: Rect) {
+    let oc = &app.docker.openclaw;
+    let (color, dot, msg) = match &oc.health {
+        OpenClawHealth::HttpHealthOk => (Color::Green, "●", "Healthy".to_string()),
+        OpenClawHealth::HttpHealthFail(reason) => {
+            (Color::Red, "●", format!("Unhealthy — {}", reason))
+        }
+        OpenClawHealth::ContainerRunning => {
+            (Color::Yellow, "◌", "Running (no health check)".to_string())
+        }
+        OpenClawHealth::ContainerStopped => (Color::Red, "○", "Container stopped".to_string()),
+        OpenClawHealth::NotInstalled => (Color::DarkGray, "○", "Not installed".to_string()),
+        OpenClawHealth::Unknown => (Color::DarkGray, "◌", "Checking…".to_string()),
+    };
+
+    let text = Line::from(vec![
+        Span::styled(dot, Style::default().fg(color)),
+        Span::raw("  "),
+        Span::styled(msg, Style::default().fg(color)),
+    ]);
+
+    let p = Paragraph::new(text)
+        .block(Block::default().title(" Health ").borders(Borders::ALL));
+    f.render_widget(p, area);
+}
+
+fn render_openclaw_env(f: &mut Frame, app: &App, area: Rect) {
+    let oc = &app.docker.openclaw;
+    let env_text = if oc.env_vars.is_empty() {
+        Line::from(Span::styled("(none)", Style::default().fg(Color::DarkGray)))
+    } else {
+        let spans: Vec<Span> = oc
+            .env_vars
+            .iter()
+            .take(8) // truncate to avoid wrapping chaos
+            .flat_map(|(k, v)| {
+                vec![
+                    Span::styled(k.as_str(), Style::default().fg(Color::Cyan)),
+                    Span::raw("="),
+                    Span::styled(v.as_str(), Style::default().fg(Color::White)),
+                    Span::raw("  "),
+                ]
+            })
+            .collect();
+        Line::from(spans)
+    };
+    let p = Paragraph::new(env_text)
+        .block(Block::default().title(" Environment ").borders(Borders::ALL));
+    f.render_widget(p, area);
+}
+
+fn render_openclaw_logs(f: &mut Frame, app: &App, area: Rect) {
+    let oc = &app.docker.openclaw;
+    let lines: Vec<Line> = if oc.logs.is_empty() {
+        vec![Line::from(Span::styled(
+            "(no logs)",
+            Style::default().fg(Color::DarkGray),
+        ))]
+    } else {
+        oc.logs
+            .iter()
+            .map(|l| {
+                let color = if l.contains("ERR") || l.contains("error") || l.contains("FATAL") {
+                    Color::Red
+                } else if l.contains("WARN") || l.contains("warn") {
+                    Color::Yellow
+                } else {
+                    Color::White
+                };
+                Line::from(Span::styled(l.as_str(), Style::default().fg(color)))
+            })
+            .collect()
+    };
+
+    let max_scroll = (lines.len() as u16).saturating_sub(area.height.saturating_sub(2));
+    let scroll = (oc.log_scroll as u16).min(max_scroll);
+
+    let p = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(format!(
+                    " Logs (last {} lines) ",
+                    oc.logs.len()
+                ))
+                .borders(Borders::ALL),
+        )
+        .scroll((scroll, 0));
+    f.render_widget(p, area);
+}
+
+fn render_openclaw_hints(f: &mut Frame, app: &App, area: Rect) {
+    let oc = &app.docker.openclaw;
+    let hint = if !oc.installed {
+        " [←/→] tabs  [i] install  [r] refresh "
+    } else {
+        " [←/→] tabs  [U] uninstall  [s] start  [x] stop  [R] restart  [u] update  [r] refresh  [↑/↓] scroll logs "
+    };
+    let p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
+    f.render_widget(p, area);
 }
 
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {

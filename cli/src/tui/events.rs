@@ -1572,6 +1572,7 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
                 DockerTab::Compose => app.spawn_load_compose(),
                 DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
+                DockerTab::OpenClaw => app.spawn_load_openclaw(),
                 _ => {}
             }
             return;
@@ -1588,6 +1589,7 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
                 DockerTab::Compose => app.spawn_load_compose(),
                 DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
+                DockerTab::OpenClaw => app.spawn_load_openclaw(),
                 _ => {}
             }
             return;
@@ -1601,6 +1603,54 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
         DockerTab::Compose => handle_docker_compose_key(app, key),
         DockerTab::Workloads => handle_docker_workloads_key(app, key),
         DockerTab::Managed => handle_docker_managed_key(app, key),
+        DockerTab::OpenClaw => handle_docker_openclaw_key(app, key),
+    }
+}
+
+fn handle_docker_openclaw_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down => {
+            let max = app.docker.openclaw.logs.len().saturating_sub(1);
+            if app.docker.openclaw.log_scroll < max {
+                app.docker.openclaw.log_scroll += 1;
+            }
+        }
+        KeyCode::Up => {
+            app.docker.openclaw.log_scroll =
+                app.docker.openclaw.log_scroll.saturating_sub(1);
+        }
+        KeyCode::Char('r') => app.spawn_load_openclaw(),
+        KeyCode::Char('i') => {
+            if !app.docker.openclaw.installed {
+                app.spawn_openclaw_install();
+            }
+        }
+        KeyCode::Char('U') => {
+            if app.docker.openclaw.installed {
+                app.spawn_openclaw_uninstall();
+            }
+        }
+        KeyCode::Char('s') => {
+            if app.docker.openclaw.installed {
+                app.spawn_openclaw_action("start");
+            }
+        }
+        KeyCode::Char('x') => {
+            if app.docker.openclaw.installed {
+                app.spawn_openclaw_action("stop");
+            }
+        }
+        KeyCode::Char('R') => {
+            if app.docker.openclaw.installed {
+                app.spawn_openclaw_action("restart");
+            }
+        }
+        KeyCode::Char('u') => {
+            if app.docker.openclaw.installed {
+                app.spawn_openclaw_update();
+            }
+        }
+        _ => {}
     }
 }
 

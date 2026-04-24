@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
+    docker::ContainerInspect,
     models::{
         DiskInfo, DockerComposeService, DockerContainer, DockerImage, FirewallRule, GhostProcess,
         JailedIp, ManagedDockerService, ManagedWorkload, ManagedWorkloadCapabilities,
@@ -82,6 +83,7 @@ pub enum DockerTab {
     Compose,
     Workloads,
     Managed,
+    OpenClaw,
 }
 
 impl DockerTab {
@@ -92,6 +94,7 @@ impl DockerTab {
             DockerTab::Compose,
             DockerTab::Workloads,
             DockerTab::Managed,
+            DockerTab::OpenClaw,
         ]
     }
     pub fn title(&self) -> &'static str {
@@ -101,6 +104,7 @@ impl DockerTab {
             DockerTab::Compose => "Compose",
             DockerTab::Workloads => "Workloads",
             DockerTab::Managed => "Managed",
+            DockerTab::OpenClaw => "OpenClaw",
         }
     }
     pub fn index(&self) -> usize {
@@ -206,6 +210,15 @@ pub enum TaskResult {
     DockerImageList(Vec<DockerImage>),
     DockerComposeList(Vec<DockerComposeService>),
     ManagedServiceList(Vec<ManagedDockerService>),
+    OpenClawStatus {
+        installed: bool,
+        health: OpenClawHealth,
+        container: Option<DockerContainer>,
+        ports: Vec<String>,
+        volumes: Vec<String>,
+        env_vars: Vec<(String, String)>,
+    },
+    OpenClawLogs(Vec<String>),
     WorkloadCapabilities(ManagedWorkloadCapabilities),
     WorkloadList(Vec<ManagedWorkload>),
     FirewallStatus {
@@ -739,6 +752,46 @@ impl Default for TunnelState {
 
 // ── Docker state ─────────────────────────────────────────────────────────
 
+// ── OpenClaw state ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenClawHealth {
+    Unknown,
+    NotInstalled,
+    ContainerStopped,
+    ContainerRunning,
+    HttpHealthOk,
+    HttpHealthFail(String),
+}
+
+pub struct OpenClawState {
+    pub installed: bool,
+    pub health: OpenClawHealth,
+    pub container: Option<DockerContainer>,
+    pub ports: Vec<String>,
+    pub volumes: Vec<String>,
+    pub env_vars: Vec<(String, String)>,
+    pub logs: Vec<String>,
+    pub log_scroll: usize,
+    pub loading: bool,
+}
+
+impl Default for OpenClawState {
+    fn default() -> Self {
+        Self {
+            installed: false,
+            health: OpenClawHealth::Unknown,
+            container: None,
+            ports: Vec::new(),
+            volumes: Vec::new(),
+            env_vars: Vec::new(),
+            logs: Vec::new(),
+            log_scroll: 0,
+            loading: false,
+        }
+    }
+}
+
 pub struct DockerState {
     pub installed: bool,
     pub version: Option<String>,
@@ -758,6 +811,8 @@ pub struct DockerState {
     // Managed dev services tab
     pub managed_services: Vec<ManagedDockerService>,
     pub managed_state: TableState,
+    // OpenClaw tab
+    pub openclaw: OpenClawState,
     pub loading: bool,
 }
 
@@ -777,6 +832,7 @@ impl Default for DockerState {
             workloads: DockerWorkloadsState::default(),
             managed_services: Vec::new(),
             managed_state: TableState::default(),
+            openclaw: OpenClawState::default(),
             loading: false,
         }
     }
@@ -1811,6 +1867,359 @@ impl App {
         });
     }
 
+    // ── OpenClaw ──────────────────────────────────────────────────────────
+
+    pub fn spawn_load_openclaw(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.docker.openclaw.loading = true;
+        tokio::spawn(async move {
+            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
+
+            // Find container in the list
+            let containers = platform.docker.list_containers().await.unwrap_or_default();
+            let container = containers
+                .into_iter()
+                .find(|c| c.name.trim_start_matches('/') == NAME);
+
+            let installed = container.is_some();
+            let is_running = container.as_ref().map(|c| {
+                let s = c.status.to_lowercase();
+                s.starts_with("up") || s.contains("running")
+            }).unwrap_or(false);
+
+            let (inspect, logs) = if installed {
+                let inspect = platform
+                    .docker
+                    .inspect_container(NAME)
+                    .await
+                    .unwrap_or(ContainerInspect {
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                        docker_health: String::new(),
+                    });
+                let logs = platform
+                    .docker
+                    .fetch_container_logs(NAME, 50)
+                    .await
+                    .unwrap_or_default();
+                (inspect, logs)
+            } else {
+                (
+                    ContainerInspect {
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                        docker_health: String::new(),
+                    },
+                    Vec::new(),
+                )
+            };
+
+            let health = if !installed {
+                OpenClawHealth::NotInstalled
+            } else if !is_running {
+                OpenClawHealth::ContainerStopped
+            } else {
+                match inspect.docker_health.as_str() {
+                    "healthy" => OpenClawHealth::HttpHealthOk,
+                    "unhealthy" => {
+                        OpenClawHealth::HttpHealthFail("Docker health check failed".to_string())
+                    }
+                    _ => OpenClawHealth::ContainerRunning,
+                }
+            };
+
+            let _ = tx.send(TaskResult::OpenClawStatus {
+                installed,
+                health,
+                container,
+                ports: inspect.ports,
+                volumes: inspect.volumes,
+                env_vars: inspect.env_vars,
+            });
+            let _ = tx.send(TaskResult::OpenClawLogs(logs));
+        });
+    }
+
+    pub fn spawn_openclaw_action(&mut self, action: &'static str) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.docker.openclaw.loading = true;
+        tokio::spawn(async move {
+            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
+            let result = match action {
+                "start" => platform.docker.start_container(NAME).await,
+                "stop" => platform.docker.stop_container(NAME).await,
+                "restart" => platform.docker.restart_container(NAME).await,
+                _ => Ok(()),
+            };
+            match result {
+                Ok(()) => {
+                    let _ =
+                        tx.send(TaskResult::Status(format!("OpenClaw {} — done", action)));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!(
+                        "OpenClaw {} failed: {}",
+                        action, e
+                    )));
+                }
+            }
+            // Always reload after action
+            let containers = platform.docker.list_containers().await.unwrap_or_default();
+            let container = containers
+                .into_iter()
+                .find(|c| c.name.trim_start_matches('/') == NAME);
+            let installed = container.is_some();
+            let is_running = container.as_ref().map(|c| {
+                let s = c.status.to_lowercase();
+                s.starts_with("up") || s.contains("running")
+            }).unwrap_or(false);
+            let inspect = if installed {
+                platform
+                    .docker
+                    .inspect_container(NAME)
+                    .await
+                    .unwrap_or(ContainerInspect {
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                        docker_health: String::new(),
+                    })
+            } else {
+                ContainerInspect {
+                    ports: Vec::new(),
+                    volumes: Vec::new(),
+                    env_vars: Vec::new(),
+                    docker_health: String::new(),
+                }
+            };
+            let health = if !installed {
+                OpenClawHealth::NotInstalled
+            } else if !is_running {
+                OpenClawHealth::ContainerStopped
+            } else {
+                match inspect.docker_health.as_str() {
+                    "healthy" => OpenClawHealth::HttpHealthOk,
+                    "unhealthy" => OpenClawHealth::HttpHealthFail(
+                        "Docker health check failed".to_string(),
+                    ),
+                    _ => OpenClawHealth::ContainerRunning,
+                }
+            };
+            let _ = tx.send(TaskResult::OpenClawStatus {
+                installed,
+                health,
+                container,
+                ports: inspect.ports,
+                volumes: inspect.volumes,
+                env_vars: inspect.env_vars,
+            });
+        });
+    }
+
+    pub fn spawn_openclaw_install(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.docker.openclaw.loading = true;
+        tokio::spawn(async move {
+            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
+            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
+            const HOST_PORT: u16 = crate::core::docker::OPENCLAW_HOST_PORT;
+            const CONTAINER_PORT: u16 = crate::core::docker::OPENCLAW_CONTAINER_PORT;
+
+            let host_port = HOST_PORT.to_string();
+            let container_port = CONTAINER_PORT.to_string();
+            let result = platform
+                .docker
+                .run_named_container(
+                    NAME,
+                    IMAGE,
+                    &[(&host_port, &container_port)],
+                    "unless-stopped",
+                )
+                .await;
+
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status("OpenClaw installed and started".to_string()));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("OpenClaw install failed: {}", e)));
+                    let _ = tx.send(TaskResult::OpenClawStatus {
+                        installed: false,
+                        health: OpenClawHealth::NotInstalled,
+                        container: None,
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                    });
+                    return;
+                }
+            }
+
+            // Reload after install
+            let containers = platform.docker.list_containers().await.unwrap_or_default();
+            let container = containers
+                .into_iter()
+                .find(|c| c.name.trim_start_matches('/') == NAME);
+            let inspect = if container.is_some() {
+                platform
+                    .docker
+                    .inspect_container(NAME)
+                    .await
+                    .unwrap_or(ContainerInspect {
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                        docker_health: String::new(),
+                    })
+            } else {
+                ContainerInspect {
+                    ports: Vec::new(),
+                    volumes: Vec::new(),
+                    env_vars: Vec::new(),
+                    docker_health: String::new(),
+                }
+            };
+            let installed = container.is_some();
+            let health = if installed {
+                OpenClawHealth::ContainerRunning
+            } else {
+                OpenClawHealth::NotInstalled
+            };
+            let _ = tx.send(TaskResult::OpenClawStatus {
+                installed,
+                health,
+                container,
+                ports: inspect.ports,
+                volumes: inspect.volumes,
+                env_vars: inspect.env_vars,
+            });
+        });
+    }
+
+    pub fn spawn_openclaw_uninstall(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.docker.openclaw.loading = true;
+        tokio::spawn(async move {
+            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
+            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
+
+            // Stop (ignore error if not running)
+            let _ = platform.docker.stop_container(NAME).await;
+            // Remove container
+            if let Err(e) = platform.docker.remove_container(NAME).await {
+                let _ = tx.send(TaskResult::Error(format!(
+                    "OpenClaw remove failed: {}",
+                    e
+                )));
+            }
+            // Remove image
+            let _ = platform.docker.remove_image(IMAGE).await;
+
+            let _ = tx.send(TaskResult::Status("OpenClaw uninstalled".to_string()));
+            let _ = tx.send(TaskResult::OpenClawStatus {
+                installed: false,
+                health: OpenClawHealth::NotInstalled,
+                container: None,
+                ports: Vec::new(),
+                volumes: Vec::new(),
+                env_vars: Vec::new(),
+            });
+            let _ = tx.send(TaskResult::OpenClawLogs(Vec::new()));
+        });
+    }
+
+    pub fn spawn_openclaw_update(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.docker.openclaw.loading = true;
+        tokio::spawn(async move {
+            const NAME: &str = crate::core::docker::OPENCLAW_CONTAINER_NAME;
+            const IMAGE: &str = crate::core::docker::OPENCLAW_IMAGE;
+            const HOST_PORT: u16 = crate::core::docker::OPENCLAW_HOST_PORT;
+            const CONTAINER_PORT: u16 = crate::core::docker::OPENCLAW_CONTAINER_PORT;
+
+            let _ = tx.send(TaskResult::Status("Pulling latest openclaw image…".to_string()));
+
+            if let Err(e) = platform.docker.pull_image(IMAGE).await {
+                let _ = tx.send(TaskResult::Error(format!("Pull failed: {}", e)));
+                return;
+            }
+
+            // Stop + remove old container, then re-run with fresh image
+            let _ = platform.docker.stop_container(NAME).await;
+            let _ = platform.docker.remove_container(NAME).await;
+
+            let host_port = HOST_PORT.to_string();
+            let container_port = CONTAINER_PORT.to_string();
+            if let Err(e) = platform
+                .docker
+                .run_named_container(
+                    NAME,
+                    IMAGE,
+                    &[(&host_port, &container_port)],
+                    "unless-stopped",
+                )
+                .await
+            {
+                let _ = tx.send(TaskResult::Error(format!("OpenClaw restart failed: {}", e)));
+                return;
+            }
+
+            let _ = tx.send(TaskResult::Status("OpenClaw updated and restarted".to_string()));
+
+            // Reload state
+            let containers = platform.docker.list_containers().await.unwrap_or_default();
+            let container = containers
+                .into_iter()
+                .find(|c| c.name.trim_start_matches('/') == NAME);
+            let installed = container.is_some();
+            let inspect = if installed {
+                platform
+                    .docker
+                    .inspect_container(NAME)
+                    .await
+                    .unwrap_or(ContainerInspect {
+                        ports: Vec::new(),
+                        volumes: Vec::new(),
+                        env_vars: Vec::new(),
+                        docker_health: String::new(),
+                    })
+            } else {
+                ContainerInspect {
+                    ports: Vec::new(),
+                    volumes: Vec::new(),
+                    env_vars: Vec::new(),
+                    docker_health: String::new(),
+                }
+            };
+            let health = if installed {
+                OpenClawHealth::ContainerRunning
+            } else {
+                OpenClawHealth::NotInstalled
+            };
+            let _ = tx.send(TaskResult::OpenClawStatus {
+                installed,
+                health,
+                container,
+                ports: inspect.ports,
+                volumes: inspect.volumes,
+                env_vars: inspect.env_vars,
+            });
+            let logs = platform
+                .docker
+                .fetch_container_logs(NAME, 50)
+                .await
+                .unwrap_or_default();
+            let _ = tx.send(TaskResult::OpenClawLogs(logs));
+        });
+    }
+
     pub fn workload_spec_from_form(&self) -> anyhow::Result<ManagedWorkloadSpec> {
         let form = &self.docker.workloads.form;
         let parse_csv = |value: &str| -> Vec<String> {
@@ -2837,6 +3246,25 @@ impl App {
                 {
                     self.docker.managed_state.select(Some(0));
                 }
+            }
+            TaskResult::OpenClawStatus {
+                installed,
+                health,
+                container,
+                ports,
+                volumes,
+                env_vars,
+            } => {
+                self.docker.openclaw.installed = installed;
+                self.docker.openclaw.health = health;
+                self.docker.openclaw.container = container;
+                self.docker.openclaw.ports = ports;
+                self.docker.openclaw.volumes = volumes;
+                self.docker.openclaw.env_vars = env_vars;
+                self.docker.openclaw.loading = false;
+            }
+            TaskResult::OpenClawLogs(lines) => {
+                self.docker.openclaw.logs = lines;
             }
             TaskResult::FirewallStatus { enabled, backend } => {
                 self.firewall.enabled = Some(enabled);
