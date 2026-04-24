@@ -523,7 +523,9 @@ impl DockerManager for DockerCliManager {
         ports: &[(&str, &str)],
         restart: &str,
     ) -> Result<()> {
-        let mut args = vec!["run", "-d", "--name", name];
+        // --pull=never avoids Podman short-name resolution inside `run`;
+        // callers must pull the image explicitly before calling this.
+        let mut args = vec!["run", "-d", "--pull=never", "--name", name];
         let port_args: Vec<String> = ports
             .iter()
             .map(|(h, c)| format!("{}:{}", h, c))

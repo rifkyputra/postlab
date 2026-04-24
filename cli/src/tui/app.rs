@@ -2030,6 +2030,21 @@ impl App {
             const HOST_PORT: u16 = crate::core::docker::OPENCLAW_HOST_PORT;
             const CONTAINER_PORT: u16 = crate::core::docker::OPENCLAW_CONTAINER_PORT;
 
+            // Pull first so `run --pull=never` works under Podman without a TTY
+            let _ = tx.send(TaskResult::Status("Pulling docker.io/alpine/openclaw:main…".to_string()));
+            if let Err(e) = platform.docker.pull_image(IMAGE).await {
+                let _ = tx.send(TaskResult::Error(format!("OpenClaw pull failed: {}", e)));
+                let _ = tx.send(TaskResult::OpenClawStatus {
+                    installed: false,
+                    health: OpenClawHealth::NotInstalled,
+                    container: None,
+                    ports: Vec::new(),
+                    volumes: Vec::new(),
+                    env_vars: Vec::new(),
+                });
+                return;
+            }
+
             let host_port = HOST_PORT.to_string();
             let container_port = CONTAINER_PORT.to_string();
             let result = platform
