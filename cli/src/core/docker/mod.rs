@@ -9,7 +9,7 @@ pub mod cli;
 pub use cli::DockerCliManager;
 
 pub const OPENCLAW_CONTAINER_NAME: &str = "openclaw";
-pub const OPENCLAW_IMAGE: &str = "alpine/openclaw:main";
+pub const OPENCLAW_IMAGE: &str = "docker.io/alpine/openclaw:main";
 pub const OPENCLAW_HOST_PORT: u16 = 8080;
 pub const OPENCLAW_CONTAINER_PORT: u16 = 8080;
 
