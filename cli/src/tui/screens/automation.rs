@@ -91,8 +91,10 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Overview => {
             if app.automation.info.installed {
                 "[←/→] tabs  [s] start daemon  [S] stop  [i] install service  [u] update check  [U] update  [d] doctor  [r] refresh"
+            } else if app.automation.installing {
+                "Installing zeroclaw…  please wait"
             } else {
-                "[←/→] tabs  [r] refresh"
+                "[←/→] tabs  [I] install zeroclaw  [r] refresh"
             }
         }
         ZeroclawTab::Channels => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
@@ -108,19 +110,44 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_overview(f: &mut Frame, app: &App, area: Rect) {
     if !app.automation.info.installed {
-        let msg = vec![
+        // Show install log if in progress, otherwise the install prompt
+        let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
                 "  ZeroClaw is not installed.",
                 Style::default().fg(Color::Red),
             )]),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "  Install via: brew install zeroclaw  OR  cargo install zeroclaw",
-                Style::default().fg(Color::DarkGray),
-            )]),
         ];
-        let p = Paragraph::new(msg).block(Block::default().borders(Borders::ALL));
+        if app.automation.installing || !app.automation.install_log.is_empty() {
+            for entry in &app.automation.install_log {
+                lines.push(Line::from(vec![Span::styled(
+                    format!("  {}", entry),
+                    Style::default().fg(Color::Yellow),
+                )]));
+            }
+            if app.automation.installing {
+                lines.push(Line::from(vec![Span::styled(
+                    "  Installing…",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )]));
+            }
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("  Press ", Style::default().fg(Color::DarkGray)),
+                Span::styled("[I]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    " to install from GitHub Releases (pre-built binary, no Rust needed)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "  Installs to ~/.local/bin/zeroclaw",
+                Style::default().fg(Color::DarkGray),
+            )]));
+        }
+        let p = Paragraph::new(lines).block(Block::default().title(" ZeroClaw ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }

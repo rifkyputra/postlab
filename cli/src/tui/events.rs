@@ -2488,6 +2488,22 @@ fn switch_zeroclaw_tab(app: &mut App, tab: ZeroclawTab) {
 }
 
 fn handle_zeroclaw_overview_key(app: &mut App, key: KeyEvent) {
+    if !app.automation.info.installed {
+        // Only allow install + refresh when not installed
+        match key.code {
+            KeyCode::Char('I') => {
+                if !app.automation.installing {
+                    app.spawn_zeroclaw_install();
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                app.spawn_load_zeroclaw_overview();
+            }
+            _ => {}
+        }
+        return;
+    }
+
     match key.code {
         KeyCode::Char('r') | KeyCode::Char('R') => {
             app.spawn_load_zeroclaw_overview();

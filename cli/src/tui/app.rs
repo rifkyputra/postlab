@@ -288,6 +288,8 @@ pub enum TaskResult {
         output: String,
         success: bool,
     },
+    ZeroclawInstallProgress(String),
+    ZeroclawInstallDone { output: String, success: bool },
     ZeroclawInfo(crate::core::zeroclaw::ZeroclawInfo),
     ZeroclawStatus(crate::core::zeroclaw::ZeroclawStatus),
     ZeroclawChannels(Vec<crate::core::zeroclaw::ZeroclawChannel>),
@@ -849,6 +851,8 @@ pub struct AutomationState {
     pub config_text: String,
     pub config_scroll: u16,
     pub loading: bool,
+    pub installing: bool,
+    pub install_log: Vec<String>,
     pub action_output: Option<String>,
     /// Tick counter for periodic status refresh
     pub poll_counter: u32,
@@ -877,6 +881,8 @@ impl Default for AutomationState {
             config_text: String::new(),
             config_scroll: 0,
             loading: false,
+            installing: false,
+            install_log: Vec::new(),
             action_output: None,
             poll_counter: 0,
             cron_form_mode: InputMode::Normal,
@@ -2799,6 +2805,28 @@ impl App {
         });
     }
 
+    pub fn spawn_zeroclaw_install(&mut self) {
+        let tx = self.task_tx.clone();
+        self.automation.installing = true;
+        self.automation.install_log.clear();
+        tokio::spawn(async move {
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::ZeroclawInstallProgress(line));
+                }
+            });
+            let result = crate::core::zeroclaw::install_from_release(ptx).await;
+            let _ = fwd.await;
+            let (output, success) = match result {
+                Ok(o) => (o, true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ = tx.send(TaskResult::ZeroclawInstallDone { output, success });
+        });
+    }
+
     pub fn drain_task_results(&mut self) {
         while let Ok(result) = self.task_rx.try_recv() {
             self.handle_result(result);
@@ -3217,6 +3245,21 @@ impl App {
                     "Ghost scan complete — {} suspect process(es) found",
                     self.ghost.ghosts.len()
                 ));
+            }
+            TaskResult::ZeroclawInstallProgress(line) => {
+                self.automation.install_log.push(line);
+            }
+            TaskResult::ZeroclawInstallDone { output, success } => {
+                self.automation.installing = false;
+                self.automation.install_log.push(output.clone());
+                self.status_msg = Some(if success {
+                    "zeroclaw installed — press [r] to refresh".to_string()
+                } else {
+                    format!("Install failed: {}", output.lines().next().unwrap_or(""))
+                });
+                if success {
+                    self.spawn_load_zeroclaw_overview();
+                }
             }
             TaskResult::ZeroclawInfo(info) => {
                 self.automation.loading = false;

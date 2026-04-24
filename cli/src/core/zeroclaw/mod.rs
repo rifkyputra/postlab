@@ -191,6 +191,105 @@ pub async fn get_status() -> ZeroclawStatus {
     }
 }
 
+/// Download and install zeroclaw from GitHub Releases pre-built binaries.
+/// Streams status lines into `tx` for TUI progress display.
+/// Installs to `~/.local/bin/zeroclaw` (created if absent).
+pub async fn install_from_release(
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> Result<String> {
+    use tokio::process::Command;
+
+    macro_rules! emit {
+        ($msg:expr) => {
+            let _ = tx.send($msg.to_string());
+        };
+    }
+
+    // ── Detect platform ──────────────────────────────────────────
+    let arch_out = Command::new("uname").arg("-m").output().await?;
+    let arch = String::from_utf8_lossy(&arch_out.stdout).trim().to_string();
+
+    let os_out = Command::new("uname").arg("-s").output().await?;
+    let os = String::from_utf8_lossy(&os_out.stdout).trim().to_string();
+
+    let target = match (os.as_str(), arch.as_str()) {
+        ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
+        ("Linux", "aarch64") => "aarch64-unknown-linux-gnu",
+        ("Linux", "armv7l") => "armv7-unknown-linux-gnueabihf",
+        ("Linux", "arm") => "arm-unknown-linux-gnueabihf",
+        ("Darwin", "arm64") => "aarch64-apple-darwin",
+        ("Darwin", "x86_64") => {
+            emit!("Intel Mac: no standalone CLI binary in releases — use: brew install zeroclaw");
+            return Err(anyhow::anyhow!(
+                "Intel macOS not in releases — install via: brew install zeroclaw"
+            ));
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported platform: {os}/{arch}"));
+        }
+    };
+
+    emit!(format!("Platform: {os}/{arch} → {target}"));
+
+    let url = format!(
+        "https://github.com/zeroclaw-labs/zeroclaw/releases/latest/download/zeroclaw-{target}.tar.gz"
+    );
+
+    // ── Download to temp file ────────────────────────────────────
+    let tmp_dir = std::env::temp_dir().join("zeroclaw-install");
+    tokio::fs::create_dir_all(&tmp_dir).await?;
+    let archive = tmp_dir.join("zeroclaw.tar.gz");
+
+    emit!(format!("Downloading from GitHub Releases…"));
+    let dl = Command::new("curl")
+        .args(["-fsSL", "--retry", "3", &url, "-o", archive.to_str().unwrap()])
+        .output()
+        .await?;
+    if !dl.status.success() {
+        let err = String::from_utf8_lossy(&dl.stderr).to_string();
+        return Err(anyhow::anyhow!("Download failed: {}", err.trim()));
+    }
+    emit!("Download complete.");
+
+    // ── Extract binary ───────────────────────────────────────────
+    emit!("Extracting…");
+    let extract = Command::new("tar")
+        .args(["xzf", archive.to_str().unwrap(), "-C", tmp_dir.to_str().unwrap(), "zeroclaw"])
+        .output()
+        .await?;
+    if !extract.status.success() {
+        let err = String::from_utf8_lossy(&extract.stderr).to_string();
+        return Err(anyhow::anyhow!("Extraction failed: {}", err.trim()));
+    }
+
+    // ── Install binary ───────────────────────────────────────────
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let install_dir = PathBuf::from(&home).join(".local").join("bin");
+    tokio::fs::create_dir_all(&install_dir).await?;
+    let dest = install_dir.join("zeroclaw");
+
+    let src = tmp_dir.join("zeroclaw");
+    tokio::fs::copy(&src, &dest).await?;
+
+    // chmod +x
+    let chmod = Command::new("chmod")
+        .args(["+x", dest.to_str().unwrap()])
+        .output()
+        .await?;
+    if !chmod.status.success() {
+        return Err(anyhow::anyhow!("chmod failed"));
+    }
+
+    // ── Cleanup ──────────────────────────────────────────────────
+    let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+
+    let installed_path = dest.display().to_string();
+    emit!(format!("Installed → {installed_path}"));
+    emit!(format!("Add to PATH if needed:  export PATH=\"$HOME/.local/bin:$PATH\""));
+
+    Ok(format!("zeroclaw installed to {installed_path}"))
+}
+
 pub async fn daemon_start() -> Result<String> {
     run(&["daemon"]).await
 }
