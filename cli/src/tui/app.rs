@@ -7,9 +7,14 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
 use crate::core::{
-    models::{DiskInfo, DockerContainer, DockerImage, DockerComposeService, ManagedDockerService, FirewallRule, GhostProcess, JailedIp, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding, SshKey, Tunnel, WasmCloudHost, WasmCloudComponent, WasmCloudApp, UserInfo},
-    services::{ServiceUnit},
-    portcheck::{PortEntry, PortStatus, default_entries},
+    models::{
+        DiskInfo, DockerComposeService, DockerContainer, DockerImage, FirewallRule, GhostProcess,
+        JailedIp, ManagedDockerService, ManagedWorkload, ManagedWorkloadCapabilities,
+        ManagedWorkloadSpec, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding,
+        SshKey, Tunnel, UserInfo, WasmCloudApp, WasmCloudComponent, WasmCloudHost,
+    },
+    portcheck::{default_entries, PortEntry, PortStatus},
+    services::ServiceUnit,
     Platform,
 };
 
@@ -49,16 +54,16 @@ impl Screen {
 
     pub fn title(&self) -> &'static str {
         match self {
-            Screen::Dashboard   => "1. Dashboard",
-            Screen::Packages    => "2. Packages",
-            Screen::Security    => "3. Security", 
-            Screen::Gateway     => "4. Gateway",
-            Screen::Tunnel      => "5. Tunnel",
-            Screen::Docker      => "6. Docker",
-            Screen::WasmCloud   => "7. wasmCloud",
-            Screen::Ghosts      => "8. Ghosts",
-            Screen::Users       => "9. Users",
-            Screen::Services    => "0. Services",
+            Screen::Dashboard => "1. Dashboard",
+            Screen::Packages => "2. Packages",
+            Screen::Security => "3. Security",
+            Screen::Gateway => "4. Gateway",
+            Screen::Tunnel => "5. Tunnel",
+            Screen::Docker => "6. Docker",
+            Screen::WasmCloud => "7. wasmCloud",
+            Screen::Ghosts => "8. Ghosts",
+            Screen::Users => "9. Users",
+            Screen::Services => "0. Services",
             Screen::Maintenance => "M. Janitor",
         }
     }
@@ -75,18 +80,26 @@ pub enum DockerTab {
     Containers,
     Images,
     Compose,
+    Workloads,
     Managed,
 }
 
 impl DockerTab {
     pub fn all() -> &'static [DockerTab] {
-        &[DockerTab::Containers, DockerTab::Images, DockerTab::Compose, DockerTab::Managed]
+        &[
+            DockerTab::Containers,
+            DockerTab::Images,
+            DockerTab::Compose,
+            DockerTab::Workloads,
+            DockerTab::Managed,
+        ]
     }
     pub fn title(&self) -> &'static str {
         match self {
             DockerTab::Containers => "Containers",
             DockerTab::Images => "Images",
             DockerTab::Compose => "Compose",
+            DockerTab::Workloads => "Workloads",
             DockerTab::Managed => "Managed",
         }
     }
@@ -106,7 +119,11 @@ pub enum DashboardTab {
 
 impl DashboardTab {
     pub fn all() -> &'static [DashboardTab] {
-        &[DashboardTab::Overview, DashboardTab::Processes, DashboardTab::Resources]
+        &[
+            DashboardTab::Overview,
+            DashboardTab::Processes,
+            DashboardTab::Resources,
+        ]
     }
 
     pub fn title(&self) -> &'static str {
@@ -118,7 +135,10 @@ impl DashboardTab {
     }
 
     pub fn index(&self) -> usize {
-        DashboardTab::all().iter().position(|t| t == self).unwrap_or(0)
+        DashboardTab::all()
+            .iter()
+            .position(|t| t == self)
+            .unwrap_or(0)
     }
 }
 
@@ -127,47 +147,109 @@ impl DashboardTab {
 #[derive(Debug)]
 pub enum TaskResult {
     PackageList(Vec<Package>),
-    PackagesUpdated(Vec<Package>),  // merge/add specific entries without full reload
+    PackagesUpdated(Vec<Package>), // merge/add specific entries without full reload
     SearchResults(Vec<Package>),
-    OpProgress { op: String, target: String, line: String },
-    OpDone { op: String, target: String, output: String, success: bool },
+    OpProgress {
+        op: String,
+        target: String,
+        line: String,
+    },
+    OpDone {
+        op: String,
+        target: String,
+        output: String,
+        success: bool,
+    },
     ProcessList(Vec<ProcessEntry>),
     SecurityScan(Vec<SecurityFinding>),
-    SecurityApply { id: String, output: String, success: bool },
+    SecurityApply {
+        id: String,
+        output: String,
+        success: bool,
+    },
     Fail2BanList(Vec<JailedIp>),
-    Fail2BanActionDone { ip: String, jail: String, action: String, success: bool },
+    Fail2BanActionDone {
+        ip: String,
+        jail: String,
+        action: String,
+        success: bool,
+    },
     RouteList(Vec<Route>),
     TunnelList(Vec<Tunnel>),
     TunnelCreated(Tunnel),
-    GatewayStatus { installed: bool, version: Option<String> },
-    TunnelStatus { installed: bool, version: Option<String> },
+    GatewayStatus {
+        installed: bool,
+        version: Option<String>,
+    },
+    TunnelStatus {
+        installed: bool,
+        version: Option<String>,
+    },
     TunnelConfigContent(String),
-    TunnelServiceStatus { active: bool, enabled: bool },
-    InstallProgress { target: String, line: String },
-    InstallDone { target: String, success: bool },
-    DockerStatus { installed: bool, version: Option<String> },
+    TunnelServiceStatus {
+        active: bool,
+        enabled: bool,
+    },
+    InstallProgress {
+        target: String,
+        line: String,
+    },
+    InstallDone {
+        target: String,
+        success: bool,
+    },
+    DockerStatus {
+        installed: bool,
+        version: Option<String>,
+    },
     DockerContainerList(Vec<DockerContainer>),
     DockerImageList(Vec<DockerImage>),
     DockerComposeList(Vec<DockerComposeService>),
     ManagedServiceList(Vec<ManagedDockerService>),
-    FirewallStatus { enabled: bool, backend: String },
+    WorkloadCapabilities(ManagedWorkloadCapabilities),
+    WorkloadList(Vec<ManagedWorkload>),
+    FirewallStatus {
+        enabled: bool,
+        backend: String,
+    },
     FirewallRules(Vec<FirewallRule>),
     PublicIp(String),
-    PortCheckDone { results: Vec<(u16, PortStatus)> },
-    WasmCloudStatus { installed: bool, version: Option<String> },
+    PortCheckDone {
+        results: Vec<(u16, PortStatus)>,
+    },
+    WasmCloudStatus {
+        installed: bool,
+        version: Option<String>,
+    },
     WasmCloudHostList(Vec<WasmCloudHost>),
     WasmCloudComponentList(Vec<WasmCloudComponent>),
     WasmCloudAppList(Vec<WasmCloudApp>),
-    WasmCloudNatsStatus { running: bool, storage_usage: Option<u64>, synced: bool },
+    WasmCloudNatsStatus {
+        running: bool,
+        storage_usage: Option<u64>,
+        synced: bool,
+    },
     SshLocalKeys(Vec<SshKey>),
     SshAuthorizedKeys(Vec<SshKey>),
-    SshOpDone { op: String, success: bool, output: String },
+    SshOpDone {
+        op: String,
+        success: bool,
+        output: String,
+    },
     WasmCloudInspect(String),
     GhostScan(Vec<GhostProcess>),
     UserList(Vec<UserInfo>),
     ServiceList(Vec<ServiceUnit>),
-    ServiceOpDone { name: String, op: String, success: bool },
-    MaintenanceDone { op: String, output: String, success: bool },
+    ServiceOpDone {
+        name: String,
+        op: String,
+        success: bool,
+    },
+    MaintenanceDone {
+        op: String,
+        output: String,
+        success: bool,
+    },
     Status(String),
     Error(String),
 }
@@ -185,6 +267,7 @@ pub enum ConfirmAction {
     StopContainer { id: String, name: String },
     RemoveContainer { id: String, name: String },
     RemoveImage { id: String, tag: String },
+    DeleteWorkload { name: String },
     DeleteFirewallRule { num: usize },
     Fail2BanForgive { ip: String, jail: String },
     Fail2BanBanish { ip: String, jail: String },
@@ -199,6 +282,79 @@ pub enum ConfirmAction {
 pub struct ConfirmDialog {
     pub message: String,
     pub action: ConfirmAction,
+}
+
+pub struct WorkloadFormState {
+    pub input_mode: InputMode,
+    pub editing_name: Option<String>,
+    pub input_focus: usize,
+    pub name: String,
+    pub image: String,
+    pub command: String,
+    pub env: String,
+    pub ports: String,
+    pub volumes: String,
+    pub restart_policy: String,
+}
+
+impl Default for WorkloadFormState {
+    fn default() -> Self {
+        Self {
+            input_mode: InputMode::Normal,
+            editing_name: None,
+            input_focus: 0,
+            name: String::new(),
+            image: String::new(),
+            command: String::new(),
+            env: String::new(),
+            ports: String::new(),
+            volumes: String::new(),
+            restart_policy: "unless-stopped".to_string(),
+        }
+    }
+}
+
+impl WorkloadFormState {
+    pub fn reset_for_create(&mut self) {
+        *self = Self::default();
+        self.input_mode = InputMode::Editing;
+    }
+
+    pub fn reset_for_edit(&mut self, spec: &ManagedWorkloadSpec) {
+        self.input_mode = InputMode::Editing;
+        self.editing_name = Some(spec.name.clone());
+        self.input_focus = 0;
+        self.name = spec.name.clone();
+        self.image = spec.image.clone();
+        self.command = spec.command.clone().unwrap_or_default().join(", ");
+        self.env = spec
+            .env
+            .iter()
+            .map(|(key, value)| format!("{}={}", key, value))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.ports = spec.ports.join(", ");
+        self.volumes = spec.volumes.join(", ");
+        self.restart_policy = spec.restart_policy.clone();
+    }
+}
+
+pub struct DockerWorkloadsState {
+    pub capabilities: Option<ManagedWorkloadCapabilities>,
+    pub workloads: Vec<ManagedWorkload>,
+    pub table_state: TableState,
+    pub form: WorkloadFormState,
+}
+
+impl Default for DockerWorkloadsState {
+    fn default() -> Self {
+        Self {
+            capabilities: None,
+            workloads: Vec::new(),
+            table_state: TableState::default(),
+            form: WorkloadFormState::default(),
+        }
+    }
 }
 
 // ── Input mode ────────────────────────────────────────────────────────────
@@ -232,7 +388,12 @@ pub enum PackageTab {
 
 impl PackageTab {
     pub fn all() -> &'static [PackageTab] {
-        &[PackageTab::Installed, PackageTab::Search, PackageTab::QuickInstall, PackageTab::Queue]
+        &[
+            PackageTab::Installed,
+            PackageTab::Search,
+            PackageTab::QuickInstall,
+            PackageTab::Queue,
+        ]
     }
     pub fn title(&self) -> &'static str {
         match self {
@@ -243,7 +404,10 @@ impl PackageTab {
         }
     }
     pub fn index(&self) -> usize {
-        PackageTab::all().iter().position(|t| t == self).unwrap_or(0)
+        PackageTab::all()
+            .iter()
+            .position(|t| t == self)
+            .unwrap_or(0)
     }
 }
 
@@ -278,7 +442,10 @@ impl SecurityTab {
         }
     }
     pub fn index(&self) -> usize {
-        SecurityTab::all().iter().position(|t| t == self).unwrap_or(0)
+        SecurityTab::all()
+            .iter()
+            .position(|t| t == self)
+            .unwrap_or(0)
     }
 }
 
@@ -294,7 +461,12 @@ pub enum WasmCloudTab {
 
 impl WasmCloudTab {
     pub fn all() -> &'static [WasmCloudTab] {
-        &[WasmCloudTab::Hosts, WasmCloudTab::Components, WasmCloudTab::Apps, WasmCloudTab::Inspector]
+        &[
+            WasmCloudTab::Hosts,
+            WasmCloudTab::Components,
+            WasmCloudTab::Apps,
+            WasmCloudTab::Inspector,
+        ]
     }
     pub fn title(&self) -> &'static str {
         match self {
@@ -305,7 +477,10 @@ impl WasmCloudTab {
         }
     }
     pub fn index(&self) -> usize {
-        WasmCloudTab::all().iter().position(|t| t == self).unwrap_or(0)
+        WasmCloudTab::all()
+            .iter()
+            .position(|t| t == self)
+            .unwrap_or(0)
     }
 }
 
@@ -373,8 +548,8 @@ pub struct PackagesState {
     pub search_state: ListState,
     pub search_selected: HashSet<String>,
     // Quick install tab
-    pub curated_selected: HashSet<String>,   // packages to install
-    pub curated_uninstall: HashSet<String>,  // installed packages marked for removal
+    pub curated_selected: HashSet<String>, // packages to install
+    pub curated_uninstall: HashSet<String>, // installed packages marked for removal
     pub curated_cursor: usize,
     // Queue
     pub queue: VecDeque<QueuedOp>,
@@ -526,8 +701,8 @@ pub struct TunnelState {
     /// When EditingIngress, the hostname being edited (for removal of old entry).
     pub input_original_host: String,
     // Config + service
-    pub config_content: Option<String>,   // ~/.cloudflared/config.yaml
-    pub service_active: Option<bool>,     // true=active, false=inactive, None=unknown
+    pub config_content: Option<String>, // ~/.cloudflared/config.yaml
+    pub service_active: Option<bool>,   // true=active, false=inactive, None=unknown
     pub service_enabled: Option<bool>,
     /// The tunnel UUID that config.yaml is pointing to (set with Enter).
     pub active_tunnel_id: Option<String>,
@@ -578,6 +753,8 @@ pub struct DockerState {
     pub compose_services: Vec<DockerComposeService>,
     pub compose_state: TableState,
     pub compose_path: String,
+    // Workloads tab
+    pub workloads: DockerWorkloadsState,
     // Managed dev services tab
     pub managed_services: Vec<ManagedDockerService>,
     pub managed_state: TableState,
@@ -597,6 +774,7 @@ impl Default for DockerState {
             compose_services: Vec::new(),
             compose_state: TableState::default(),
             compose_path: String::from("docker-compose.yml"),
+            workloads: DockerWorkloadsState::default(),
             managed_services: Vec::new(),
             managed_state: TableState::default(),
             loading: false,
@@ -615,9 +793,9 @@ pub struct FirewallState {
     /// 0 = port, 1 = proto, 2 = from, 3 = action
     pub input_focus: usize,
     pub input_port: String,
-    pub input_proto: usize,   // index into PROTOS
+    pub input_proto: usize, // index into PROTOS
     pub input_from: String,
-    pub input_action: usize,  // index into ACTIONS
+    pub input_action: usize, // index into ACTIONS
 }
 
 pub const PROTOS: &[&str] = &["tcp", "udp", "any"];
@@ -692,7 +870,7 @@ pub struct SshState {
     pub input_mode: InputMode,
     pub input_name: String,
     pub input_type: String, // ed25519 (default), rsa
-    pub focus: usize, // 0 = local, 1 = authorized
+    pub focus: usize,       // 0 = local, 1 = authorized
 }
 
 impl Default for SshState {
@@ -939,7 +1117,10 @@ impl App {
                 let id = self.tunnel.active_tunnel_id.clone();
                 self.spawn_tunnel_extras(id);
             }
-            Screen::Docker => self.spawn_load_docker(),
+            Screen::Docker => {
+                self.spawn_load_docker();
+                self.spawn_load_workloads();
+            }
             Screen::WasmCloud => {
                 self.spawn_load_wasm_cloud();
                 self.spawn_poll_nats_status();
@@ -967,7 +1148,11 @@ impl App {
 
     pub fn prev_screen(&mut self) {
         let idx = self.screen.index();
-        let prev = if idx == 0 { Screen::all().len() - 1 } else { idx - 1 };
+        let prev = if idx == 0 {
+            Screen::all().len() - 1
+        } else {
+            idx - 1
+        };
         let s = Screen::all()[prev].clone();
         self.set_screen(s);
     }
@@ -1017,8 +1202,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.packages.list_installed().await {
-                Ok(pkgs) => { let _ = tx.send(TaskResult::PackageList(pkgs)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(pkgs) => {
+                    let _ = tx.send(TaskResult::PackageList(pkgs));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1030,7 +1219,9 @@ impl App {
         tokio::spawn(async move {
             let refs: Vec<&str> = names.iter().map(String::as_str).collect();
             match platform.packages.check_packages(&refs).await {
-                Ok(pkgs) => { let _ = tx.send(TaskResult::PackagesUpdated(pkgs)); }
+                Ok(pkgs) => {
+                    let _ = tx.send(TaskResult::PackagesUpdated(pkgs));
+                }
                 Err(_) => {
                     // Fall back to full reload if targeted check fails
                     if let Ok(pkgs) = platform.packages.list_installed().await {
@@ -1046,8 +1237,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.packages.search(&query).await {
-                Ok(pkgs) => { let _ = tx.send(TaskResult::SearchResults(pkgs)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(pkgs) => {
+                    let _ = tx.send(TaskResult::SearchResults(pkgs));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1085,7 +1280,8 @@ impl App {
                 Ok(out) => (out, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = crate::db::audit::log_action(&pool, "install", Some(&name), &output, success).await;
+            let _ =
+                crate::db::audit::log_action(&pool, "install", Some(&name), &output, success).await;
             let _ = tx.send(TaskResult::OpDone {
                 op: "install".to_string(),
                 target: name,
@@ -1128,7 +1324,8 @@ impl App {
                 Ok(out) => (out, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = crate::db::audit::log_action(&pool, "remove", Some(&name), &output, success).await;
+            let _ =
+                crate::db::audit::log_action(&pool, "remove", Some(&name), &output, success).await;
             let _ = tx.send(TaskResult::OpDone {
                 op: "remove".to_string(),
                 target: name,
@@ -1143,8 +1340,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.processes.list().await {
-                Ok(procs) => { let _ = tx.send(TaskResult::ProcessList(procs)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(procs) => {
+                    let _ = tx.send(TaskResult::ProcessList(procs));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1155,8 +1356,12 @@ impl App {
         self.security.scanning = true;
         tokio::spawn(async move {
             match platform.security.scan().await {
-                Ok(findings) => { let _ = tx.send(TaskResult::SecurityScan(findings)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(findings) => {
+                    let _ = tx.send(TaskResult::SecurityScan(findings));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1167,8 +1372,12 @@ impl App {
         self.security.f2b_loading = true;
         tokio::spawn(async move {
             match platform.fail2ban.list_jailed().await {
-                Ok(jailed) => { let _ = tx.send(TaskResult::Fail2BanList(jailed)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("fail2ban: {}", e))); }
+                Ok(jailed) => {
+                    let _ = tx.send(TaskResult::Fail2BanList(jailed));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("fail2ban: {}", e)));
+                }
             }
         });
     }
@@ -1211,8 +1420,13 @@ impl App {
                 Ok(out) => (out, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = crate::db::audit::log_action(&pool, "harden", Some(&id), &output, success).await;
-            let _ = tx.send(TaskResult::SecurityApply { id, output, success });
+            let _ =
+                crate::db::audit::log_action(&pool, "harden", Some(&id), &output, success).await;
+            let _ = tx.send(TaskResult::SecurityApply {
+                id,
+                output,
+                success,
+            });
         });
     }
 
@@ -1225,8 +1439,12 @@ impl App {
             let _ = tx.send(TaskResult::GatewayStatus { installed, version });
             if installed {
                 match platform.gateway.list_routes().await {
-                    Ok(routes) => { let _ = tx.send(TaskResult::RouteList(routes)); }
-                    Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    Ok(routes) => {
+                        let _ = tx.send(TaskResult::RouteList(routes));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskResult::Error(e.to_string()));
+                    }
                 }
             }
         });
@@ -1241,8 +1459,12 @@ impl App {
             let _ = tx.send(TaskResult::TunnelStatus { installed, version });
             if installed {
                 match platform.tunnel.list_tunnels().await {
-                    Ok(tunnels) => { let _ = tx.send(TaskResult::TunnelList(tunnels)); }
-                    Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    Ok(tunnels) => {
+                        let _ = tx.send(TaskResult::TunnelList(tunnels));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskResult::Error(e.to_string()));
+                    }
                 }
             }
         });
@@ -1254,12 +1476,18 @@ impl App {
         tokio::spawn(async move {
             if let Some(ref id) = tunnel_id {
                 match platform.tunnel.config_content(id).await {
-                    Ok(c) => { let _ = tx.send(TaskResult::TunnelConfigContent(c)); }
-                    Err(_) => { let _ = tx.send(TaskResult::TunnelConfigContent(String::new())); }
+                    Ok(c) => {
+                        let _ = tx.send(TaskResult::TunnelConfigContent(c));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(TaskResult::TunnelConfigContent(String::new()));
+                    }
                 }
             }
             match platform.tunnel.service_status().await {
-                Ok((active, enabled)) => { let _ = tx.send(TaskResult::TunnelServiceStatus { active, enabled }); }
+                Ok((active, enabled)) => {
+                    let _ = tx.send(TaskResult::TunnelServiceStatus { active, enabled });
+                }
                 Err(_) => {}
             }
         });
@@ -1297,7 +1525,10 @@ impl App {
                         target: "cloudflared".to_string(),
                         success: false,
                     });
-                    let _ = tx.send(TaskResult::Error(format!("cloudflared install failed: {}", e)));
+                    let _ = tx.send(TaskResult::Error(format!(
+                        "cloudflared install failed: {}",
+                        e
+                    )));
                 }
             }
         });
@@ -1391,12 +1622,20 @@ impl App {
             let _ = tx.send(TaskResult::DockerStatus { installed, version });
             if installed {
                 match platform.docker.list_containers().await {
-                    Ok(containers) => { let _ = tx.send(TaskResult::DockerContainerList(containers)); }
-                    Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    Ok(containers) => {
+                        let _ = tx.send(TaskResult::DockerContainerList(containers));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskResult::Error(e.to_string()));
+                    }
                 }
                 match platform.docker.list_images().await {
-                    Ok(images) => { let _ = tx.send(TaskResult::DockerImageList(images)); }
-                    Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    Ok(images) => {
+                        let _ = tx.send(TaskResult::DockerImageList(images));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskResult::Error(e.to_string()));
+                    }
                 }
             }
         });
@@ -1408,21 +1647,30 @@ impl App {
         let id_clone = id.clone();
         tokio::spawn(async move {
             let result = match action {
-                "start"   => platform.docker.start_container(&id_clone).await,
-                "stop"    => platform.docker.stop_container(&id_clone).await,
+                "start" => platform.docker.start_container(&id_clone).await,
+                "stop" => platform.docker.stop_container(&id_clone).await,
                 "restart" => platform.docker.restart_container(&id_clone).await,
-                "remove"  => platform.docker.remove_container(&id_clone).await,
-                _         => Ok(()),
+                "remove" => platform.docker.remove_container(&id_clone).await,
+                _ => Ok(()),
             };
             match result {
                 Ok(()) => {
-                    let _ = tx.send(TaskResult::Status(format!("{} {} — done", action, id_clone)));
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "{} {} — done",
+                        action, id_clone
+                    )));
                     match platform.docker.list_containers().await {
-                        Ok(containers) => { let _ = tx.send(TaskResult::DockerContainerList(containers)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(containers) => {
+                            let _ = tx.send(TaskResult::DockerContainerList(containers));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e)));
+                }
             }
         });
     }
@@ -1435,11 +1683,17 @@ impl App {
                 Ok(()) => {
                     let _ = tx.send(TaskResult::Status(format!("Image {} removed", id)));
                     match platform.docker.list_images().await {
-                        Ok(images) => { let _ = tx.send(TaskResult::DockerImageList(images)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(images) => {
+                            let _ = tx.send(TaskResult::DockerImageList(images));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("Remove image failed: {}", e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("Remove image failed: {}", e)));
+                }
             }
         });
     }
@@ -1450,8 +1704,12 @@ impl App {
         let path = self.docker.compose_path.clone();
         tokio::spawn(async move {
             match platform.docker.list_compose_services(&path).await {
-                Ok(services) => { let _ = tx.send(TaskResult::DockerComposeList(services)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(services) => {
+                    let _ = tx.send(TaskResult::DockerComposeList(services));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1462,20 +1720,29 @@ impl App {
         let path = self.docker.compose_path.clone();
         tokio::spawn(async move {
             let result = match action {
-                "up"      => platform.docker.compose_up(&path).await,
-                "down"    => platform.docker.compose_down(&path).await,
+                "up" => platform.docker.compose_up(&path).await,
+                "down" => platform.docker.compose_down(&path).await,
                 "restart" => platform.docker.compose_restart(&path).await,
-                _         => Ok(()),
+                _ => Ok(()),
             };
             match result {
                 Ok(()) => {
                     let _ = tx.send(TaskResult::Status(format!("compose {} — done", action)));
                     match platform.docker.list_compose_services(&path).await {
-                        Ok(services) => { let _ = tx.send(TaskResult::DockerComposeList(services)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(services) => {
+                            let _ = tx.send(TaskResult::DockerComposeList(services));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("compose {} failed: {}", action, e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!(
+                        "compose {} failed: {}",
+                        action, e
+                    )));
+                }
             }
         });
     }
@@ -1485,32 +1752,229 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.docker.list_managed_services().await {
-                Ok(services) => { let _ = tx.send(TaskResult::ManagedServiceList(services)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(services) => {
+                    let _ = tx.send(TaskResult::ManagedServiceList(services));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
 
-    pub fn spawn_managed_service_action(&mut self, action: &'static str, container_name: String, image: String, ports: String) {
+    pub fn spawn_managed_service_action(
+        &mut self,
+        action: &'static str,
+        container_name: String,
+        image: String,
+        ports: String,
+    ) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             let result = match action {
-                "start"   => platform.docker.start_managed_service(&container_name, &image, &ports).await,
-                "stop"    => platform.docker.stop_managed_service(&container_name).await,
-                "restart" => platform.docker.restart_managed_service(&container_name).await,
-                _         => Ok(()),
+                "start" => {
+                    platform
+                        .docker
+                        .start_managed_service(&container_name, &image, &ports)
+                        .await
+                }
+                "stop" => platform.docker.stop_managed_service(&container_name).await,
+                "restart" => {
+                    platform
+                        .docker
+                        .restart_managed_service(&container_name)
+                        .await
+                }
+                _ => Ok(()),
             };
             match result {
                 Ok(()) => {
-                    let _ = tx.send(TaskResult::Status(format!("{} {} — done", action, container_name)));
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "{} {} — done",
+                        action, container_name
+                    )));
                     // Refresh the list
                     match platform.docker.list_managed_services().await {
-                        Ok(services) => { let _ = tx.send(TaskResult::ManagedServiceList(services)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(services) => {
+                            let _ = tx.send(TaskResult::ManagedServiceList(services));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e)));
+                }
+            }
+        });
+    }
+
+    pub fn workload_spec_from_form(&self) -> anyhow::Result<ManagedWorkloadSpec> {
+        let form = &self.docker.workloads.form;
+        let parse_csv = |value: &str| -> Vec<String> {
+            value
+                .split(',')
+                .map(|entry| entry.trim().to_string())
+                .filter(|entry| !entry.is_empty())
+                .collect()
+        };
+
+        let env = parse_csv(&form.env)
+            .into_iter()
+            .map(|pair| {
+                let (key, value) = pair
+                    .split_once('=')
+                    .ok_or_else(|| anyhow::anyhow!("Env entries must use KEY=VALUE"))?;
+                Ok((key.trim().to_string(), value.trim().to_string()))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let command = {
+            let command = parse_csv(&form.command);
+            if command.is_empty() {
+                None
+            } else {
+                Some(command)
+            }
+        };
+
+        Ok(ManagedWorkloadSpec {
+            name: form.name.trim().to_string(),
+            image: form.image.trim().to_string(),
+            command,
+            env,
+            ports: parse_csv(&form.ports),
+            volumes: parse_csv(&form.volumes),
+            restart_policy: form.restart_policy.trim().to_string(),
+        })
+    }
+
+    pub fn spawn_load_workloads(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let capabilities = platform.workloads.capabilities().await;
+            let _ = tx.send(TaskResult::WorkloadCapabilities(capabilities.clone()));
+            if capabilities.supported {
+                match platform.workloads.list_workloads().await {
+                    Ok(workloads) => {
+                        let _ = tx.send(TaskResult::WorkloadList(workloads));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskResult::Error(format!("workloads: {}", e)));
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn spawn_create_workload(&mut self, spec: ManagedWorkloadSpec) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.workloads.create_workload(spec.clone()).await {
+                Ok(workload) => {
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "Created workload {}",
+                        workload.name
+                    )));
+                    match platform.workloads.list_workloads().await {
+                        Ok(workloads) => {
+                            let _ = tx.send(TaskResult::WorkloadList(workloads));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(format!("workloads: {}", e)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("create workload failed: {}", e)));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_update_workload(&mut self, name: String, spec: ManagedWorkloadSpec) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.workloads.update_workload(&name, spec).await {
+                Ok(workload) => {
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "Updated workload {}",
+                        workload.name
+                    )));
+                    match platform.workloads.list_workloads().await {
+                        Ok(workloads) => {
+                            let _ = tx.send(TaskResult::WorkloadList(workloads));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(format!("workloads: {}", e)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("update workload failed: {}", e)));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_delete_workload(&mut self, name: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.workloads.delete_workload(&name).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!("Deleted workload {}", name)));
+                    match platform.workloads.list_workloads().await {
+                        Ok(workloads) => {
+                            let _ = tx.send(TaskResult::WorkloadList(workloads));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(format!("workloads: {}", e)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("delete workload failed: {}", e)));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_workload_action(&mut self, action: &'static str, name: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = match action {
+                "start" => platform.workloads.start_workload(&name).await,
+                "stop" => platform.workloads.stop_workload(&name).await,
+                "restart" => platform.workloads.restart_workload(&name).await,
+                "enable" => platform.workloads.enable_workload(&name).await,
+                "disable" => platform.workloads.disable_workload(&name).await,
+                _ => Ok(()),
+            };
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!("{} {} — done", action, name)));
+                    match platform.workloads.list_workloads().await {
+                        Ok(workloads) => {
+                            let _ = tx.send(TaskResult::WorkloadList(workloads));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(format!("workloads: {}", e)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!(
+                        "{} workload failed: {}",
+                        action, e
+                    )));
+                }
             }
         });
     }
@@ -1525,28 +1989,54 @@ impl App {
                 Ok((enabled, backend)) => {
                     let _ = tx.send(TaskResult::FirewallStatus { enabled, backend });
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); return; }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    return;
+                }
             }
             match platform.firewall.list_rules().await {
-                Ok(rules) => { let _ = tx.send(TaskResult::FirewallRules(rules)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(rules) => {
+                    let _ = tx.send(TaskResult::FirewallRules(rules));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
 
-    pub fn spawn_firewall_add_rule(&mut self, port: String, proto: String, from: String, action: String) {
+    pub fn spawn_firewall_add_rule(
+        &mut self,
+        port: String,
+        proto: String,
+        from: String,
+        action: String,
+    ) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            match platform.firewall.add_rule(&port, &proto, &from, &action).await {
+            match platform
+                .firewall
+                .add_rule(&port, &proto, &from, &action)
+                .await
+            {
                 Ok(()) => {
-                    let _ = tx.send(TaskResult::Status(format!("Rule added: {} {} from {}", action, port, from)));
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "Rule added: {} {} from {}",
+                        action, port, from
+                    )));
                     match platform.firewall.list_rules().await {
-                        Ok(rules) => { let _ = tx.send(TaskResult::FirewallRules(rules)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(rules) => {
+                            let _ = tx.send(TaskResult::FirewallRules(rules));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("add rule failed: {}", e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("add rule failed: {}", e)));
+                }
             }
         });
     }
@@ -1559,11 +2049,17 @@ impl App {
                 Ok(()) => {
                     let _ = tx.send(TaskResult::Status(format!("Rule {} deleted", num)));
                     match platform.firewall.list_rules().await {
-                        Ok(rules) => { let _ = tx.send(TaskResult::FirewallRules(rules)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(rules) => {
+                            let _ = tx.send(TaskResult::FirewallRules(rules));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("delete rule failed: {}", e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("delete rule failed: {}", e)));
+                }
             }
         });
     }
@@ -1575,10 +2071,15 @@ impl App {
             match platform.firewall.set_enabled(enabled).await {
                 Ok(()) => {
                     let label = if enabled { "enabled" } else { "disabled" };
-                    let _ = tx.send(TaskResult::FirewallStatus { enabled, backend: String::new() });
+                    let _ = tx.send(TaskResult::FirewallStatus {
+                        enabled,
+                        backend: String::new(),
+                    });
                     let _ = tx.send(TaskResult::Status(format!("Firewall {}", label)));
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1590,8 +2091,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match crate::core::portcheck::fetch_public_ip().await {
-                Ok(ip) => { let _ = tx.send(TaskResult::PublicIp(ip)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("public IP: {}", e))); }
+                Ok(ip) => {
+                    let _ = tx.send(TaskResult::PublicIp(ip));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("public IP: {}", e)));
+                }
             }
         });
     }
@@ -1613,8 +2118,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match crate::core::portcheck::check_ports_external(&ip, &ports).await {
-                Ok(results) => { let _ = tx.send(TaskResult::PortCheckDone { results }); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("port check: {}", e))); }
+                Ok(results) => {
+                    let _ = tx.send(TaskResult::PortCheckDone { results });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("port check: {}", e)));
+                }
             }
         });
     }
@@ -1626,8 +2135,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match crate::core::ghost::scan().await {
-                Ok(ghosts) => { let _ = tx.send(TaskResult::GhostScan(ghosts)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("ghost scan: {}", e))); }
+                Ok(ghosts) => {
+                    let _ = tx.send(TaskResult::GhostScan(ghosts));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("ghost scan: {}", e)));
+                }
             }
         });
     }
@@ -1640,12 +2153,20 @@ impl App {
         self.ssh.loading = true;
         tokio::spawn(async move {
             match platform.ssh.list_local_keys().await {
-                Ok(keys) => { let _ = tx.send(TaskResult::SshLocalKeys(keys)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(keys) => {
+                    let _ = tx.send(TaskResult::SshLocalKeys(keys));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
             match platform.ssh.list_authorized_keys().await {
-                Ok(keys) => { let _ = tx.send(TaskResult::SshAuthorizedKeys(keys)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(keys) => {
+                    let _ = tx.send(TaskResult::SshAuthorizedKeys(keys));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1727,8 +2248,12 @@ impl App {
         self.users.loading = true;
         tokio::spawn(async move {
             match platform.users.list_users().await {
-                Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(users) => {
+                    let _ = tx.send(TaskResult::UserList(users));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1742,11 +2267,17 @@ impl App {
                 Ok(()) => {
                     let _ = tx.send(TaskResult::Status(format!("User '{}' created", username)));
                     match platform.users.list_users().await {
-                        Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(users) => {
+                            let _ = tx.send(TaskResult::UserList(users));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("create user failed: {}", e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("create user failed: {}", e)));
+                }
             }
         });
     }
@@ -1756,8 +2287,15 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.users.set_password(&username, &password).await {
-                Ok(()) => { let _ = tx.send(TaskResult::Status(format!("Password set for '{}'", username))); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("set password failed: {}", e))); }
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "Password set for '{}'",
+                        username
+                    )));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("set password failed: {}", e)));
+                }
             }
         });
     }
@@ -1767,8 +2305,15 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.users.add_to_sudoers(&username).await {
-                Ok(()) => { let _ = tx.send(TaskResult::Status(format!("'{}' added to sudoers", username))); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("add to sudoers failed: {}", e))); }
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "'{}' added to sudoers",
+                        username
+                    )));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("add to sudoers failed: {}", e)));
+                }
             }
         });
     }
@@ -1783,13 +2328,22 @@ impl App {
             };
             match result {
                 Ok(()) => {
-                    let _ = tx.send(TaskResult::Status(format!("User {} {} success", username, action)));
+                    let _ = tx.send(TaskResult::Status(format!(
+                        "User {} {} success",
+                        username, action
+                    )));
                     match platform.users.list_users().await {
-                        Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
-                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                        Ok(users) => {
+                            let _ = tx.send(TaskResult::UserList(users));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(TaskResult::Error(e.to_string()));
+                        }
                     }
                 }
-                Err(e) => { let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e))); }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(format!("{} failed: {}", action, e)));
+                }
             }
         });
     }
@@ -1813,14 +2367,14 @@ impl App {
                 if let Ok(apps) = platform.wasm_cloud.list_apps().await {
                     let _ = tx.send(TaskResult::WasmCloudAppList(apps));
                 }
-                
+
                 let nats_running = platform.nats.is_running();
                 let storage_usage = platform.nats.get_storage_usage();
                 let synced = platform.nats.is_synced();
-                let _ = tx.send(TaskResult::WasmCloudNatsStatus { 
-                    running: nats_running, 
-                    storage_usage, 
-                    synced 
+                let _ = tx.send(TaskResult::WasmCloudNatsStatus {
+                    running: nats_running,
+                    storage_usage,
+                    synced,
                 });
             }
         });
@@ -1861,8 +2415,12 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.wasm_cloud.inspect_component(&target).await {
-                Ok(output) => { let _ = tx.send(TaskResult::WasmCloudInspect(output)); }
-                Err(e) => { let _ = tx.send(TaskResult::WasmCloudInspect(format!("Error: {}", e))); }
+                Ok(output) => {
+                    let _ = tx.send(TaskResult::WasmCloudInspect(output));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::WasmCloudInspect(format!("Error: {}", e)));
+                }
             }
         });
     }
@@ -1890,7 +2448,10 @@ impl App {
 
             // 5. Initialise JetStream buckets + streams (spawn_blocking internally)
             if let Err(e) = platform.nats.init_wasmcloud_buckets_async().await {
-                let _ = tx.send(TaskResult::Status(format!("NATS bucket init failed: {}", e)));
+                let _ = tx.send(TaskResult::Status(format!(
+                    "NATS bucket init failed: {}",
+                    e
+                )));
             }
 
             // 6. Emit health snapshot (TCP probe — fast, non-blocking)
@@ -1904,7 +2465,11 @@ impl App {
             .await
             .unwrap_or((false, None, false));
 
-            let _ = tx.send(TaskResult::WasmCloudNatsStatus { running, storage_usage, synced });
+            let _ = tx.send(TaskResult::WasmCloudNatsStatus {
+                running,
+                storage_usage,
+                synced,
+            });
             let _ = tx.send(TaskResult::Status(if running {
                 "✅ NATS backbone is running (port 4222)".to_string()
             } else {
@@ -1927,7 +2492,11 @@ impl App {
             })
             .await
             .unwrap_or((false, None, false));
-            let _ = tx.send(TaskResult::WasmCloudNatsStatus { running, storage_usage, synced });
+            let _ = tx.send(TaskResult::WasmCloudNatsStatus {
+                running,
+                storage_usage,
+                synced,
+            });
         });
     }
 
@@ -1937,8 +2506,12 @@ impl App {
         self.services.loading = true;
         tokio::spawn(async move {
             match platform.services.list_services().await {
-                Ok(services) => { let _ = tx.send(TaskResult::ServiceList(services)); }
-                Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                Ok(services) => {
+                    let _ = tx.send(TaskResult::ServiceList(services));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
             }
         });
     }
@@ -1957,7 +2530,11 @@ impl App {
             };
             match result {
                 Ok(()) => {
-                    let _ = tx.send(TaskResult::ServiceOpDone { name, op, success: true });
+                    let _ = tx.send(TaskResult::ServiceOpDone {
+                        name,
+                        op,
+                        success: true,
+                    });
                 }
                 Err(e) => {
                     let _ = tx.send(TaskResult::Error(format!("service {} failed: {}", op, e)));
@@ -1980,8 +2557,13 @@ impl App {
                 Ok(out) => (out, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = crate::db::audit::log_action(&pool, "maintenance", Some(&op), &output, success).await;
-            let _ = tx.send(TaskResult::MaintenanceDone { op, output, success });
+            let _ = crate::db::audit::log_action(&pool, "maintenance", Some(&op), &output, success)
+                .await;
+            let _ = tx.send(TaskResult::MaintenanceDone {
+                op,
+                output,
+                success,
+            });
         });
     }
 
@@ -1995,20 +2577,29 @@ impl App {
         match result {
             TaskResult::PackageList(pkgs) => {
                 self.packages.installed = pkgs;
-                if self.packages.installed_state.selected().is_none() && !self.packages.installed.is_empty() {
+                if self.packages.installed_state.selected().is_none()
+                    && !self.packages.installed.is_empty()
+                {
                     self.packages.installed_state.select(Some(0));
                 }
             }
             TaskResult::PackagesUpdated(updated) => {
                 // Merge: update existing entries or append new ones
                 for pkg in updated {
-                    if let Some(existing) = self.packages.installed.iter_mut().find(|p| p.name == pkg.name) {
+                    if let Some(existing) = self
+                        .packages
+                        .installed
+                        .iter_mut()
+                        .find(|p| p.name == pkg.name)
+                    {
                         *existing = pkg;
                     } else {
                         self.packages.installed.push(pkg);
                     }
                 }
-                if self.packages.installed_state.selected().is_none() && !self.packages.installed.is_empty() {
+                if self.packages.installed_state.selected().is_none()
+                    && !self.packages.installed.is_empty()
+                {
                     self.packages.installed_state.select(Some(0));
                 }
             }
@@ -2019,18 +2610,35 @@ impl App {
                 }
             }
             TaskResult::OpProgress { op, target, line } => {
-                if let Some(entry) = self.packages.queue.iter_mut()
+                if let Some(entry) = self
+                    .packages
+                    .queue
+                    .iter_mut()
                     .find(|e| e.target == target && e.kind == op)
                 {
-                    if !entry.output.is_empty() { entry.output.push('\n'); }
+                    if !entry.output.is_empty() {
+                        entry.output.push('\n');
+                    }
                     entry.output.push_str(&line);
                 }
             }
-            TaskResult::OpDone { op, target, output, success } => {
-                if let Some(entry) = self.packages.queue.iter_mut()
+            TaskResult::OpDone {
+                op,
+                target,
+                output,
+                success,
+            } => {
+                if let Some(entry) = self
+                    .packages
+                    .queue
+                    .iter_mut()
                     .find(|e| e.target == target && e.kind == op)
                 {
-                    entry.status = if success { OpStatus::Done } else { OpStatus::Failed };
+                    entry.status = if success {
+                        OpStatus::Done
+                    } else {
+                        OpStatus::Failed
+                    };
                     // If no streaming happened (non-apt managers), populate output now
                     if entry.output.is_empty() {
                         entry.output = output.clone();
@@ -2062,7 +2670,9 @@ impl App {
             }
             TaskResult::ProcessList(procs) => {
                 self.processes.list = procs;
-                if self.processes.table_state.selected().is_none() && !self.processes.list.is_empty() {
+                if self.processes.table_state.selected().is_none()
+                    && !self.processes.list.is_empty()
+                {
                     self.processes.table_state.select(Some(0));
                 }
             }
@@ -2074,7 +2684,11 @@ impl App {
                     self.security.list_state.select(Some(0));
                 }
             }
-            TaskResult::SecurityApply { id, output, success } => {
+            TaskResult::SecurityApply {
+                id,
+                output,
+                success,
+            } => {
                 self.status_msg = Some(if success {
                     format!("Applied fix {} — {}", id, output)
                 } else {
@@ -2088,11 +2702,18 @@ impl App {
                 self.security.f2b_loading = false;
                 self.security.f2b_installed = true;
                 self.security.jailed = jailed;
-                if self.security.jailed_state.selected().is_none() && !self.security.jailed.is_empty() {
+                if self.security.jailed_state.selected().is_none()
+                    && !self.security.jailed.is_empty()
+                {
                     self.security.jailed_state.select(Some(0));
                 }
             }
-            TaskResult::Fail2BanActionDone { ip, jail, action, success } => {
+            TaskResult::Fail2BanActionDone {
+                ip,
+                jail,
+                action,
+                success,
+            } => {
                 self.status_msg = Some(if success {
                     format!("{} {} from {} — done", action, ip, jail)
                 } else {
@@ -2128,7 +2749,8 @@ impl App {
             TaskResult::TunnelConfigContent(content) => {
                 // Auto-detect active tunnel from the tunnel: field in config.yaml
                 if self.tunnel.active_tunnel_id.is_none() {
-                    if let Some(id) = content.lines()
+                    if let Some(id) = content
+                        .lines()
                         .find(|l| l.trim_start().starts_with("tunnel:"))
                         .and_then(|l| l.splitn(2, ':').nth(1))
                         .map(|s| s.trim().to_string())
@@ -2171,7 +2793,9 @@ impl App {
             }
             TaskResult::DockerContainerList(containers) => {
                 self.docker.containers = containers;
-                if self.docker.containers_state.selected().is_none() && !self.docker.containers.is_empty() {
+                if self.docker.containers_state.selected().is_none()
+                    && !self.docker.containers.is_empty()
+                {
                     self.docker.containers_state.select(Some(0));
                 }
             }
@@ -2183,13 +2807,34 @@ impl App {
             }
             TaskResult::DockerComposeList(services) => {
                 self.docker.compose_services = services;
-                if self.docker.compose_state.selected().is_none() && !self.docker.compose_services.is_empty() {
+                if self.docker.compose_state.selected().is_none()
+                    && !self.docker.compose_services.is_empty()
+                {
                     self.docker.compose_state.select(Some(0));
+                }
+            }
+            TaskResult::WorkloadCapabilities(capabilities) => {
+                self.docker.workloads.capabilities = Some(capabilities);
+            }
+            TaskResult::WorkloadList(workloads) => {
+                self.docker.workloads.workloads = workloads;
+                if self.docker.workloads.workloads.is_empty() {
+                    self.docker.workloads.table_state.select(None);
+                } else if self.docker.workloads.table_state.selected().is_none() {
+                    self.docker.workloads.table_state.select(Some(0));
+                } else if let Some(selected) = self.docker.workloads.table_state.selected() {
+                    let last = self.docker.workloads.workloads.len().saturating_sub(1);
+                    self.docker
+                        .workloads
+                        .table_state
+                        .select(Some(selected.min(last)));
                 }
             }
             TaskResult::ManagedServiceList(services) => {
                 self.docker.managed_services = services;
-                if self.docker.managed_state.selected().is_none() && !self.docker.managed_services.is_empty() {
+                if self.docker.managed_state.selected().is_none()
+                    && !self.docker.managed_services.is_empty()
+                {
                     self.docker.managed_state.select(Some(0));
                 }
             }
@@ -2199,7 +2844,8 @@ impl App {
             }
             TaskResult::FirewallRules(rules) => {
                 self.firewall.rules = rules;
-                if self.firewall.table_state.selected().is_none() && !self.firewall.rules.is_empty() {
+                if self.firewall.table_state.selected().is_none() && !self.firewall.rules.is_empty()
+                {
                     self.firewall.table_state.select(Some(0));
                 }
             }
@@ -2210,7 +2856,9 @@ impl App {
             TaskResult::PortCheckDone { results } => {
                 self.portchecker.checking = false;
                 for (port, status) in results {
-                    if let Some(entry) = self.portchecker.entries.iter_mut().find(|e| e.port == port) {
+                    if let Some(entry) =
+                        self.portchecker.entries.iter_mut().find(|e| e.port == port)
+                    {
                         entry.status = status;
                     }
                 }
@@ -2225,11 +2873,17 @@ impl App {
             TaskResult::SshAuthorizedKeys(keys) => {
                 self.ssh.authorized_keys = keys;
                 self.ssh.loading = false;
-                if self.ssh.authorized_state.selected().is_none() && !self.ssh.authorized_keys.is_empty() {
+                if self.ssh.authorized_state.selected().is_none()
+                    && !self.ssh.authorized_keys.is_empty()
+                {
                     self.ssh.authorized_state.select(Some(0));
                 }
             }
-            TaskResult::SshOpDone { op, success, output } => {
+            TaskResult::SshOpDone {
+                op,
+                success,
+                output,
+            } => {
                 self.status_msg = Some(if success {
                     if op == "generate" {
                         format!("Key generated: {}", output)
@@ -2251,26 +2905,36 @@ impl App {
             }
             TaskResult::WasmCloudHostList(hosts) => {
                 self.wasm_cloud.hosts = hosts;
-                if self.wasm_cloud.hosts_state.selected().is_none() && !self.wasm_cloud.hosts.is_empty() {
+                if self.wasm_cloud.hosts_state.selected().is_none()
+                    && !self.wasm_cloud.hosts.is_empty()
+                {
                     self.wasm_cloud.hosts_state.select(Some(0));
                 }
             }
             TaskResult::WasmCloudComponentList(components) => {
                 self.wasm_cloud.components = components;
-                if self.wasm_cloud.components_state.selected().is_none() && !self.wasm_cloud.components.is_empty() {
+                if self.wasm_cloud.components_state.selected().is_none()
+                    && !self.wasm_cloud.components.is_empty()
+                {
                     self.wasm_cloud.components_state.select(Some(0));
                 }
             }
             TaskResult::WasmCloudAppList(apps) => {
                 self.wasm_cloud.apps = apps;
-                if self.wasm_cloud.apps_state.selected().is_none() && !self.wasm_cloud.apps.is_empty() {
+                if self.wasm_cloud.apps_state.selected().is_none()
+                    && !self.wasm_cloud.apps.is_empty()
+                {
                     self.wasm_cloud.apps_state.select(Some(0));
                 }
             }
             TaskResult::WasmCloudInspect(output) => {
                 self.wasm_cloud.inspect_output = Some(output);
             }
-            TaskResult::WasmCloudNatsStatus { running, storage_usage, synced } => {
+            TaskResult::WasmCloudNatsStatus {
+                running,
+                storage_usage,
+                synced,
+            } => {
                 self.wasm_cloud.nats_running = running;
                 self.wasm_cloud.nats_storage_usage = storage_usage;
                 self.wasm_cloud.nats_synced = synced;
@@ -2285,7 +2949,8 @@ impl App {
             TaskResult::ServiceList(services) => {
                 self.services.list = services;
                 self.services.loading = false;
-                if self.services.table_state.selected().is_none() && !self.services.list.is_empty() {
+                if self.services.table_state.selected().is_none() && !self.services.list.is_empty()
+                {
                     self.services.table_state.select(Some(0));
                 }
             }
@@ -2297,7 +2962,11 @@ impl App {
                 });
                 self.spawn_load_services();
             }
-            TaskResult::MaintenanceDone { op, output, success } => {
+            TaskResult::MaintenanceDone {
+                op,
+                output,
+                success,
+            } => {
                 self.maintenance.running_op = None;
                 self.maintenance.last_output = output;
                 self.status_msg = Some(if success {
@@ -2336,7 +3005,9 @@ impl App {
             Screen::Dashboard => {
                 if let Ok(cpu) = self.platform.system.cpu_pct().await {
                     self.dashboard.cpu_pct = cpu.clone();
-                    let avg = if cpu.is_empty() { 0 } else {
+                    let avg = if cpu.is_empty() {
+                        0
+                    } else {
                         (cpu.iter().sum::<f32>() / cpu.len() as f32) as u64
                     };
                     if self.resources.cpu_history.is_empty() {
@@ -2345,15 +3016,23 @@ impl App {
                     for (i, &c) in cpu.iter().enumerate() {
                         if let Some(h) = self.resources.cpu_history.get_mut(i) {
                             h.push(c as u64);
-                            if h.len() > 60 { h.remove(0); }
+                            if h.len() > 60 {
+                                h.remove(0);
+                            }
                         }
                     }
                     let _ = avg;
                 }
                 if let Ok(mem) = self.platform.system.mem().await {
-                    let pct = if mem.total > 0 { mem.used * 100 / mem.total } else { 0 };
+                    let pct = if mem.total > 0 {
+                        mem.used * 100 / mem.total
+                    } else {
+                        0
+                    };
                     self.resources.mem_history.push(pct);
-                    if self.resources.mem_history.len() > 60 { self.resources.mem_history.remove(0); }
+                    if self.resources.mem_history.len() > 60 {
+                        self.resources.mem_history.remove(0);
+                    }
                     self.dashboard.mem = Some(mem);
                 }
                 if self.dashboard.os_info.is_none() {
@@ -2371,8 +3050,12 @@ impl App {
                     let tx_delta = net.tx_bytes.saturating_sub(self.resources.last_net_tx);
                     self.resources.net_rx_history.push(rx_delta / 1024);
                     self.resources.net_tx_history.push(tx_delta / 1024);
-                    if self.resources.net_rx_history.len() > 60 { self.resources.net_rx_history.remove(0); }
-                    if self.resources.net_tx_history.len() > 60 { self.resources.net_tx_history.remove(0); }
+                    if self.resources.net_rx_history.len() > 60 {
+                        self.resources.net_rx_history.remove(0);
+                    }
+                    if self.resources.net_tx_history.len() > 60 {
+                        self.resources.net_tx_history.remove(0);
+                    }
                     self.resources.last_net_rx = net.rx_bytes;
                     self.resources.last_net_tx = net.tx_bytes;
                 }
@@ -2382,7 +3065,8 @@ impl App {
             }
             Screen::WasmCloud => {
                 // Poll NATS health every 20 ticks (~5 s)
-                self.wasm_cloud.nats_poll_counter = self.wasm_cloud.nats_poll_counter.wrapping_add(1);
+                self.wasm_cloud.nats_poll_counter =
+                    self.wasm_cloud.nats_poll_counter.wrapping_add(1);
                 if self.wasm_cloud.nats_poll_counter % 20 == 0 {
                     self.spawn_poll_nats_status();
                 }

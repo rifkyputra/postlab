@@ -56,7 +56,11 @@ impl CaddyManager {
                     }
                 }
                 if !domain.is_empty() && port > 0 {
-                    routes.push(Route { domain, port, tls: true });
+                    routes.push(Route {
+                        domain,
+                        port,
+                        tls: true,
+                    });
                 }
             }
         }

@@ -16,10 +16,10 @@ pub enum PortStatus {
 impl PortStatus {
     pub fn label(&self) -> &str {
         match self {
-            PortStatus::Unknown  => "?",
+            PortStatus::Unknown => "?",
             PortStatus::Checking => "…",
-            PortStatus::Open     => "OPEN",
-            PortStatus::Closed   => "CLOSED",
+            PortStatus::Open => "OPEN",
+            PortStatus::Closed => "CLOSED",
             PortStatus::Error(_) => "ERR",
         }
     }
@@ -27,11 +27,11 @@ impl PortStatus {
     pub fn color(&self) -> ratatui::style::Color {
         use ratatui::style::Color;
         match self {
-            PortStatus::Open     => Color::Green,
-            PortStatus::Closed   => Color::Red,
+            PortStatus::Open => Color::Green,
+            PortStatus::Closed => Color::Red,
             PortStatus::Checking => Color::Yellow,
             PortStatus::Error(_) => Color::Magenta,
-            PortStatus::Unknown  => Color::DarkGray,
+            PortStatus::Unknown => Color::DarkGray,
         }
     }
 }
@@ -47,16 +47,20 @@ pub struct PortEntry {
 
 impl PortEntry {
     pub fn new(port: u16, label: impl Into<String>) -> Self {
-        Self { port, label: label.into(), status: PortStatus::Unknown }
+        Self {
+            port,
+            label: label.into(),
+            status: PortStatus::Unknown,
+        }
     }
 }
 
 /// Common homelab port presets.
 pub fn default_entries() -> Vec<PortEntry> {
     vec![
-        PortEntry::new(22,   "SSH"),
-        PortEntry::new(80,   "HTTP"),
-        PortEntry::new(443,  "HTTPS"),
+        PortEntry::new(22, "SSH"),
+        PortEntry::new(80, "HTTP"),
+        PortEntry::new(443, "HTTPS"),
         PortEntry::new(3000, "Postlab API"),
         PortEntry::new(8080, "HTTP Alt"),
         PortEntry::new(8443, "HTTPS Alt"),
@@ -68,7 +72,14 @@ pub fn default_entries() -> Vec<PortEntry> {
 /// Fetches the machine's current public IP by calling api.ipify.org.
 pub async fn fetch_public_ip() -> Result<String> {
     let out = Command::new("curl")
-        .args(["-s", "--connect-timeout", "5", "-m", "8", "https://api.ipify.org"])
+        .args([
+            "-s",
+            "--connect-timeout",
+            "5",
+            "-m",
+            "8",
+            "https://api.ipify.org",
+        ])
         .output()
         .await?;
 
@@ -79,7 +90,10 @@ pub async fn fetch_public_ip() -> Result<String> {
     }
 
     // Rough IP validation: digits, dots, colons (IPv6)
-    if !ip.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == ':') {
+    if !ip
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == ':')
+    {
         bail!("unexpected response: {}", ip);
     }
 
@@ -113,11 +127,16 @@ pub async fn check_ports_external(ip: &str, ports: &[u16]) -> Result<Vec<(u16, P
     let out = Command::new("curl")
         .args([
             "-s",
-            "--connect-timeout", "10",
-            "-m", "30",
-            "-X", "POST",
-            "-H", "Content-Type: application/json",
-            "-d", &body,
+            "--connect-timeout",
+            "10",
+            "-m",
+            "30",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &body,
             "https://portchecker.co/api/v1/query",
         ])
         .output()
@@ -131,14 +150,18 @@ pub async fn check_ports_external(ip: &str, ports: &[u16]) -> Result<Vec<(u16, P
     let resp: CheckResponse = serde_json::from_str(&raw)
         .map_err(|e| anyhow::anyhow!("portchecker.co parse error: {} — raw: {}", e, raw))?;
 
-    let results = resp.ports.into_iter().map(|r| {
-        let status = match r.status.as_str() {
-            "open"   => PortStatus::Open,
-            "closed" => PortStatus::Closed,
-            other    => PortStatus::Error(other.to_string()),
-        };
-        (r.port, status)
-    }).collect();
+    let results = resp
+        .ports
+        .into_iter()
+        .map(|r| {
+            let status = match r.status.as_str() {
+                "open" => PortStatus::Open,
+                "closed" => PortStatus::Closed,
+                other => PortStatus::Error(other.to_string()),
+            };
+            (r.port, status)
+        })
+        .collect();
 
     Ok(results)
 }

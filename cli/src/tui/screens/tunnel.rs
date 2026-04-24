@@ -11,7 +11,11 @@ use crate::tui::app::{App, InputMode, TunnelPanel};
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     let cols = Layout::default()
@@ -47,8 +51,11 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
         Span::raw(" cloudflared  "),
         Span::styled(version, Style::default().fg(Color::DarkGray)),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().title(" Cloudflare Tunnel ").borders(Borders::ALL));
+    let p = Paragraph::new(text).block(
+        Block::default()
+            .title(" Cloudflare Tunnel ")
+            .borders(Borders::ALL),
+    );
     f.render_widget(p, area);
 }
 
@@ -74,47 +81,63 @@ fn render_tunnels(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             )),
         ];
-        let list = List::new(items)
-            .block(Block::default().title(" Tunnels ").borders(Borders::ALL));
+        let list =
+            List::new(items).block(Block::default().title(" Tunnels ").borders(Borders::ALL));
         f.render_widget(list, area);
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-    let headers = Row::new([
-        Cell::from("Name"),
-        Cell::from("ID"),
-        Cell::from("Status"),
-    ])
-    .style(header_style);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let headers =
+        Row::new([Cell::from("Name"), Cell::from("ID"), Cell::from("Status")]).style(header_style);
 
-    let rows: Vec<Row> = app.tunnel.tunnels
+    let rows: Vec<Row> = app
+        .tunnel
+        .tunnels
         .iter()
         .map(|t| {
             let is_active = app.tunnel.active_tunnel_id.as_deref() == Some(t.id.as_str());
             let name_cell = if is_active {
-                Cell::from(format!("★ {}", t.name))
-                    .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+                Cell::from(format!("★ {}", t.name)).style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
             } else {
-                Cell::from(t.name.as_str())
-                    .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+                Cell::from(t.name.as_str()).style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                )
             };
-            let status_color = if t.status == "active" { Color::Green } else { Color::DarkGray };
+            let status_color = if t.status == "active" {
+                Color::Green
+            } else {
+                Color::DarkGray
+            };
             Row::new([
                 name_cell,
-                Cell::from(&t.id[..t.id.len().min(12)])
-                    .style(Style::default().fg(Color::DarkGray)),
-                Cell::from(t.status.as_str())
-                    .style(Style::default().fg(status_color)),
+                Cell::from(&t.id[..t.id.len().min(12)]).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(t.status.as_str()).style(Style::default().fg(status_color)),
             ])
         })
         .collect();
 
-    let widths = [Constraint::Fill(1), Constraint::Length(14), Constraint::Length(10)];
+    let widths = [
+        Constraint::Fill(1),
+        Constraint::Length(14),
+        Constraint::Length(10),
+    ];
     let count = rows.len();
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Tunnels ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Tunnels ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -130,23 +153,26 @@ fn render_right_panel(f: &mut Frame, app: &App, area: Rect) {
 
     // ── Service status ────────────────────────────────────────────────────
     let (active_dot, active_color, active_label) = match app.tunnel.service_active {
-        Some(true)  => ("●", Color::Green,  "active"),
-        Some(false) => ("●", Color::Red,    "inactive"),
-        None        => ("○", Color::DarkGray, "unknown"),
+        Some(true) => ("●", Color::Green, "active"),
+        Some(false) => ("●", Color::Red, "inactive"),
+        None => ("○", Color::DarkGray, "unknown"),
     };
     let (enabled_label, enabled_color) = match app.tunnel.service_enabled {
-        Some(true)  => ("enabled",  Color::Green),
+        Some(true) => ("enabled", Color::Green),
         Some(false) => ("disabled", Color::Yellow),
-        None        => ("?",        Color::DarkGray),
+        None => ("?", Color::DarkGray),
     };
     let svc_line = Line::from(vec![
         Span::styled(active_dot, Style::default().fg(active_color)),
         Span::raw(format!(" cloudflared  {active_label}  ")),
         Span::styled(enabled_label, Style::default().fg(enabled_color)),
-        Span::styled("  [T]start [X]stop [R]restart [u]sync", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "  [T]start [X]stop [R]restart [u]sync",
+            Style::default().fg(Color::DarkGray),
+        ),
     ]);
-    let svc_block = Paragraph::new(svc_line)
-        .block(Block::default().title(" Service ").borders(Borders::ALL));
+    let svc_block =
+        Paragraph::new(svc_line).block(Block::default().title(" Service ").borders(Borders::ALL));
     f.render_widget(svc_block, chunks[0]);
 
     // ── Ingress rules list ────────────────────────────────────────────────
@@ -171,17 +197,28 @@ fn render_right_panel(f: &mut Frame, app: &App, area: Rect) {
             }
             _ => "(no named ingress entries — only catch-all)",
         };
-        let p = Paragraph::new(Span::styled(msg, Style::default().fg(Color::DarkGray)))
-            .block(Block::default().title(title).borders(Borders::ALL).border_style(border_style));
+        let p = Paragraph::new(Span::styled(msg, Style::default().fg(Color::DarkGray))).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        );
         f.render_widget(p, chunks[1]);
         return;
     }
 
-    let items: Vec<ListItem> = app.tunnel.ingress_entries
+    let items: Vec<ListItem> = app
+        .tunnel
+        .ingress_entries
         .iter()
         .map(|(host, svc)| {
             ListItem::new(Line::from(vec![
-                Span::styled(host.as_str(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    host.as_str(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("  →  ", Style::default().fg(Color::DarkGray)),
                 Span::styled(svc.as_str(), Style::default().fg(Color::White)),
             ]))
@@ -192,11 +229,23 @@ fn render_right_panel(f: &mut Frame, app: &App, area: Rect) {
     let list = List::new(items)
         .block(
             Block::default()
-                .title(format!(" Ingress ({})  {} ", count, if ingress_focused { "[e]edit  [D]del  [f]switch" } else { "[f]focus" }))
+                .title(format!(
+                    " Ingress ({})  {} ",
+                    count,
+                    if ingress_focused {
+                        "[e]edit  [D]del  [f]switch"
+                    } else {
+                        "[f]focus"
+                    }
+                ))
                 .borders(Borders::ALL)
                 .border_style(border_style),
         )
-        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("› ");
 
     let mut state = app.tunnel.ingress_state.clone();
@@ -235,20 +284,42 @@ fn render_input_popup(f: &mut Frame, app: &App, area: Rect) {
         .split(popup_area);
 
     let field_style = |focus: usize, current: usize| {
-        if focus == current { Style::default().fg(Color::Yellow) } else { Style::default() }
+        if focus == current {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        }
     };
     let cursor = "█";
-    let cursor_if = |idx: usize| if app.tunnel.input_focus == idx { cursor } else { "" };
+    let cursor_if = |idx: usize| {
+        if app.tunnel.input_focus == idx {
+            cursor
+        } else {
+            ""
+        }
+    };
 
     let name_p = Paragraph::new(format!("{}{}", app.tunnel.input_name, cursor_if(0)))
         .style(field_style(app.tunnel.input_focus, 0))
-        .block(Block::default().title(" Tunnel Name ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Tunnel Name ")
+                .borders(Borders::ALL),
+        );
     let host_p = Paragraph::new(format!("{}{}", app.tunnel.input_host, cursor_if(1)))
         .style(field_style(app.tunnel.input_focus, 1))
-        .block(Block::default().title(" Hostname (e.g. app.example.com) ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Hostname (e.g. app.example.com) ")
+                .borders(Borders::ALL),
+        );
     let svc_p = Paragraph::new(format!("{}{}", app.tunnel.input_service, cursor_if(2)))
         .style(field_style(app.tunnel.input_focus, 2))
-        .block(Block::default().title(" Service (e.g. localhost:3000) ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Service (e.g. localhost:3000) ")
+                .borders(Borders::ALL),
+        );
     let hints = Paragraph::new(Span::styled(
         " [Tab] next  [Enter] create  [Esc] cancel ",
         Style::default().fg(Color::DarkGray),
@@ -261,7 +332,10 @@ fn render_input_popup(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_add_domain_popup(f: &mut Frame, app: &App, area: Rect) {
-    let selected_name = app.tunnel.table_state.selected()
+    let selected_name = app
+        .tunnel
+        .table_state
+        .selected()
         .and_then(|i| app.tunnel.tunnels.get(i))
         .map(|t| t.name.as_str())
         .unwrap_or("?");
@@ -279,19 +353,35 @@ fn render_add_domain_popup(f: &mut Frame, app: &App, area: Rect) {
         .split(popup_area);
 
     let field_style = |focus: usize, current: usize| {
-        if focus == current { Style::default().fg(Color::Yellow) } else { Style::default() }
+        if focus == current {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        }
     };
     let cursor = "█";
-    let cursor_if = |idx: usize| if app.tunnel.input_focus == idx { cursor } else { "" };
+    let cursor_if = |idx: usize| {
+        if app.tunnel.input_focus == idx {
+            cursor
+        } else {
+            ""
+        }
+    };
 
     let host_p = Paragraph::new(format!("{}{}", app.tunnel.input_host, cursor_if(0)))
         .style(field_style(app.tunnel.input_focus, 0))
-        .block(Block::default()
-            .title(format!(" Hostname — tunnel: {} ", selected_name))
-            .borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(format!(" Hostname — tunnel: {} ", selected_name))
+                .borders(Borders::ALL),
+        );
     let svc_p = Paragraph::new(format!("{}{}", app.tunnel.input_service, cursor_if(1)))
         .style(field_style(app.tunnel.input_focus, 1))
-        .block(Block::default().title(" Service (e.g. localhost:8080) ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Service (e.g. localhost:8080) ")
+                .borders(Borders::ALL),
+        );
     let hints = Paragraph::new(Span::styled(
         " [Tab] next field  [Enter] add  [Esc] cancel ",
         Style::default().fg(Color::DarkGray),
@@ -316,17 +406,31 @@ fn render_edit_ingress_popup(f: &mut Frame, app: &App, area: Rect) {
         .split(popup_area);
 
     let field_style = |focus: usize, current: usize| {
-        if focus == current { Style::default().fg(Color::Yellow) } else { Style::default() }
+        if focus == current {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        }
     };
     let cursor = "█";
-    let cursor_if = |idx: usize| if app.tunnel.input_focus == idx { cursor } else { "" };
+    let cursor_if = |idx: usize| {
+        if app.tunnel.input_focus == idx {
+            cursor
+        } else {
+            ""
+        }
+    };
 
     let host_p = Paragraph::new(format!("{}{}", app.tunnel.input_host, cursor_if(0)))
         .style(field_style(app.tunnel.input_focus, 0))
         .block(Block::default().title(" Hostname ").borders(Borders::ALL));
     let svc_p = Paragraph::new(format!("{}{}", app.tunnel.input_service, cursor_if(1)))
         .style(field_style(app.tunnel.input_focus, 1))
-        .block(Block::default().title(" Service (e.g. localhost:8080) ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Service (e.g. localhost:8080) ")
+                .borders(Borders::ALL),
+        );
     let hints = Paragraph::new(Span::styled(
         " [Tab] next field  [Enter] save  [Esc] cancel ",
         Style::default().fg(Color::DarkGray),
@@ -341,5 +445,10 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let x = r.x + (r.width.saturating_sub(r.width * percent_x / 100)) / 2;
     let w = r.width * percent_x / 100;
     let y = r.y + (r.height.saturating_sub(height)) / 2;
-    Rect { x, y, width: w, height }
+    Rect {
+        x,
+        y,
+        width: w,
+        height,
+    }
 }

@@ -36,7 +36,11 @@ impl TunnelManager for CloudflareManager {
             .ok()?;
         // cloudflared writes version to stderr, not stdout
         let s = String::from_utf8_lossy(&out.stderr);
-        let s = if s.trim().is_empty() { String::from_utf8_lossy(&out.stdout) } else { s };
+        let s = if s.trim().is_empty() {
+            String::from_utf8_lossy(&out.stdout)
+        } else {
+            s
+        };
         Some(s.trim().to_string())
     }
 
@@ -55,16 +59,27 @@ impl TunnelManager for CloudflareManager {
         if crate::core::packages::which("dnf") || crate::core::packages::which("yum") {
             // Official Cloudflare method: use the pre-built .repo file.
             // This lets dnf/yum handle GPG verification — no manual rpm --import needed.
-            let pm = if crate::core::packages::which("dnf") { "dnf" } else { "yum" };
-            let script = format!(r#"
+            let pm = if crate::core::packages::which("dnf") {
+                "dnf"
+            } else {
+                "yum"
+            };
+            let script = format!(
+                r#"
                 curl -fsSL https://pkg.cloudflare.com/cloudflared.repo | sudo tee /etc/yum.repos.d/cloudflared.repo
                 sudo {pm} update -y
                 sudo {pm} install -y cloudflared
-            "#, pm = pm);
+            "#,
+                pm = pm
+            );
             return crate::core::packages::run_cmd("sh", &["-c", &script]).await;
         }
         if crate::core::packages::which("pacman") {
-            return crate::core::packages::run_cmd("sh", &["-c", "pacman -Sy --noconfirm cloudflared"]).await;
+            return crate::core::packages::run_cmd(
+                "sh",
+                &["-c", "pacman -Sy --noconfirm cloudflared"],
+            )
+            .await;
         }
         if crate::core::packages::which("brew") {
             // Delegate to BrewManager which handles the root→sudo-u-SUDO_USER case.
@@ -95,7 +110,11 @@ impl TunnelManager for CloudflareManager {
         if crate::core::packages::which("dnf") || crate::core::packages::which("yum") {
             // Official Cloudflare method: use the pre-built .repo file.
             // This lets dnf/yum handle GPG verification — no manual rpm --import needed.
-            let pm = if crate::core::packages::which("dnf") { "dnf" } else { "yum" };
+            let pm = if crate::core::packages::which("dnf") {
+                "dnf"
+            } else {
+                "yum"
+            };
             let script = format!(
                 "curl -fsSL https://pkg.cloudflare.com/cloudflared.repo | sudo tee /etc/yum.repos.d/cloudflared.repo && \
                  sudo {pm} update -y && \
@@ -105,7 +124,8 @@ impl TunnelManager for CloudflareManager {
             return run_cmd_streaming("sh", &["-c", &script], tx).await;
         }
         if crate::core::packages::which("pacman") {
-            return run_cmd_streaming("sh", &["-c", "pacman -Sy --noconfirm cloudflared"], tx).await;
+            return run_cmd_streaming("sh", &["-c", "pacman -Sy --noconfirm cloudflared"], tx)
+                .await;
         }
         if crate::core::packages::which("brew") {
             use crate::core::packages::PackageManager;
@@ -143,7 +163,8 @@ impl TunnelManager for CloudflareManager {
         // cloudflared writes "INF Created tunnel <name> with id <uuid>" to stderr, not stdout.
         let raw = tokio::process::Command::new("cloudflared")
             .args(["tunnel", "create", name])
-            .output().await?;
+            .output()
+            .await?;
         let combined = format!(
             "{}\n{}",
             String::from_utf8_lossy(&raw.stdout),
@@ -159,9 +180,16 @@ impl TunnelManager for CloudflareManager {
             .unwrap_or("")
             .to_string();
         if id.is_empty() {
-            anyhow::bail!("could not parse tunnel id from cloudflared output: {}", combined.trim());
+            anyhow::bail!(
+                "could not parse tunnel id from cloudflared output: {}",
+                combined.trim()
+            );
         }
-        Ok(Tunnel { name: name.to_string(), id, status: "created".to_string() })
+        Ok(Tunnel {
+            name: name.to_string(),
+            id,
+            status: "created".to_string(),
+        })
     }
 
     async fn add_route(&self, route: TunnelRoute) -> Result<()> {
@@ -181,10 +209,12 @@ impl TunnelManager for CloudflareManager {
             // Write the LaunchAgent plist pointing to this tunnel's per-tunnel config,
             // then load it. Uses `cloudflared tunnel run` — no cert.pem required.
             let home = real_home();
-            let cfg  = tunnel_config_path(tunnel_id);
+            let cfg = tunnel_config_path(tunnel_id);
 
             let which = tokio::process::Command::new("which")
-                .arg("cloudflared").output().await?;
+                .arg("cloudflared")
+                .output()
+                .await?;
             let binary = String::from_utf8_lossy(&which.stdout).trim().to_string();
             if binary.is_empty() {
                 anyhow::bail!("cloudflared not found in PATH — install it first ([i])");
@@ -217,14 +247,25 @@ impl TunnelManager for CloudflareManager {
 
             // Unload stale copy if present, then load (registers + starts)
             let _ = tokio::process::Command::new("launchctl")
-                .args(["unload", &plist_path]).output().await;
+                .args(["unload", &plist_path])
+                .output()
+                .await;
             let out = tokio::process::Command::new("launchctl")
-                .args(["load", &plist_path]).output().await?;
+                .args(["load", &plist_path])
+                .output()
+                .await?;
             if out.status.success() {
                 Ok(())
             } else {
                 let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                anyhow::bail!("{}", if msg.is_empty() { "launchctl load failed".to_string() } else { msg })
+                anyhow::bail!(
+                    "{}",
+                    if msg.is_empty() {
+                        "launchctl load failed".to_string()
+                    } else {
+                        msg
+                    }
+                )
             }
         }
         #[cfg(not(target_os = "macos"))]
@@ -243,20 +284,27 @@ impl TunnelManager for CloudflareManager {
                 tokio::fs::write(&src, minimal).await?;
             }
             let out = tokio::process::Command::new("sh")
-                .args(["-c", &format!(
-                    "sudo mkdir -p /etc/cloudflared && \
+                .args([
+                    "-c",
+                    &format!(
+                        "sudo mkdir -p /etc/cloudflared && \
                      sudo cp {src} /etc/cloudflared/config.yml && \
                      sudo cloudflared --config /etc/cloudflared/config.yml service install"
-                )])
-                .output().await?;
-            if out.status.success() { Ok(()) } else {
+                    ),
+                ])
+                .output()
+                .await?;
+            if out.status.success() {
+                Ok(())
+            } else {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim())
             }
         }
     }
 
     async fn config_content(&self, tunnel_id: &str) -> Result<String> {
-        Ok(tokio::fs::read_to_string(tunnel_config_path(tunnel_id)).await
+        Ok(tokio::fs::read_to_string(tunnel_config_path(tunnel_id))
+            .await
             .unwrap_or_else(|_| format!("(~/.cloudflared/{}.yaml not found)", tunnel_id)))
     }
 
@@ -295,13 +343,19 @@ impl TunnelManager for CloudflareManager {
         {
             let src = format!("{}/config.yml", cf_dir());
             let out = tokio::process::Command::new("sh")
-                .args(["-c", &format!(
-                    "sudo mkdir -p /etc/cloudflared && \
+                .args([
+                    "-c",
+                    &format!(
+                        "sudo mkdir -p /etc/cloudflared && \
                      sudo cp {src} /etc/cloudflared/config.yml && \
                      sudo systemctl restart cloudflared"
-                )])
-                .output().await?;
-            if out.status.success() { Ok(()) } else {
+                    ),
+                ])
+                .output()
+                .await?;
+            if out.status.success() {
+                Ok(())
+            } else {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim())
             }
         }
@@ -328,16 +382,20 @@ async fn svc_status() -> Result<(bool, bool)> {
     {
         let home = real_home();
         // Enabled = LaunchAgent or LaunchDaemon plist exists
-        let user_plist  = format!("{}/Library/LaunchAgents/{}", home, CF_PLIST);
-        let sys_plist   = format!("/Library/LaunchDaemons/{}", CF_PLIST);
-        let enabled = std::path::Path::new(&user_plist).exists()
-            || std::path::Path::new(&sys_plist).exists();
+        let user_plist = format!("{}/Library/LaunchAgents/{}", home, CF_PLIST);
+        let sys_plist = format!("/Library/LaunchDaemons/{}", CF_PLIST);
+        let enabled =
+            std::path::Path::new(&user_plist).exists() || std::path::Path::new(&sys_plist).exists();
 
         // Active = label appears in `launchctl list` with a numeric PID (not "-")
         // Output columns: PID   Status  Label
         let out = tokio::process::Command::new("sh")
-            .args(["-c", &format!("launchctl list 2>/dev/null | grep {}", CF_LABEL)])
-            .output().await
+            .args([
+                "-c",
+                &format!("launchctl list 2>/dev/null | grep {}", CF_LABEL),
+            ])
+            .output()
+            .await
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
         // First column is "-" when stopped, a number when running.
@@ -349,10 +407,16 @@ async fn svc_status() -> Result<(bool, bool)> {
     {
         let active = tokio::process::Command::new("systemctl")
             .args(["is-active", "--quiet", "cloudflared"])
-            .output().await.map(|o| o.status.success()).unwrap_or(false);
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         let enabled = tokio::process::Command::new("systemctl")
             .args(["is-enabled", "--quiet", "cloudflared"])
-            .output().await.map(|o| o.status.success()).unwrap_or(false);
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         Ok((active, enabled))
     }
 }
@@ -364,15 +428,24 @@ async fn svc_action(action: &str) -> Result<()> {
         // Restart: ignore stop errors (service may already be stopped/crashed), only fail on start.
         if action == "restart" {
             let _ = tokio::process::Command::new("launchctl")
-                .args(["stop", CF_LABEL]).output().await;
+                .args(["stop", CF_LABEL])
+                .output()
+                .await;
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
             let out = tokio::process::Command::new("launchctl")
-                .args(["start", CF_LABEL]).output().await?;
+                .args(["start", CF_LABEL])
+                .output()
+                .await?;
             if !out.status.success() {
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let msg = if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout }
-                    else { "launchctl start failed — run [s] to install the service first".to_string() };
+                let msg = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    "launchctl start failed — run [s] to install the service first".to_string()
+                };
                 anyhow::bail!("{}", msg);
             }
             return Ok(());
@@ -380,17 +453,26 @@ async fn svc_action(action: &str) -> Result<()> {
 
         let (cmd, args): (&str, &[&str]) = match action {
             "start" => ("launchctl", &["start", CF_LABEL]),
-            "stop"  => ("launchctl", &["stop",  CF_LABEL]),
-            _       => anyhow::bail!("unknown action: {}", action),
+            "stop" => ("launchctl", &["stop", CF_LABEL]),
+            _ => anyhow::bail!("unknown action: {}", action),
         };
         let out = tokio::process::Command::new(cmd)
             .args(args)
-            .output().await?;
+            .output()
+            .await?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let msg = if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout }
-                else { format!("launchctl {} failed — run [s] to install the service first", action) };
+            let msg = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!(
+                    "launchctl {} failed — run [s] to install the service first",
+                    action
+                )
+            };
             anyhow::bail!("{}", msg)
         }
         Ok(())
@@ -399,13 +481,20 @@ async fn svc_action(action: &str) -> Result<()> {
     {
         let out = tokio::process::Command::new("sudo")
             .args(["systemctl", action, "cloudflared"])
-            .output().await?;
+            .output()
+            .await?;
         if out.status.success() {
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let msg = if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout } else { format!("systemctl {} cloudflared failed", action) };
+            let msg = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("systemctl {} cloudflared failed", action)
+            };
             anyhow::bail!("{}", msg)
         }
     }
@@ -447,7 +536,8 @@ async fn add_domain_to_config(config_path: &str, route: &TunnelRoute) -> Result<
         Ok(existing) => {
             // Hostname already present — update its service line only.
             if existing.contains(&format!("hostname: {}", route.hostname)) {
-                let updated = replace_service_for_hostname(&existing, &route.hostname, &route.service);
+                let updated =
+                    replace_service_for_hostname(&existing, &route.hostname, &route.service);
                 tokio::fs::write(config_path, updated).await?;
                 return Ok(());
             }
@@ -458,7 +548,12 @@ async fn add_domain_to_config(config_path: &str, route: &TunnelRoute) -> Result<
                 s.insert_str(pos, &new_entry);
                 s
             } else {
-                format!("{}\n{}{}", existing.trim_end_matches('\n'), new_entry, CATCHALL)
+                format!(
+                    "{}\n{}{}",
+                    existing.trim_end_matches('\n'),
+                    new_entry,
+                    CATCHALL
+                )
             };
             tokio::fs::write(config_path, updated).await?;
         }

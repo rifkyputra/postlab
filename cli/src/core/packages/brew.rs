@@ -35,8 +35,19 @@ impl PackageManager for BrewManager {
             .filter_map(|line| {
                 let mut parts = line.splitn(2, ' ');
                 let name = parts.next()?.to_string();
-                let version = parts.next().unwrap_or("").split_whitespace().next().unwrap_or("").to_string();
-                Some(Package { name, version, description: String::new(), installed: true })
+                let version = parts
+                    .next()
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                Some(Package {
+                    name,
+                    version,
+                    description: String::new(),
+                    installed: true,
+                })
             })
             .collect())
     }

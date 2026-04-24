@@ -33,14 +33,15 @@ impl ProcessManager for SysinfoProcessManager {
                 name: p.name().to_string(),
                 cpu_pct: p.cpu_usage(),
                 mem_bytes: p.memory(),
-                user: p
-                    .user_id()
-                    .map(|uid| uid.to_string())
-                    .unwrap_or_default(),
+                user: p.user_id().map(|uid| uid.to_string()).unwrap_or_default(),
                 status: p.status().to_string(),
             })
             .collect();
-        entries.sort_by(|a, b| b.cpu_pct.partial_cmp(&a.cpu_pct).unwrap_or(std::cmp::Ordering::Equal));
+        entries.sort_by(|a, b| {
+            b.cpu_pct
+                .partial_cmp(&a.cpu_pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(entries)
     }
 

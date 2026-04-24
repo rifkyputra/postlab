@@ -21,7 +21,11 @@ impl PackageManager for DnfManager {
     }
 
     async fn list_installed(&self) -> Result<Vec<Package>> {
-        let out = run_cmd("rpm", &["-qa", "--queryformat", "%{NAME}|%{VERSION}|%{SUMMARY}\n"]).await?;
+        let out = run_cmd(
+            "rpm",
+            &["-qa", "--queryformat", "%{NAME}|%{VERSION}|%{SUMMARY}\n"],
+        )
+        .await?;
         Ok(out
             .lines()
             .filter_map(|line| {
@@ -41,7 +45,9 @@ impl PackageManager for DnfManager {
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Package>> {
-        let out = run_cmd(self.bin, &["search", query]).await.unwrap_or_default();
+        let out = run_cmd(self.bin, &["search", query])
+            .await
+            .unwrap_or_default();
         Ok(out
             .lines()
             .filter_map(|line| {

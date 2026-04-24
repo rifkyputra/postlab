@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::core::models::FirewallRule;
 use super::FirewallManager;
+use crate::core::models::FirewallRule;
 
 pub struct UfwManager;
 
@@ -14,7 +14,11 @@ impl FirewallManager for UfwManager {
             .output()
             .await?;
         let text = String::from_utf8_lossy(&out.stdout);
-        let enabled = text.lines().next().map(|l| l.contains("active")).unwrap_or(false);
+        let enabled = text
+            .lines()
+            .next()
+            .map(|l| l.contains("active"))
+            .unwrap_or(false);
         Ok((enabled, "ufw".to_string()))
     }
 
@@ -84,22 +88,31 @@ fn parse_ufw_rules(text: &str) -> Vec<FirewallRule> {
         }
 
         // Extract rule number from "[N]"
-        let Some(bracket_end) = trimmed.find(']') else { continue };
+        let Some(bracket_end) = trimmed.find(']') else {
+            continue;
+        };
         let num_str = trimmed[1..bracket_end].trim();
-        let Ok(num) = num_str.parse::<usize>() else { continue };
+        let Ok(num) = num_str.parse::<usize>() else {
+            continue;
+        };
 
         let body = trimmed[bracket_end + 1..].trim();
 
         // Find the first occurrence of an action keyword preceded by whitespace.
         let action_keywords = ["ALLOW", "DENY", "REJECT", "LIMIT"];
-        let action_start = action_keywords.iter().filter_map(|kw| {
-            body.find(kw).filter(|&pos| {
-                // Must be at the start or preceded by a space
-                pos == 0 || body.as_bytes().get(pos - 1) == Some(&b' ')
+        let action_start = action_keywords
+            .iter()
+            .filter_map(|kw| {
+                body.find(kw).filter(|&pos| {
+                    // Must be at the start or preceded by a space
+                    pos == 0 || body.as_bytes().get(pos - 1) == Some(&b' ')
+                })
             })
-        }).min();
+            .min();
 
-        let Some(action_start) = action_start else { continue };
+        let Some(action_start) = action_start else {
+            continue;
+        };
         let to = body[..action_start].trim().to_string();
         let after = &body[action_start..];
 
@@ -113,7 +126,12 @@ fn parse_ufw_rules(text: &str) -> Vec<FirewallRule> {
         };
 
         if !to.is_empty() {
-            rules.push(FirewallRule { num, to, action, from });
+            rules.push(FirewallRule {
+                num,
+                to,
+                action,
+                from,
+            });
         }
     }
 

@@ -11,7 +11,11 @@ use crate::tui::app::{App, InputMode, ACTIONS, PROTOS};
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     render_status(f, app, chunks[0]);
@@ -37,15 +41,19 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
     let text = Line::from(vec![
         Span::styled(dot, Style::default().fg(dot_color)),
         Span::raw(format!(" {}  ", backend)),
-        Span::styled(state_label, Style::default().fg(dot_color).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            state_label,
+            Style::default().fg(dot_color).add_modifier(Modifier::BOLD),
+        ),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().title(" Firewall ").borders(Borders::ALL));
+    let p = Paragraph::new(text).block(Block::default().title(" Firewall ").borders(Borders::ALL));
     f.render_widget(p, area);
 }
 
 fn render_rules(f: &mut Frame, app: &App, area: Rect) {
-    if app.firewall.backend == "none" || (app.firewall.backend.is_empty() && app.firewall.enabled.is_none()) {
+    if app.firewall.backend == "none"
+        || (app.firewall.backend.is_empty() && app.firewall.enabled.is_none())
+    {
         let p = Paragraph::new(Span::styled(
             "No supported firewall detected (ufw not found).",
             Style::default().fg(Color::DarkGray),
@@ -55,7 +63,9 @@ fn render_rules(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let headers = Row::new([
         Cell::from("#"),
         Cell::from("To / Port"),
@@ -64,21 +74,30 @@ fn render_rules(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(header_style);
 
-    let rows: Vec<Row> = app.firewall.rules.iter().map(|rule| {
-        let action_color = if rule.action.contains("ALLOW") {
-            Color::Green
-        } else if rule.action.contains("DENY") || rule.action.contains("REJECT") {
-            Color::Red
-        } else {
-            Color::Yellow
-        };
-        Row::new([
-            Cell::from(rule.num.to_string()).style(Style::default().fg(Color::DarkGray)),
-            Cell::from(rule.to.as_str()).style(Style::default().fg(Color::Cyan)),
-            Cell::from(rule.action.as_str()).style(Style::default().fg(action_color).add_modifier(Modifier::BOLD)),
-            Cell::from(rule.from.as_str()).style(Style::default().fg(Color::White)),
-        ])
-    }).collect();
+    let rows: Vec<Row> = app
+        .firewall
+        .rules
+        .iter()
+        .map(|rule| {
+            let action_color = if rule.action.contains("ALLOW") {
+                Color::Green
+            } else if rule.action.contains("DENY") || rule.action.contains("REJECT") {
+                Color::Red
+            } else {
+                Color::Yellow
+            };
+            Row::new([
+                Cell::from(rule.num.to_string()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(rule.to.as_str()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(rule.action.as_str()).style(
+                    Style::default()
+                        .fg(action_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(rule.from.as_str()).style(Style::default().fg(Color::White)),
+            ])
+        })
+        .collect();
 
     let widths = [
         Constraint::Length(4),
@@ -89,7 +108,11 @@ fn render_rules(f: &mut Frame, app: &App, area: Rect) {
     let count = rows.len();
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Rules ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Rules ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -100,10 +123,7 @@ fn render_rules(f: &mut Frame, app: &App, area: Rect) {
 fn render_hints(f: &mut Frame, app: &App, area: Rect) {
     let enabled = app.firewall.enabled.unwrap_or(false);
     let toggle_hint = if enabled { "[d] disable" } else { "[e] enable" };
-    let msg = format!(
-        " [a] add rule  [D] delete  {}  [r] refresh ",
-        toggle_hint
-    );
+    let msg = format!(" [a] add rule  [D] delete  {}  [r] refresh ", toggle_hint);
     let p = Paragraph::new(Span::styled(msg, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
 }
@@ -171,12 +191,20 @@ fn render_add_popup(f: &mut Frame, app: &App, area: Rect) {
     };
     let from_p = Paragraph::new(from_text)
         .style(style(app.firewall.input_focus, 2))
-        .block(Block::default().title(" From (blank=any) ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" From (blank=any) ")
+                .borders(Borders::ALL),
+        );
     f.render_widget(from_p, inner[0]);
 
     // Action selector (focus=3)
     let action_val = ACTIONS[app.firewall.input_action];
-    let action_color = if action_val == "allow" { Color::Green } else { Color::Red };
+    let action_color = if action_val == "allow" {
+        Color::Green
+    } else {
+        Color::Red
+    };
     let action_text = if app.firewall.input_focus == 3 {
         format!("‹ {} ›", action_val.to_uppercase())
     } else {
@@ -198,5 +226,10 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let x = r.x + (r.width.saturating_sub(r.width * percent_x / 100)) / 2;
     let w = r.width * percent_x / 100;
     let y = r.y + (r.height.saturating_sub(height)) / 2;
-    Rect { x, y, width: w, height }
+    Rect {
+        x,
+        y,
+        width: w,
+        height,
+    }
 }

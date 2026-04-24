@@ -27,7 +27,9 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 // ── Table ─────────────────────────────────────────────────────────────────
 
 fn render_table(f: &mut Frame, app: &App, area: Rect) {
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let selected_style = Style::default().bg(Color::DarkGray);
 
     let header = Row::new([
@@ -45,7 +47,9 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
     let rows: Vec<Row> = if app.ghost.scanning {
         vec![Row::new([Cell::from(Span::styled(
             "  Scanning…",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::ITALIC),
         ))])]
     } else if app.ghost.ghosts.is_empty() {
         vec![Row::new([Cell::from(Span::styled(
@@ -76,13 +80,19 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
                     reason_cell,
                     Cell::from(g.pid.to_string()),
                     Cell::from(g.ppid.to_string()).style(Style::default().fg(Color::DarkGray)),
-                    Cell::from(g.name.as_str()).style(Style::default().add_modifier(Modifier::BOLD)),
-                    Cell::from(format!("{:.1}%", g.cpu_pct))
-                        .style(Style::default().fg(if g.cpu_pct > 20.0 { Color::Yellow } else { Color::White })),
-                    Cell::from(format_bytes(g.mem_bytes))
-                        .style(Style::default().fg(mem_color)),
+                    Cell::from(g.name.as_str())
+                        .style(Style::default().add_modifier(Modifier::BOLD)),
+                    Cell::from(format!("{:.1}%", g.cpu_pct)).style(Style::default().fg(
+                        if g.cpu_pct > 20.0 {
+                            Color::Yellow
+                        } else {
+                            Color::White
+                        },
+                    )),
+                    Cell::from(format_bytes(g.mem_bytes)).style(Style::default().fg(mem_color)),
                     Cell::from(g.user.as_str()).style(Style::default().fg(Color::DarkGray)),
-                    Cell::from(truncate_cgroup(&g.cgroup)).style(Style::default().fg(Color::DarkGray)),
+                    Cell::from(truncate_cgroup(&g.cgroup))
+                        .style(Style::default().fg(Color::DarkGray)),
                 ])
             })
             .collect()
@@ -122,14 +132,18 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
     let content = if let Some(idx) = app.ghost.table_state.selected() {
         if let Some(g) = app.ghost.ghosts.get(idx) {
             let reason_desc = match g.reason {
-                GhostReason::Zombie  => "defunct (zombie) — should have been reaped by its parent",
-                GhostReason::Orphan  => "reparented to PID 1 — parent process died",
+                GhostReason::Zombie => "defunct (zombie) — should have been reaped by its parent",
+                GhostReason::Orphan => "reparented to PID 1 — parent process died",
                 GhostReason::MemLeak => "high memory, not tracked by any systemd service",
             };
             Line::from(vec![
                 Span::styled("  cmd: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
-                    if g.cmdline.is_empty() { "<no cmdline>" } else { &g.cmdline },
+                    if g.cmdline.is_empty() {
+                        "<no cmdline>"
+                    } else {
+                        &g.cmdline
+                    },
                     Style::default().fg(Color::White),
                 ),
                 Span::styled("  — ", Style::default().fg(Color::DarkGray)),
@@ -159,10 +173,7 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
     } else {
         " [r] rescan  [k] kill selected  [↑/↓] navigate  [q] quit"
     };
-    let para = Paragraph::new(Span::styled(
-        text,
-        Style::default().fg(Color::DarkGray),
-    ));
+    let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
     f.render_widget(para, area);
 }
 

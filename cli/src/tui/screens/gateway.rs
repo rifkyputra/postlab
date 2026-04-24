@@ -11,7 +11,11 @@ use crate::tui::app::{App, InputMode};
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     render_status(f, app, chunks[0]);
@@ -36,8 +40,11 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
         Span::raw(" Caddy  "),
         Span::styled(version, Style::default().fg(Color::DarkGray)),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().title(" Gateway (Caddy) ").borders(Borders::ALL));
+    let p = Paragraph::new(text).block(
+        Block::default()
+            .title(" Gateway (Caddy) ")
+            .borders(Borders::ALL),
+    );
     f.render_widget(p, area);
 }
 
@@ -52,33 +59,43 @@ fn render_routes(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-    let headers = Row::new([
-        Cell::from("Domain"),
-        Cell::from("Port"),
-        Cell::from("TLS"),
-    ])
-    .style(header_style);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let headers =
+        Row::new([Cell::from("Domain"), Cell::from("Port"), Cell::from("TLS")]).style(header_style);
 
-    let rows: Vec<Row> = app.gateway.routes
+    let rows: Vec<Row> = app
+        .gateway
+        .routes
         .iter()
         .map(|r| {
             Row::new([
-                Cell::from(r.domain.as_str())
-                    .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-                Cell::from(format!(":{}", r.port))
-                    .style(Style::default().fg(Color::Cyan)),
+                Cell::from(r.domain.as_str()).style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(format!(":{}", r.port)).style(Style::default().fg(Color::Cyan)),
                 Cell::from(if r.tls { "auto" } else { "off" })
                     .style(Style::default().fg(Color::Green)),
             ])
         })
         .collect();
 
-    let widths = [Constraint::Fill(1), Constraint::Length(8), Constraint::Length(6)];
+    let widths = [
+        Constraint::Fill(1),
+        Constraint::Length(8),
+        Constraint::Length(6),
+    ];
     let count = rows.len();
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default().title(format!(" Routes ({}) ", count)).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Routes ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("› ");
 
@@ -100,7 +117,11 @@ fn render_input_popup(f: &mut Frame, app: &App, area: Rect) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Length(3), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
         .split(popup_area);
 
     let domain_style = if app.gateway.input_focus == 0 {
@@ -146,5 +167,10 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let x = r.x + (r.width.saturating_sub(r.width * percent_x / 100)) / 2;
     let w = r.width * percent_x / 100;
     let y = r.y + (r.height.saturating_sub(height)) / 2;
-    Rect { x, y, width: w, height }
+    Rect {
+        x,
+        y,
+        width: w,
+        height,
+    }
 }

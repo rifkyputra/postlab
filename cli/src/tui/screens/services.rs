@@ -35,25 +35,25 @@ fn render_filter(f: &mut Frame, app: &App, area: Rect) {
         .title(" Filter Services (/) ")
         .border_style(style);
 
-    let filter_text = if app.services.filter.is_empty() && app.services.filter_mode == InputMode::Normal {
-        Span::styled("Type to filter...", Style::default().fg(Color::DarkGray))
-    } else {
-        Span::raw(&app.services.filter)
-    };
+    let filter_text =
+        if app.services.filter.is_empty() && app.services.filter_mode == InputMode::Normal {
+            Span::styled("Type to filter...", Style::default().fg(Color::DarkGray))
+        } else {
+            Span::raw(&app.services.filter)
+        };
 
     let p = Paragraph::new(filter_text).block(block);
     f.render_widget(p, area);
 
     if app.services.filter_mode == InputMode::Editing {
-        f.set_cursor(
-            area.x + app.services.filter.len() as u16 + 1,
-            area.y + 1,
-        );
+        f.set_cursor(area.x + app.services.filter.len() as u16 + 1, area.y + 1);
     }
 }
 
 fn render_table(f: &mut Frame, app: &App, area: Rect) {
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let selected_style = Style::default().bg(Color::DarkGray);
 
     let headers = Row::new([
@@ -65,11 +65,13 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
     .style(header_style);
 
     let filter = app.services.filter.to_lowercase();
-    let rows: Vec<Row> = app.services.list
+    let rows: Vec<Row> = app
+        .services
+        .list
         .iter()
         .filter(|s| {
-            filter.is_empty() 
-                || s.name.to_lowercase().contains(&filter) 
+            filter.is_empty()
+                || s.name.to_lowercase().contains(&filter)
                 || s.description.to_lowercase().contains(&filter)
         })
         .map(|s| {
@@ -99,9 +101,11 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
     let count = rows.len();
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default()
-            .title(format!(" Services ({}) ", count))
-            .borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Services ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(selected_style)
         .highlight_symbol("› ");
 

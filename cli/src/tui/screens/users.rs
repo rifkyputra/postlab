@@ -1,3 +1,4 @@
+use crate::tui::app::{App, InputMode};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -5,7 +6,6 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
     Frame,
 };
-use crate::tui::app::{App, InputMode};
 
 fn masked(s: &str) -> String {
     "*".repeat(s.len())
@@ -63,14 +63,17 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         Row::new(cells).height(1)
     });
 
-    let t = Table::new(rows, [
-        Constraint::Percentage(15),
-        Constraint::Percentage(5),
-        Constraint::Percentage(5),
-        Constraint::Percentage(20),
-        Constraint::Percentage(15),
-        Constraint::Percentage(40),
-    ])
+    let t = Table::new(
+        rows,
+        [
+            Constraint::Percentage(15),
+            Constraint::Percentage(5),
+            Constraint::Percentage(5),
+            Constraint::Percentage(20),
+            Constraint::Percentage(15),
+            Constraint::Percentage(40),
+        ],
+    )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Unix Users "))
     .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
@@ -129,9 +132,11 @@ fn render_add_popup(f: &mut Frame, app: &App, area: Rect) {
         app.users.input_shell.clone()
     };
     f.render_widget(
-        Paragraph::new(shell_text)
-            .style(focused(1))
-            .block(Block::default().title(" Shell (blank=/bin/bash) ").borders(Borders::ALL)),
+        Paragraph::new(shell_text).style(focused(1)).block(
+            Block::default()
+                .title(" Shell (blank=/bin/bash) ")
+                .borders(Borders::ALL),
+        ),
         chunks[1],
     );
 
@@ -186,9 +191,11 @@ fn render_pw_popup(f: &mut Frame, app: &App, area: Rect) {
         masked(&app.users.pw_confirm)
     };
     f.render_widget(
-        Paragraph::new(confirm_text)
-            .style(focused(1))
-            .block(Block::default().title(" Confirm Password ").borders(Borders::ALL)),
+        Paragraph::new(confirm_text).style(focused(1)).block(
+            Block::default()
+                .title(" Confirm Password ")
+                .borders(Borders::ALL),
+        ),
         chunks[1],
     );
 
@@ -205,5 +212,10 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let x = r.x + (r.width.saturating_sub(r.width * percent_x / 100)) / 2;
     let w = r.width * percent_x / 100;
     let y = r.y + (r.height.saturating_sub(height)) / 2;
-    Rect { x, y, width: w, height }
+    Rect {
+        x,
+        y,
+        width: w,
+        height,
+    }
 }

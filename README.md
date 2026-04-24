@@ -31,12 +31,29 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 | **3. Security**  | Findings, Firewall, Ports, SSH, Fail2Ban | SSH/ASLR audits; UFW/Firewall management; external port checker; authorized_keys manager; Fail2Ban list/ban. |
 | **4. Gateway**   | Caddy                                    | Caddy installation and route management (domain → port) with automatic TLS.                                  |
 | **5. Tunnel**    | Cloudflare                               | Cloudflare tunnel creation, route management, and ingress configuration.                                     |
-| **6. Docker**    | Containers, Images, Compose              | Manage Docker lifecycle, view image sizes, and control Docker Compose stacks.                                |
+| **6. Docker**    | Containers, Images, Compose, Workloads   | Manage Docker/Podman lifecycle, view image sizes, control Compose stacks, and manage Postlab-owned workloads. |
 | **7. wasmCloud** | Hosts, Components, Apps                  | Manage wasmCloud lattices, host nodes, components, and applications.                                         |
 | **8. Ghosts**    | Services Hunter                          | Identifies "ghost" services or abandoned processes that may be using resources or ports.                     |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
 Every destructive change to config files creates a timestamped `.bak` backup first.
+
+### Docker / Workloads Disclaimers
+
+> [!WARNING]
+> The `Workloads` tab is a **system-level** feature. In v1 it is available only on **Linux hosts with `systemd`** and is intentionally unavailable on macOS or non-`systemd` environments.
+
+> [!IMPORTANT]
+> Postlab manages only **Postlab-owned canonical workload files** in the `Workloads` tab. It does **not** import, rewrite, or assume ownership of arbitrary existing Quadlet files, Compose projects, or hand-written systemd units.
+
+> [!NOTE]
+> Backend behavior is engine-specific by design:
+> - **Podman** workloads are rendered as Quadlet `.container` units.
+> - **Docker** workloads are rendered as a generated single-service `compose.yml` plus a generated `systemd` unit.
+> - Existing ad-hoc Compose stacks should continue to be managed through the regular `Compose` tab, not `Workloads`.
+
+> [!CAUTION]
+> Workloads in v1 are **single-service only**. They are meant for durable host-managed services, not multi-service application graphs, cluster scheduling, or generic orchestration import/export.
 
 ---
 
@@ -44,9 +61,26 @@ Every destructive change to config files creates a timestamped `.bak` backup fir
 
 ### Installation
 
+**One-liner (Linux x86_64 / macOS arm64):**
+
 ```bash
-# Build and install to /usr/local/bin
-make install
+curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | bash
+```
+
+The script detects your OS and architecture, downloads the right binary, and installs it to `/usr/local/bin/postlab`. Running it again upgrades an existing installation.
+
+**Custom install path:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | DEST=~/.local/bin/postlab bash
+```
+
+**Build from source:**
+
+```bash
+git clone https://github.com/rifkyputra/postlab.git
+cd postlab
+make install   # builds release binary → /usr/local/bin/postlab
 ```
 
 ### Usage

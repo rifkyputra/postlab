@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::core::models::FirewallRule;
 use super::FirewallManager;
+use crate::core::models::FirewallRule;
 
 pub struct FirewalldManager;
 
@@ -13,8 +13,8 @@ impl FirewallManager for FirewalldManager {
             .arg("--state")
             .output()
             .await?;
-        let enabled = out.status.success()
-            && String::from_utf8_lossy(&out.stdout).trim() == "running";
+        let enabled =
+            out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "running";
         Ok((enabled, "firewalld".to_string()))
     }
 

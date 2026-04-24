@@ -50,10 +50,7 @@ fn scan_blocking() -> Result<Vec<GhostProcess>> {
         let mem = process.memory();
         let cpu = process.cpu_usage();
         let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-        let user = process
-            .user_id()
-            .map(|u| u.to_string())
-            .unwrap_or_default();
+        let user = process.user_id().map(|u| u.to_string()).unwrap_or_default();
 
         let cmdline = process
             .cmd()
@@ -156,8 +153,8 @@ fn is_service_cgroup(cgroup: &str) -> bool {
 
 fn reason_priority(r: &GhostReason) -> u8 {
     match r {
-        GhostReason::Zombie  => 0,
-        GhostReason::Orphan  => 1,
+        GhostReason::Zombie => 0,
+        GhostReason::Orphan => 1,
         GhostReason::MemLeak => 2,
     }
 }

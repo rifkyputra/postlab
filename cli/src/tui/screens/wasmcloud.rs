@@ -52,7 +52,10 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
 
     // NATS health row — always visible so the user can provision before wash is installed
     let nats_indicator = if app.wasm_cloud.nats_running {
-        Span::styled("🟢 NATS Up (Port 4222)  ", Style::default().fg(Color::Green))
+        Span::styled(
+            "🟢 NATS Up (Port 4222)  ",
+            Style::default().fg(Color::Green),
+        )
     } else {
         Span::styled("🔴 NATS Down  ", Style::default().fg(Color::Red))
     };
@@ -67,13 +70,20 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     };
     let lattice_indicator = if app.wasm_cloud.nats_synced {
         Span::styled(
-            format!("🟡 Lattice synced ({} host(s) connected)", app.wasm_cloud.hosts.len()),
+            format!(
+                "🟡 Lattice synced ({} host(s) connected)",
+                app.wasm_cloud.hosts.len()
+            ),
             Style::default().fg(Color::Yellow),
         )
     } else {
         Span::styled("🔴 Lattice not synced", Style::default().fg(Color::Red))
     };
-    footer_text.push(Line::from(vec![nats_indicator, js_indicator, lattice_indicator]));
+    footer_text.push(Line::from(vec![
+        nats_indicator,
+        js_indicator,
+        lattice_indicator,
+    ]));
 
     // Key-hint row
     if app.wasm_cloud.installed {
@@ -84,17 +94,30 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         footer_text.push(Line::from(vec![
             Span::raw(" wash not found  |  "),
-            Span::styled("[i]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[i]",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Install wash  "),
-            Span::styled("[n]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[n]",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Provision NATS Backbone  "),
             Span::styled("[←/→]", Style::default().fg(Color::DarkGray)),
             Span::raw(" Switch tab"),
         ]));
     }
 
-    let footer = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::ALL).title(" 🐛 NATS Backbone "));
+    let footer = Paragraph::new(footer_text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" 🐛 NATS Backbone "),
+    );
     f.render_widget(footer, chunks[2]);
 }
 
@@ -117,7 +140,7 @@ fn render_not_installed(f: &mut Frame, _app: &App, area: Rect) {
     let p = Paragraph::new(text)
         .block(Block::default().borders(Borders::ALL))
         .alignment(ratatui::layout::Alignment::Center);
-    
+
     // Center it vertically a bit
     let mut center_area = area;
     if area.height > 10 {
@@ -134,11 +157,13 @@ fn render_hosts(f: &mut Frame, app: &mut App, area: Rect) {
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = app.wasm_cloud.hosts.iter().map(|h| {
-        let labels = h.labels.iter()
+        let labels = h
+            .labels
+            .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join(", ");
-        
+
         Row::new(vec![
             Cell::from(h.id.chars().take(8).collect::<String>()),
             Cell::from(h.friendly_name.as_str()),
@@ -147,12 +172,15 @@ fn render_hosts(f: &mut Frame, app: &mut App, area: Rect) {
         ])
     });
 
-    let t = Table::new(rows, [
-        Constraint::Length(10),
-        Constraint::Length(20),
-        Constraint::Length(10),
-        Constraint::Min(20),
-    ])
+    let t = Table::new(
+        rows,
+        [
+            Constraint::Length(10),
+            Constraint::Length(20),
+            Constraint::Length(10),
+            Constraint::Min(20),
+        ],
+    )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Hosts "))
     .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
@@ -176,12 +204,15 @@ fn render_components(f: &mut Frame, app: &mut App, area: Rect) {
         ])
     });
 
-    let t = Table::new(rows, [
-        Constraint::Length(10),
-        Constraint::Length(20),
-        Constraint::Length(12),
-        Constraint::Min(30),
-    ])
+    let t = Table::new(
+        rows,
+        [
+            Constraint::Length(10),
+            Constraint::Length(20),
+            Constraint::Length(12),
+            Constraint::Min(30),
+        ],
+    )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Components "))
     .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
@@ -205,14 +236,21 @@ fn render_apps(f: &mut Frame, app: &mut App, area: Rect) {
         ])
     });
 
-    let t = Table::new(rows, [
-        Constraint::Length(20),
-        Constraint::Length(10),
-        Constraint::Length(15),
-        Constraint::Min(30),
-    ])
+    let t = Table::new(
+        rows,
+        [
+            Constraint::Length(20),
+            Constraint::Length(10),
+            Constraint::Length(15),
+            Constraint::Min(30),
+        ],
+    )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title(" Applications (WADM) "))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Applications (WADM) "),
+    )
     .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol(">> ");
 
@@ -230,16 +268,35 @@ fn render_inspector(f: &mut Frame, app: &mut App, area: Rect) {
         .split(area);
 
     let (style, title) = match app.wasm_cloud.input_mode {
-        InputMode::Editing => (Style::default().fg(Color::Yellow), " [ EDITING ] Wasm Component Path / URL (Esc to exit) "),
-        _ => (Style::default(), " Wasm Component Path / URL (Press Enter/i to edit) "),
+        InputMode::Editing => (
+            Style::default().fg(Color::Yellow),
+            " [ EDITING ] Wasm Component Path / URL (Esc to exit) ",
+        ),
+        _ => (
+            Style::default(),
+            " Wasm Component Path / URL (Press Enter/i to edit) ",
+        ),
     };
 
-    let input = Paragraph::new(app.wasm_cloud.inspect_target.as_str())
-        .block(Block::default().borders(Borders::ALL).title(title).style(style));
+    let input = Paragraph::new(app.wasm_cloud.inspect_target.as_str()).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .style(style),
+    );
     f.render_widget(input, chunks[0]);
 
-    let output = Paragraph::new(app.wasm_cloud.inspect_output.as_deref().unwrap_or("Enter a path and press Enter to inspect component capabilities..."))
-        .block(Block::default().borders(Borders::ALL).title(" Capability Inspector Output "))
-        .wrap(ratatui::widgets::Wrap { trim: false });
+    let output = Paragraph::new(
+        app.wasm_cloud
+            .inspect_output
+            .as_deref()
+            .unwrap_or("Enter a path and press Enter to inspect component capabilities..."),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Capability Inspector Output "),
+    )
+    .wrap(ratatui::widgets::Wrap { trim: false });
     f.render_widget(output, chunks[1]);
 }

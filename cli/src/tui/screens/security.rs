@@ -6,9 +6,9 @@ use ratatui::{
     Frame,
 };
 
+use super::{firewall, portcheck, ssh};
 use crate::core::models::Severity;
 use crate::tui::app::{App, SecurityTab};
-use super::{firewall, portcheck, ssh};
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
@@ -124,9 +124,7 @@ fn render_findings_list(f: &mut Frame, app: &App, area: Rect) {
                     Span::raw(" "),
                     Span::styled(
                         finding.severity.label(),
-                        Style::default()
-                            .fg(dot_color)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(dot_color).add_modifier(Modifier::BOLD),
                     ),
                     Span::raw("  "),
                     Span::styled(
@@ -138,18 +136,12 @@ fn render_findings_list(f: &mut Frame, app: &App, area: Rect) {
                 ])),
                 ListItem::new(Line::from(vec![
                     Span::raw("         "),
-                    Span::styled(
-                        &finding.description,
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled(&finding.description, Style::default().fg(Color::DarkGray)),
                 ])),
                 ListItem::new(Line::from(vec![
                     Span::raw("         "),
                     Span::styled("Fix: ", Style::default().fg(Color::Green)),
-                    Span::styled(
-                        &finding.fix_description,
-                        Style::default().fg(Color::Green),
-                    ),
+                    Span::styled(&finding.fix_description, Style::default().fg(Color::Green)),
                 ])),
                 ListItem::new(Line::from("")),
             ]
@@ -193,7 +185,10 @@ fn render_fail2ban(f: &mut Frame, app: &App, area: Rect) {
 
     // Summary / status line
     let summary = if app.security.f2b_loading {
-        Span::styled(" Loading fail2ban data…", Style::default().fg(Color::Yellow))
+        Span::styled(
+            " Loading fail2ban data…",
+            Style::default().fg(Color::Yellow),
+        )
     } else if !app.security.f2b_installed {
         Span::styled(
             " fail2ban-client not found — install fail2ban first",
@@ -202,7 +197,11 @@ fn render_fail2ban(f: &mut Frame, app: &App, area: Rect) {
     } else {
         let n = app.security.jailed.len();
         Span::styled(
-            format!(" {} IP{} currently jailed", n, if n == 1 { "" } else { "s" }),
+            format!(
+                " {} IP{} currently jailed",
+                n,
+                if n == 1 { "" } else { "s" }
+            ),
             Style::default().fg(Color::White),
         )
     };
@@ -221,9 +220,7 @@ fn render_jailed_list(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "No IPs currently jailed  ✓"
         };
-        let block = Block::default()
-            .title(" Jailed IPs ")
-            .borders(Borders::ALL);
+        let block = Block::default().title(" Jailed IPs ").borders(Borders::ALL);
         let p = Paragraph::new(Span::styled(
             format!(" {}", msg),
             Style::default().fg(Color::DarkGray),
@@ -261,11 +258,7 @@ fn render_jailed_list(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let list = List::new(items)
-        .block(
-            Block::default()
-                .title(" Jailed IPs ")
-                .borders(Borders::ALL),
-        )
+        .block(Block::default().title(" Jailed IPs ").borders(Borders::ALL))
         .highlight_style(
             Style::default()
                 .bg(Color::DarkGray)

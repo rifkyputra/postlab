@@ -19,11 +19,17 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_table(f: &mut Frame, app: &App, area: Rect) {
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let selected_style = Style::default().bg(Color::DarkGray);
 
     let sort_indicator = |col: ProcessSort| -> &'static str {
-        if app.processes.sort == col { " ↓" } else { "" }
+        if app.processes.sort == col {
+            " ↓"
+        } else {
+            ""
+        }
     };
 
     let headers = Row::new([
@@ -36,17 +42,22 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(header_style);
 
-    let rows: Vec<Row> = app.processes.list
+    let rows: Vec<Row> = app
+        .processes
+        .list
         .iter()
         .map(|p| {
-            let cpu_color = if p.cpu_pct > 50.0 { Color::Red }
-                else if p.cpu_pct > 20.0 { Color::Yellow }
-                else { Color::White };
+            let cpu_color = if p.cpu_pct > 50.0 {
+                Color::Red
+            } else if p.cpu_pct > 20.0 {
+                Color::Yellow
+            } else {
+                Color::White
+            };
             Row::new([
                 Cell::from(p.pid.to_string()),
                 Cell::from(p.name.as_str()).style(Style::default().add_modifier(Modifier::BOLD)),
-                Cell::from(format!("{:.1}%", p.cpu_pct))
-                    .style(Style::default().fg(cpu_color)),
+                Cell::from(format!("{:.1}%", p.cpu_pct)).style(Style::default().fg(cpu_color)),
                 Cell::from(format_bytes(p.mem_bytes)),
                 Cell::from(p.user.as_str()).style(Style::default().fg(Color::DarkGray)),
                 Cell::from(p.status.as_str()).style(Style::default().fg(Color::DarkGray)),
@@ -66,9 +77,11 @@ fn render_table(f: &mut Frame, app: &App, area: Rect) {
     let count = app.processes.list.len();
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(Block::default()
-            .title(format!(" Processes ({}) ", count))
-            .borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(format!(" Processes ({}) ", count))
+                .borders(Borders::ALL),
+        )
         .row_highlight_style(selected_style)
         .highlight_symbol("› ");
 

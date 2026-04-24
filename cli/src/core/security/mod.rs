@@ -1,6 +1,6 @@
+use crate::core::models::SecurityFinding;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::core::models::SecurityFinding;
 
 pub mod checks;
 pub mod fail2ban;

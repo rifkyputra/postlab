@@ -60,7 +60,10 @@ impl DockerCliManager {
                     image: Self::get_field(&v, &["Image", "image"]),
                     status: Self::get_field(&v, &["Status", "status", "State", "state"]),
                     ports: Self::get_field(&v, &["Ports", "ports"]),
-                    created: Self::get_field(&v, &["CreatedAt", "created_at", "Created", "created"]),
+                    created: Self::get_field(
+                        &v,
+                        &["CreatedAt", "created_at", "Created", "created"],
+                    ),
                     cpu_pct: 0.0,
                     mem_usage: String::new(),
                 })
@@ -78,7 +81,10 @@ impl DockerCliManager {
                     repository: Self::get_field(&v, &["Repository", "repository", "Repo", "repo"]),
                     tag: Self::get_field(&v, &["Tag", "tag"]),
                     size: Self::get_field(&v, &["Size", "size"]),
-                    created: Self::get_field(&v, &["CreatedAt", "created_at", "Created", "created"]),
+                    created: Self::get_field(
+                        &v,
+                        &["CreatedAt", "created_at", "Created", "created"],
+                    ),
                 })
             })
             .collect()
@@ -90,7 +96,9 @@ impl DockerCliManager {
             .filter_map(|line| {
                 let v: serde_json::Value = serde_json::from_str(line).ok()?;
                 let name = Self::get_field(&v, &["Name", "name"]);
-                if name.is_empty() { return None; }
+                if name.is_empty() {
+                    return None;
+                }
 
                 Some(DockerComposeService {
                     name,
@@ -102,9 +110,11 @@ impl DockerCliManager {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|p| {
-                                    let pub_port = p["PublishedPort"].as_u64()
+                                    let pub_port = p["PublishedPort"]
+                                        .as_u64()
                                         .or_else(|| p["published_port"].as_u64())?;
-                                    let tgt_port = p["TargetPort"].as_u64()
+                                    let tgt_port = p["TargetPort"]
+                                        .as_u64()
                                         .or_else(|| p["target_port"].as_u64())?;
                                     if pub_port == 0 {
                                         None
@@ -120,7 +130,6 @@ impl DockerCliManager {
             })
             .collect()
     }
-
 }
 
 #[async_trait]
@@ -153,7 +162,9 @@ impl DockerManager for DockerCliManager {
             .output()
             .await
             .context("docker ps failed")?;
-        Ok(Self::parse_containers(&String::from_utf8_lossy(&out.stdout)))
+        Ok(Self::parse_containers(&String::from_utf8_lossy(
+            &out.stdout,
+        )))
     }
 
     async fn list_images(&self) -> Result<Vec<DockerImage>> {
@@ -167,35 +178,51 @@ impl DockerManager for DockerCliManager {
 
     async fn start_container(&self, id: &str) -> Result<()> {
         let out = Command::new(self.bin).args(["start", id]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn stop_container(&self, id: &str) -> Result<()> {
         let out = Command::new(self.bin).args(["stop", id]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn restart_container(&self, id: &str) -> Result<()> {
-        let out = Command::new(self.bin).args(["restart", id]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        let out = Command::new(self.bin)
+            .args(["restart", id])
+            .output()
+            .await?;
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn remove_container(&self, id: &str) -> Result<()> {
-        let out = Command::new(self.bin).args(["rm", "-f", id]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        let out = Command::new(self.bin)
+            .args(["rm", "-f", id])
+            .output()
+            .await?;
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn remove_image(&self, id: &str) -> Result<()> {
         let out = Command::new(self.bin).args(["rmi", id]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
@@ -211,7 +238,12 @@ impl DockerManager for DockerCliManager {
         if let Ok(arr) = serde_json::from_str::<serde_json::Value>(&text) {
             let lines = arr
                 .as_array()
-                .map(|a| a.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n"))
+                .map(|a| {
+                    a.iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
                 .unwrap_or_default();
             return Ok(Self::parse_compose(&lines));
         }
@@ -223,7 +255,9 @@ impl DockerManager for DockerCliManager {
             .args(["compose", "-f", path, "up", "-d"])
             .output()
             .await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
@@ -233,7 +267,9 @@ impl DockerManager for DockerCliManager {
             .args(["compose", "-f", path, "down"])
             .output()
             .await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
@@ -243,7 +279,9 @@ impl DockerManager for DockerCliManager {
             .args(["compose", "-f", path, "restart"])
             .output()
             .await?;
-        if out.status.success() { Ok(()) } else {
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
@@ -262,7 +300,7 @@ impl DockerManager for DockerCliManager {
                 stderr: vec![],
             });
 
-        let container_statuses: std::collections::HashMap<String, String> = 
+        let container_statuses: std::collections::HashMap<String, String> =
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .filter_map(|line| {
@@ -273,32 +311,52 @@ impl DockerManager for DockerCliManager {
                 })
                 .collect();
 
-        Ok(catalog.into_iter().map(|(name, container_name, image, ports, description)| {
-            let status = container_statuses
-                .get(container_name)
-                .cloned()
-                .unwrap_or_else(|| "not found".to_string());
-            ManagedDockerService {
-                name: name.to_string(),
-                container_name: container_name.to_string(),
-                image: image.to_string(),
-                ports: ports.to_string(),
-                status,
-                description: description.to_string(),
-            }
-        }).collect())
+        Ok(catalog
+            .into_iter()
+            .map(|(name, container_name, image, ports, description)| {
+                let status = container_statuses
+                    .get(container_name)
+                    .cloned()
+                    .unwrap_or_else(|| "not found".to_string());
+                ManagedDockerService {
+                    name: name.to_string(),
+                    container_name: container_name.to_string(),
+                    image: image.to_string(),
+                    ports: ports.to_string(),
+                    status,
+                    description: description.to_string(),
+                }
+            })
+            .collect())
     }
 
-    async fn start_managed_service(&self, container_name: &str, image: &str, ports: &str) -> Result<()> {
+    async fn start_managed_service(
+        &self,
+        container_name: &str,
+        image: &str,
+        ports: &str,
+    ) -> Result<()> {
         // If container already exists, just start it. Otherwise, run a new one.
         let exists_out = Command::new(self.bin)
-            .args(["ps", "-a", "--filter", &format!("name=^{}$", container_name), "--format", "{{.Names}}"])
+            .args([
+                "ps",
+                "-a",
+                "--filter",
+                &format!("name=^{}$", container_name),
+                "--format",
+                "{{.Names}}",
+            ])
             .output()
             .await?;
-        let exists = !String::from_utf8_lossy(&exists_out.stdout).trim().is_empty();
+        let exists = !String::from_utf8_lossy(&exists_out.stdout)
+            .trim()
+            .is_empty();
 
         if exists {
-            let out = Command::new(self.bin).args(["start", container_name]).output().await?;
+            let out = Command::new(self.bin)
+                .args(["start", container_name])
+                .output()
+                .await?;
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
             }
@@ -321,15 +379,25 @@ impl DockerManager for DockerCliManager {
     }
 
     async fn stop_managed_service(&self, container_name: &str) -> Result<()> {
-        let out = Command::new(self.bin).args(["stop", container_name]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        let out = Command::new(self.bin)
+            .args(["stop", container_name])
+            .output()
+            .await?;
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 
     async fn restart_managed_service(&self, container_name: &str) -> Result<()> {
-        let out = Command::new(self.bin).args(["restart", container_name]).output().await?;
-        if out.status.success() { Ok(()) } else {
+        let out = Command::new(self.bin)
+            .args(["restart", container_name])
+            .output()
+            .await?;
+        if out.status.success() {
+            Ok(())
+        } else {
             anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
@@ -338,17 +406,70 @@ impl DockerManager for DockerCliManager {
 impl DockerCliManager {
     /// Catalog of predefined managed dev services:
     /// (display_name, container_name, image, ports, description)
-    fn managed_catalog() -> Vec<(&'static str, &'static str, &'static str, &'static str, &'static str)> {
+    fn managed_catalog() -> Vec<(
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+    )> {
         vec![
-            ("PostgreSQL",  "postlab-postgres",  "postgres:16-alpine",       "5432:5432", "Relational database (PostgreSQL 16)"),
-            ("Redis",       "postlab-redis",     "redis:7-alpine",            "6379:6379", "In-memory key-value store & cache"),
-            ("RabbitMQ",    "postlab-rabbitmq",  "rabbitmq:3-management",     "5672:5672,15672:15672", "Message broker with management UI"),
-            ("MySQL",       "postlab-mysql",     "mysql:8",                   "3306:3306", "Relational database (MySQL 8)"),
-            ("MongoDB",     "postlab-mongo",     "mongo:7",                   "27017:27017", "NoSQL document database"),
-            ("Elasticsearch","postlab-elastic",  "elasticsearch:8.13.0",      "9200:9200,9300:9300", "Full-text search & analytics"),
-            ("MinIO",       "postlab-minio",     "minio/minio",               "9000:9000,9001:9001", "S3-compatible object storage"),
-            ("MailHog",     "postlab-mailhog",   "mailhog/mailhog",           "1025:1025,8025:8025", "Email testing (SMTP + web UI)"),
+            (
+                "PostgreSQL",
+                "postlab-postgres",
+                "postgres:16-alpine",
+                "5432:5432",
+                "Relational database (PostgreSQL 16)",
+            ),
+            (
+                "Redis",
+                "postlab-redis",
+                "redis:7-alpine",
+                "6379:6379",
+                "In-memory key-value store & cache",
+            ),
+            (
+                "RabbitMQ",
+                "postlab-rabbitmq",
+                "rabbitmq:3-management",
+                "5672:5672,15672:15672",
+                "Message broker with management UI",
+            ),
+            (
+                "MySQL",
+                "postlab-mysql",
+                "mysql:8",
+                "3306:3306",
+                "Relational database (MySQL 8)",
+            ),
+            (
+                "MongoDB",
+                "postlab-mongo",
+                "mongo:7",
+                "27017:27017",
+                "NoSQL document database",
+            ),
+            (
+                "Elasticsearch",
+                "postlab-elastic",
+                "elasticsearch:8.13.0",
+                "9200:9200,9300:9300",
+                "Full-text search & analytics",
+            ),
+            (
+                "MinIO",
+                "postlab-minio",
+                "minio/minio",
+                "9000:9000,9001:9001",
+                "S3-compatible object storage",
+            ),
+            (
+                "MailHog",
+                "postlab-mailhog",
+                "mailhog/mailhog",
+                "1025:1025,8025:8025",
+                "Email testing (SMTP + web UI)",
+            ),
         ]
     }
 }
-

@@ -21,7 +21,7 @@ pub async fn start_deployment(deploy_type: &DeploymentType, dir: &Path) -> Resul
             let wadm_file = if dir.join("wadm.yaml").exists() {
                 "wadm.yaml"
             } else if dir.join("wasmcloud.toml").exists() {
-                "wasmcloud.toml" 
+                "wasmcloud.toml"
             } else {
                 anyhow::bail!("No wadm.yaml found for WasmCloud deployment");
             };
@@ -60,7 +60,9 @@ pub async fn stop_deployment(deploy_type: &DeploymentType, dir: &Path) -> Result
         }
         DeploymentType::WasmCloud => {
             // Ideally we'd parse the app name from wadm.yaml, but for now we throw an error.
-            anyhow::bail!("Teardown for WasmCloud is not fully implemented (needs app name parsing)");
+            anyhow::bail!(
+                "Teardown for WasmCloud is not fully implemented (needs app name parsing)"
+            );
         }
         DeploymentType::Unknown => {
             anyhow::bail!("Cannot stop deployment of unknown type");

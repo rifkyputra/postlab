@@ -16,5 +16,6 @@ pub mod system;
 pub mod tunnel;
 pub mod users;
 pub mod wasm_cloud;
+pub mod workloads;
 
 pub use platform::Platform;

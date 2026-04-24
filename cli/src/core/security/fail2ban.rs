@@ -81,10 +81,7 @@ impl Fail2BanManager for DefaultFail2Ban {
 /// Run fail2ban-client with the given args, trying without sudo first,
 /// then with sudo if the process exits non-zero.
 async fn run_f2b(args: &[&str]) -> Result<String> {
-    let out = Command::new("fail2ban-client")
-        .args(args)
-        .output()
-        .await?;
+    let out = Command::new("fail2ban-client").args(args).output().await?;
 
     if out.status.success() {
         return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
@@ -92,7 +89,7 @@ async fn run_f2b(args: &[&str]) -> Result<String> {
 
     // Retry with sudo
     let out = Command::new("sudo")
-        .arg("-n")  // non-interactive: fail if password required
+        .arg("-n") // non-interactive: fail if password required
         .arg("fail2ban-client")
         .args(args)
         .output()
@@ -122,7 +119,9 @@ async fn get_jail_names() -> Result<Vec<String>> {
     let jail_line = output
         .lines()
         .find(|l| l.contains("Jail list"))
-        .ok_or_else(|| anyhow::anyhow!("Could not find jail list in fail2ban-client status output"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Could not find jail list in fail2ban-client status output")
+        })?;
 
     let names: Vec<String> = jail_line
         .splitn(2, ':')

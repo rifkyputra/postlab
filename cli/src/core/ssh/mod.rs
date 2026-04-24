@@ -1,9 +1,9 @@
+use crate::core::models::SshKey;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::core::models::SshKey;
+use chrono::Local;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use chrono::Local;
 
 #[async_trait]
 pub trait SshKeyManager: Send + Sync {
@@ -47,8 +47,12 @@ impl SshKeyManager for DefaultSshKeyManager {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("pub") {
                 let content = fs::read_to_string(&path).await?;
-                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
-                
+                let name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
                 // Try to get fingerprint using ssh-keygen -lf
                 let fingerprint = match tokio::process::Command::new("ssh-keygen")
                     .args(["-lf", path.to_str().unwrap_or_default()])
@@ -62,7 +66,11 @@ impl SshKeyManager for DefaultSshKeyManager {
                     _ => "unknown".to_string(),
                 };
 
-                let key_type = content.split_whitespace().next().unwrap_or("unknown").to_string();
+                let key_type = content
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string();
 
                 keys.push(SshKey {
                     name,
@@ -96,7 +104,10 @@ impl SshKeyManager for DefaultSshKeyManager {
             }
 
             let key_type = parts[0].to_string();
-            let comment = parts.get(2).map(|s| s.to_string()).unwrap_or_else(|| "no comment".to_string());
+            let comment = parts
+                .get(2)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "no comment".to_string());
 
             // Get fingerprint from content string
             let mut child = tokio::process::Command::new("ssh-keygen")
@@ -134,7 +145,7 @@ impl SshKeyManager for DefaultSshKeyManager {
         let ssh_dir = Self::get_ssh_dir();
         fs::create_dir_all(&ssh_dir).await?;
         let path = ssh_dir.join("authorized_keys");
-        
+
         // Check if already exists
         if path.exists() {
             let existing = fs::read_to_string(&path).await?;
@@ -148,14 +159,14 @@ impl SshKeyManager for DefaultSshKeyManager {
             .append(true)
             .open(&path)
             .await?;
-        
+
         use tokio::io::AsyncWriteExt;
         if path.metadata()?.len() > 0 {
             file.write_all(b"\n").await?;
         }
         file.write_all(key_content.trim().as_bytes()).await?;
         file.write_all(b"\n").await?;
-        
+
         // Ensure 600 permissions
         #[cfg(unix)]
         {
@@ -215,20 +226,30 @@ impl SshKeyManager for DefaultSshKeyManager {
         let ssh_dir = Self::get_ssh_dir();
         fs::create_dir_all(&ssh_dir).await?;
         let path = ssh_dir.join(name);
-        
+
         if path.exists() {
             anyhow::bail!("Key file already exists: {}", path.display());
         }
 
         let out = tokio::process::Command::new("ssh-keygen")
-            .args(["-t", key_type, "-f", path.to_str().unwrap_or_default(), "-N", ""])
+            .args([
+                "-t",
+                key_type,
+                "-f",
+                path.to_str().unwrap_or_default(),
+                "-N",
+                "",
+            ])
             .output()
             .await?;
 
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).to_string())
         } else {
-            anyhow::bail!("ssh-keygen failed: {}", String::from_utf8_lossy(&out.stderr))
+            anyhow::bail!(
+                "ssh-keygen failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            )
         }
     }
 }

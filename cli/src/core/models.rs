@@ -121,19 +121,19 @@ pub struct FirewallRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelRoute {
-    pub tunnel_id: String,    // UUID used in config + credentials-file path
-    pub tunnel_name: String,  // human name used for display
+    pub tunnel_id: String,   // UUID used in config + credentials-file path
+    pub tunnel_name: String, // human name used for display
     pub hostname: String,
     pub service: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerContainer {
-    pub id: String,       // short container ID
+    pub id: String, // short container ID
     pub name: String,
     pub image: String,
-    pub status: String,   // "running", "exited", "paused", etc.
-    pub ports: String,    // human-readable port bindings
+    pub status: String, // "running", "exited", "paused", etc.
+    pub ports: String,  // human-readable port bindings
     pub created: String,
     pub cpu_pct: f64,
     pub mem_usage: String, // e.g. "45.2MiB / 1GiB"
@@ -141,10 +141,10 @@ pub struct DockerContainer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerImage {
-    pub id: String,        // short image ID
+    pub id: String, // short image ID
     pub repository: String,
     pub tag: String,
-    pub size: String,      // human-readable, e.g. "142MB"
+    pub size: String, // human-readable, e.g. "142MB"
     pub created: String,
 }
 
@@ -173,6 +173,76 @@ pub struct ManagedDockerService {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ManagedWorkloadBackend {
+    PodmanQuadlet,
+    DockerComposeSystemd,
+}
+
+impl ManagedWorkloadBackend {
+    pub fn label(&self) -> &'static str {
+        match self {
+            ManagedWorkloadBackend::PodmanQuadlet => "Podman Quadlet",
+            ManagedWorkloadBackend::DockerComposeSystemd => "Docker Compose + systemd",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ManagedWorkloadState {
+    Running,
+    Stopped,
+    Failed,
+    NotInstalled,
+    Unknown,
+}
+
+impl ManagedWorkloadState {
+    pub fn label(&self) -> &'static str {
+        match self {
+            ManagedWorkloadState::Running => "Running",
+            ManagedWorkloadState::Stopped => "Stopped",
+            ManagedWorkloadState::Failed => "Failed",
+            ManagedWorkloadState::NotInstalled => "Not installed",
+            ManagedWorkloadState::Unknown => "Unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ManagedWorkloadSpec {
+    pub name: String,
+    pub image: String,
+    pub command: Option<Vec<String>>,
+    pub env: Vec<(String, String)>,
+    pub ports: Vec<String>,
+    pub volumes: Vec<String>,
+    pub restart_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedWorkload {
+    pub name: String,
+    pub backend: ManagedWorkloadBackend,
+    pub unit_name: String,
+    pub engine: String,
+    pub image: String,
+    pub ports_summary: String,
+    pub status: ManagedWorkloadState,
+    pub owned_by_postlab: bool,
+    pub spec_path: String,
+    pub compose_path: Option<String>,
+    pub spec: Option<ManagedWorkloadSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedWorkloadCapabilities {
+    pub supported: bool,
+    pub engine: Option<String>,
+    pub backend: Option<ManagedWorkloadBackend>,
+    pub reason: Option<String>,
+}
+
 /// A currently-banned IP as reported by fail2ban.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JailedIp {
@@ -186,11 +256,11 @@ pub struct JailedIp {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SshKey {
-    pub name: String,         // filename or comment
+    pub name: String, // filename or comment
     pub fingerprint: String,
-    pub key_type: String,     // e.g. ssh-rsa
-    pub content: String,      // the public key string
-    pub is_local: bool,       // true if in ~/.ssh, false if in authorized_keys
+    pub key_type: String, // e.g. ssh-rsa
+    pub content: String,  // the public key string
+    pub is_local: bool,   // true if in ~/.ssh, false if in authorized_keys
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,17 +324,17 @@ pub enum GhostReason {
 impl GhostReason {
     pub fn label(&self) -> &'static str {
         match self {
-            GhostReason::Orphan  => "ORPHAN",
+            GhostReason::Orphan => "ORPHAN",
             GhostReason::MemLeak => "MEM-LEAK",
-            GhostReason::Zombie  => "ZOMBIE",
+            GhostReason::Zombie => "ZOMBIE",
         }
     }
 
     pub fn color(&self) -> ratatui::style::Color {
         use ratatui::style::Color;
         match self {
-            GhostReason::Zombie  => Color::Red,
-            GhostReason::Orphan  => Color::Yellow,
+            GhostReason::Zombie => Color::Red,
+            GhostReason::Orphan => Color::Yellow,
             GhostReason::MemLeak => Color::LightRed,
         }
     }

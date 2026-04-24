@@ -1,30 +1,28 @@
-use std::sync::Arc;
 use anyhow::Result;
+use std::sync::Arc;
 
 use crate::core::{
     docker::{DockerCliManager, DockerManager},
     firewall::{FirewallManager, FirewalldManager, NoneManager, PfManager, UfwManager},
     gateway::{CaddyManager, GatewayManager},
-    packages::{
-        AptManager, BrewManager, DnfManager, PackageManager, PacmanManager,
-        which,
-    },
+    packages::{which, AptManager, BrewManager, DnfManager, PackageManager, PacmanManager},
     processes::{ProcessManager, SysinfoProcessManager},
     security::{DefaultFail2Ban, DefaultSecurityAuditor, Fail2BanManager, SecurityAuditor},
-    services::{ServiceManager, SystemdServiceManager, MacosServiceManager, is_systemd_available},
+    services::{is_systemd_available, MacosServiceManager, ServiceManager, SystemdServiceManager},
     ssh::{DefaultSshKeyManager, SshKeyManager},
     system::{SysinfoManager, SystemInfo},
     tunnel::{CloudflareManager, TunnelManager},
     users::{UnixUserManager, UserManager},
     wasm_cloud::{WasmCloudCliManager, WasmCloudManager},
+    workloads::{DefaultManagedWorkloadManager, ManagedWorkloadManager},
 };
 
 /// Coarse OS family used to gate security checks and fixes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OsFamily {
-    Debian,  // Debian, Ubuntu, Raspbian …
-    Redhat,  // Fedora, RHEL, CentOS, Rocky …
-    Arch,    // Arch, Manjaro …
+    Debian, // Debian, Ubuntu, Raspbian …
+    Redhat, // Fedora, RHEL, CentOS, Rocky …
+    Arch,   // Arch, Manjaro …
     Macos,
     Unknown,
 }
@@ -68,6 +66,7 @@ pub struct Platform {
     pub services: Arc<dyn ServiceManager>,
     pub users: Arc<dyn UserManager>,
     pub nats: Arc<crate::core::nats::NatsManager>,
+    pub workloads: Arc<dyn ManagedWorkloadManager>,
 }
 
 pub fn detect() -> Result<Platform> {
@@ -91,6 +90,9 @@ pub fn detect() -> Result<Platform> {
     };
     let users = Arc::new(UnixUserManager);
     let nats = Arc::new(crate::core::nats::NatsManager::new());
+    let workloads: Arc<dyn ManagedWorkloadManager> = Arc::new(
+        DefaultManagedWorkloadManager::detect(os, Arc::clone(&services)),
+    );
 
     Ok(Platform {
         os,
@@ -108,6 +110,7 @@ pub fn detect() -> Result<Platform> {
         services,
         users,
         nats,
+        workloads,
     })
 }
 
@@ -139,7 +142,5 @@ fn detect_package_manager() -> Result<Arc<dyn PackageManager>> {
     if which("brew") {
         return Ok(Arc::new(BrewManager));
     }
-    anyhow::bail!(
-        "No supported package manager found (tried apt, dnf/yum, pacman, brew)"
-    )
+    anyhow::bail!("No supported package manager found (tried apt, dnf/yum, pacman, brew)")
 }

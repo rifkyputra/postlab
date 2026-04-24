@@ -68,15 +68,15 @@ async fn run_loop(
 
             match app.screen {
                 Screen::Dashboard => screens::dashboard::render(f, app, chunks[1]),
-                Screen::Packages  => screens::packages::render(f, app, chunks[1]),
-                Screen::Security  => screens::security::render(f, app, chunks[1]),
-                Screen::Gateway   => screens::gateway::render(f, app, chunks[1]),
-                Screen::Tunnel    => screens::tunnel::render(f, app, chunks[1]),
-                Screen::Docker      => screens::docker::render(f, app, chunks[1]),
+                Screen::Packages => screens::packages::render(f, app, chunks[1]),
+                Screen::Security => screens::security::render(f, app, chunks[1]),
+                Screen::Gateway => screens::gateway::render(f, app, chunks[1]),
+                Screen::Tunnel => screens::tunnel::render(f, app, chunks[1]),
+                Screen::Docker => screens::docker::render(f, app, chunks[1]),
                 Screen::WasmCloud => screens::wasmcloud::render(f, app, chunks[1]),
-                Screen::Ghosts    => screens::ghost::render(f, app, chunks[1]),
-                Screen::Users     => screens::users::render(f, app, chunks[1]),
-                Screen::Services  => screens::services::render(f, app, chunks[1]),
+                Screen::Ghosts => screens::ghost::render(f, app, chunks[1]),
+                Screen::Users => screens::users::render(f, app, chunks[1]),
+                Screen::Services => screens::services::render(f, app, chunks[1]),
                 Screen::Maintenance => screens::maintenance::render(f, app, chunks[1]),
             }
 
@@ -134,20 +134,30 @@ async fn run_loop(
 }
 
 fn render_nav(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
-    let titles: Vec<&str> = Screen::all()
-        .iter()
-        .map(|s| s.title())
-        .collect();
-    let version = concat!(" postlab v", env!("CARGO_PKG_VERSION"), "-", env!("GIT_HASH"), " ");
+    let titles: Vec<&str> = Screen::all().iter().map(|s| s.title()).collect();
+    let version = concat!(
+        " postlab v",
+        env!("CARGO_PKG_VERSION"),
+        "-",
+        env!("GIT_HASH"),
+        " "
+    );
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title(version))
         .select(app.screen.index())
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(tabs, area);
 }
 
 fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
-    let msg = app.status_msg.as_deref().unwrap_or("[q] quit  [1-8] screens  [Tab] next  [←/→] switch tabs");
+    let msg = app
+        .status_msg
+        .as_deref()
+        .unwrap_or("[q] quit  [1-8] screens  [Tab] next  [←/→] switch tabs");
     let style = if app.status_msg.is_some() {
         Style::default().fg(Color::Yellow)
     } else {
@@ -157,12 +167,21 @@ fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     f.render_widget(p, area);
 }
 
-fn render_confirm_dialog(f: &mut ratatui::Frame, dialog: &ConfirmDialog, area: ratatui::layout::Rect) {
+fn render_confirm_dialog(
+    f: &mut ratatui::Frame,
+    dialog: &ConfirmDialog,
+    area: ratatui::layout::Rect,
+) {
     let w = (dialog.message.len() as u16 + 4).min(area.width.saturating_sub(4));
     let h = 3u16;
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;
-    let popup = ratatui::layout::Rect { x, y, width: w, height: h };
+    let popup = ratatui::layout::Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
 
     f.render_widget(Clear, popup);
     let p = Paragraph::new(dialog.message.as_str())

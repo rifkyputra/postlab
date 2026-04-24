@@ -1,8 +1,8 @@
+use crate::core::models::UserInfo;
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::fs;
 use tokio::process::Command;
-use crate::core::models::UserInfo;
 
 #[async_trait]
 pub trait UserManager: Send + Sync {
@@ -113,7 +113,9 @@ impl UserManager for UnixUserManager {
             .spawn()?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(format!("{}:{}", username, password).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}:{}", username, password).as_bytes())
+                .await?;
         }
 
         let out = child.wait_with_output().await?;

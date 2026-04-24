@@ -15,7 +15,10 @@ impl NatsManager {
         let home = PathBuf::from(home_str);
         let bin_path = home.join(".local").join("bin").join("nats-server");
         let config_path = home.join(".postlab").join("nats.conf");
-        Self { bin_path, config_path }
+        Self {
+            bin_path,
+            config_path,
+        }
     }
 
     pub fn is_installed(&self) -> bool {
@@ -31,26 +34,26 @@ impl NatsManager {
 
         // Determine OS and ARCH
         let os = match env::consts::OS {
-            "linux"   => "linux",
-            "macos"   => "darwin",
+            "linux" => "linux",
+            "macos" => "darwin",
             "windows" => "windows",
-            other     => anyhow::bail!("Unsupported OS for auto-download: {}", other),
+            other => anyhow::bail!("Unsupported OS for auto-download: {}", other),
         };
         let arch = match env::consts::ARCH {
-            "x86_64"  => "amd64",
+            "x86_64" => "amd64",
             "aarch64" => "arm64",
-            "arm"     => "arm7",
-            other     => anyhow::bail!("Unsupported ARCH for auto-download: {}", other),
+            "arm" => "arm7",
+            other => anyhow::bail!("Unsupported ARCH for auto-download: {}", other),
         };
 
-        let version  = "2.10.11";
+        let version = "2.10.11";
         let filename = format!("nats-server-v{}-{}-{}", version, os, arch);
-        let url      = format!(
+        let url = format!(
             "https://github.com/nats-io/nats-server/releases/download/v{}/{}.zip",
             version, filename
         );
 
-        let parent   = self.bin_path.parent().unwrap().to_path_buf();
+        let parent = self.bin_path.parent().unwrap().to_path_buf();
         let zip_path = parent.join(format!("{}.zip", &filename));
         let bin_path = self.bin_path.clone();
 
@@ -68,7 +71,12 @@ impl NatsManager {
 
             // 2. Unzip
             let st = Command::new("unzip")
-                .args(["-o", zip_path.to_str().unwrap(), "-d", parent.to_str().unwrap()])
+                .args([
+                    "-o",
+                    zip_path.to_str().unwrap(),
+                    "-d",
+                    parent.to_str().unwrap(),
+                ])
                 .status()?;
             if !st.success() {
                 anyhow::bail!("unzip failed — is unzip installed?");
@@ -156,7 +164,8 @@ websocket {{
         use std::time::Duration;
         let addr = "127.0.0.1:4222";
         TcpStream::connect_timeout(
-            &addr.to_socket_addrs()
+            &addr
+                .to_socket_addrs()
                 .ok()
                 .and_then(|mut a| a.next())
                 .unwrap_or_else(|| "127.0.0.1:4222".parse().unwrap()),
@@ -167,7 +176,7 @@ websocket {{
 
     /// Async: write config + start sidecar. Runs blocking ops on thread pool.
     pub async fn start_async(&self) -> Result<()> {
-        let bin_path   = self.bin_path.clone();
+        let bin_path = self.bin_path.clone();
         let config_path = self.config_path.clone();
         tokio::task::spawn_blocking(move || -> Result<()> {
             // Write config
@@ -203,8 +212,7 @@ websocket {{
                 use std::net::{TcpStream, ToSocketAddrs};
                 use std::time::Duration;
                 TcpStream::connect_timeout(
-                    &"127.0.0.1:4222".to_socket_addrs()
-                        .unwrap().next().unwrap(),
+                    &"127.0.0.1:4222".to_socket_addrs().unwrap().next().unwrap(),
                     Duration::from_millis(300),
                 )
                 .is_ok()
@@ -240,20 +248,35 @@ websocket {{
             };
 
             let run = |extra: &[&'static str]| {
-                let _ = Command::new(cli)
-                    .args(srv_args)
-                    .args(extra)
-                    .output();
+                let _ = Command::new(cli).args(srv_args).args(extra).output();
             };
 
             run(&["kv", "create", "LATTICEDATA_default"]);
             run(&["kv", "create", "wadm_manifests"]);
-            run(&["stream", "add", "wadm_events",
-                  "--subjects", "wadm.evt.*",
-                  "--storage", "file", "--replicas", "1", "--defaults"]);
-            run(&["stream", "add", "wadm_commands",
-                  "--subjects", "wadm.cmd.*",
-                  "--storage", "file", "--replicas", "1", "--defaults"]);
+            run(&[
+                "stream",
+                "add",
+                "wadm_events",
+                "--subjects",
+                "wadm.evt.*",
+                "--storage",
+                "file",
+                "--replicas",
+                "1",
+                "--defaults",
+            ]);
+            run(&[
+                "stream",
+                "add",
+                "wadm_commands",
+                "--subjects",
+                "wadm.cmd.*",
+                "--storage",
+                "file",
+                "--replicas",
+                "1",
+                "--defaults",
+            ]);
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))
@@ -287,20 +310,36 @@ websocket {{
         run(&["kv", "create", "wadm_manifests"]);
 
         // Stream: wadm_events
-        run(&["stream", "add", "wadm_events",
-              "--subjects", "wadm.evt.*",
-              "--retention", "limits",
-              "--storage", "file",
-              "--replicas", "1",
-              "--defaults"]);
+        run(&[
+            "stream",
+            "add",
+            "wadm_events",
+            "--subjects",
+            "wadm.evt.*",
+            "--retention",
+            "limits",
+            "--storage",
+            "file",
+            "--replicas",
+            "1",
+            "--defaults",
+        ]);
 
         // Stream: wadm_commands
-        run(&["stream", "add", "wadm_commands",
-              "--subjects", "wadm.cmd.*",
-              "--retention", "limits",
-              "--storage", "file",
-              "--replicas", "1",
-              "--defaults"]);
+        run(&[
+            "stream",
+            "add",
+            "wadm_commands",
+            "--subjects",
+            "wadm.cmd.*",
+            "--retention",
+            "limits",
+            "--storage",
+            "file",
+            "--replicas",
+            "1",
+            "--defaults",
+        ]);
 
         Ok(())
     }
@@ -309,10 +348,13 @@ websocket {{
         // Parse the nats varz endpoint or check the size of the nats_storage directory
         let parent = self.config_path.parent().unwrap();
         let storage_dir = parent.join("nats_storage");
-        
+
         if storage_dir.exists() {
             let mut size = 0;
-            if let Ok(entries) = walkdir::WalkDir::new(&storage_dir).into_iter().collect::<Result<Vec<_>, _>>() {
+            if let Ok(entries) = walkdir::WalkDir::new(&storage_dir)
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+            {
                 for entry in entries {
                     if let Ok(metadata) = entry.metadata() {
                         size += metadata.len();

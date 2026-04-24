@@ -29,15 +29,23 @@ fn render_actions(f: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL);
 
     let mut lines = Vec::new();
-    
+
     // Action 1: Package Cache
     let pkg_manager = app.platform.packages.name();
     lines.push(Line::from(vec![
-        Span::styled(" [c] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        Span::styled(format!("Clean {} Package Cache", pkg_manager), Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " [c] ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("Clean {} Package Cache", pkg_manager),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" - Remove cached installer files to free up space."),
     ]));
-    
+
     lines.push(Line::from(""));
 
     // Info
@@ -48,15 +56,16 @@ fn render_actions(f: &mut Frame, app: &App, area: Rect) {
 
     if let Some(ref op) = app.maintenance.running_op {
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled(format!(" ⚙ Running: {}... ", op), Style::default().bg(Color::Blue).fg(Color::White)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            format!(" ⚙ Running: {}... ", op),
+            Style::default().bg(Color::Blue).fg(Color::White),
+        )]));
     }
 
     let p = Paragraph::new(lines)
         .block(block)
         .alignment(Alignment::Left);
-    
+
     f.render_widget(p, area);
 }
 
@@ -76,7 +85,7 @@ fn render_output(f: &mut Frame, app: &App, area: Rect) {
         .block(block)
         .wrap(Wrap { trim: false })
         .style(Style::default().fg(Color::Gray));
-    
+
     f.render_widget(p, area);
 }
 

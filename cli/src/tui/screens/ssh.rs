@@ -19,10 +19,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[0]);
 
     render_local_keys(f, app, content_chunks[0]);
@@ -50,22 +47,35 @@ fn render_local_keys(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = app.ssh.local_keys.iter().map(|k| {
-        ListItem::new(vec![
-            Line::from(vec![
-                Span::styled(format!(" {} ", k.key_type), Style::default().bg(Color::Blue).fg(Color::White)),
-                Span::raw(" "),
-                Span::styled(&k.name, Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Line::from(vec![
-                Span::styled(format!("   {}", k.fingerprint), Style::default().fg(Color::DarkGray)),
-            ]),
-        ])
-    }).collect();
+    let items: Vec<ListItem> = app
+        .ssh
+        .local_keys
+        .iter()
+        .map(|k| {
+            ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!(" {} ", k.key_type),
+                        Style::default().bg(Color::Blue).fg(Color::White),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(&k.name, Style::default().add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(vec![Span::styled(
+                    format!("   {}", k.fingerprint),
+                    Style::default().fg(Color::DarkGray),
+                )]),
+            ])
+        })
+        .collect();
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▶ ");
 
     let mut state = app.ssh.local_state.clone();
@@ -87,22 +97,35 @@ fn render_authorized_keys(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = app.ssh.authorized_keys.iter().map(|k| {
-        ListItem::new(vec![
-            Line::from(vec![
-                Span::styled(format!(" {} ", k.key_type), Style::default().bg(Color::Green).fg(Color::Black)),
-                Span::raw(" "),
-                Span::styled(&k.name, Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Line::from(vec![
-                Span::styled(format!("   {}", k.fingerprint), Style::default().fg(Color::DarkGray)),
-            ]),
-        ])
-    }).collect();
+    let items: Vec<ListItem> = app
+        .ssh
+        .authorized_keys
+        .iter()
+        .map(|k| {
+            ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!(" {} ", k.key_type),
+                        Style::default().bg(Color::Green).fg(Color::Black),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(&k.name, Style::default().add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(vec![Span::styled(
+                    format!("   {}", k.fingerprint),
+                    Style::default().fg(Color::DarkGray),
+                )]),
+            ])
+        })
+        .collect();
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▶ ");
 
     let mut state = app.ssh.authorized_state.clone();
@@ -116,7 +139,7 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
     } else {
         " [D] deauthorize selected key  [Left] focus local "
     };
-    
+
     let text = format!("{}{}", common, specific);
     let hints = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
     f.render_widget(hints, area);
@@ -127,7 +150,7 @@ fn render_generate_input(f: &mut Frame, app: &App, area: Rect) {
         .title(" Generate New SSH Key ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow));
-    
+
     let popup_area = Rect {
         x: area.width / 4,
         y: area.height / 2 - 3,
@@ -136,7 +159,7 @@ fn render_generate_input(f: &mut Frame, app: &App, area: Rect) {
     };
 
     f.render_widget(Clear, popup_area);
-    
+
     let text = vec![
         Line::from(vec![
             Span::raw(" Name: "),

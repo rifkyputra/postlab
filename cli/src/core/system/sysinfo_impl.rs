@@ -69,6 +69,9 @@ impl SystemInfo for SysinfoManager {
         let networks = Networks::new_with_refreshed_list();
         let rx: u64 = networks.iter().map(|(_, n)| n.received()).sum();
         let tx: u64 = networks.iter().map(|(_, n)| n.transmitted()).sum();
-        Ok(NetStats { rx_bytes: rx, tx_bytes: tx })
+        Ok(NetStats {
+            rx_bytes: rx,
+            tx_bytes: tx,
+        })
     }
 }

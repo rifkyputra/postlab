@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::process::Command;
 
+use super::WasmCloudManager;
 use crate::core::models::{WasmCloudApp, WasmCloudComponent, WasmCloudHost, WasmCloudLink};
 use crate::core::packages::which;
-use super::WasmCloudManager;
 
 pub struct WasmCloudCliManager;
 
@@ -15,11 +15,8 @@ impl WasmCloudManager for WasmCloudCliManager {
     }
 
     async fn version(&self) -> Option<String> {
-        let output = Command::new("wash")
-            .arg("--version")
-            .output()
-            .ok()?;
-        
+        let output = Command::new("wash").arg("--version").output().ok()?;
+
         if output.status.success() {
             let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
             // wash 0.26.0 -> 0.26.0
@@ -40,10 +37,9 @@ impl WasmCloudManager for WasmCloudCliManager {
         // Debian/Ubuntu
         if crate::core::packages::which("apt-get") {
             // Official install script from wasmcloud docs
-            let script = "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
-            let out = Command::new("sh")
-                .args(["-c", script])
-                .output()?;
+            let script =
+                "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
+            let out = Command::new("sh").args(["-c", script]).output()?;
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
             }
@@ -80,7 +76,8 @@ impl WasmCloudManager for WasmCloudCliManager {
 
         // Debian/Ubuntu
         if crate::core::packages::which("apt-get") {
-            let script = "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
+            let script =
+                "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
             return run_cmd_streaming("sh", &["-c", script], tx).await;
         }
 
@@ -133,7 +130,7 @@ impl WasmCloudManager for WasmCloudCliManager {
             .arg("inspect")
             .arg(wasm_path)
             .output()?;
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }

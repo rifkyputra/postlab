@@ -27,9 +27,7 @@ async fn check_ssh_root_login() -> Option<SecurityFinding> {
     let content = fs::read_to_string("/etc/ssh/sshd_config").await.ok()?;
     let enabled = content.lines().any(|l| {
         let l = l.trim();
-        !l.starts_with('#')
-            && l.to_lowercase().starts_with("permitrootlogin")
-            && l.contains("yes")
+        !l.starts_with('#') && l.to_lowercase().starts_with("permitrootlogin") && l.contains("yes")
     });
     if enabled {
         Some(SecurityFinding {
@@ -143,7 +141,8 @@ async fn check_pf() -> Option<SecurityFinding> {
             severity: Severity::High,
             description: "macOS packet filter (pf) is not active".to_string(),
             file_path: None,
-            fix_description: "Enable the built-in firewall in System Settings → Network → Firewall".to_string(),
+            fix_description: "Enable the built-in firewall in System Settings → Network → Firewall"
+                .to_string(),
         })
     } else {
         None
@@ -160,10 +159,7 @@ async fn check_aslr() -> Option<SecurityFinding> {
             id: "aslr_disabled".to_string(),
             title: "ASLR not fully enabled".to_string(),
             severity: Severity::Medium,
-            description: format!(
-                "kernel.randomize_va_space = {} (should be 2)",
-                val.trim()
-            ),
+            description: format!("kernel.randomize_va_space = {} (should be 2)", val.trim()),
             file_path: Some("/etc/sysctl.conf".to_string()),
             fix_description: "Set kernel.randomize_va_space=2 in /etc/sysctl.conf".to_string(),
         })
@@ -290,7 +286,11 @@ impl SecurityAuditor for DefaultSecurityAuditor {
                 .await?;
                 // sshd service name differs slightly across distros but
                 // systemctl handles both "sshd" and "ssh" gracefully.
-                let svc = if self.os == OsFamily::Debian { "ssh" } else { "sshd" };
+                let svc = if self.os == OsFamily::Debian {
+                    "ssh"
+                } else {
+                    "sshd"
+                };
                 let _ = tokio::process::Command::new("systemctl")
                     .args(["restart", svc])
                     .output()
@@ -304,12 +304,19 @@ impl SecurityAuditor for DefaultSecurityAuditor {
                     "PasswordAuthentication no",
                 )
                 .await?;
-                let svc = if self.os == OsFamily::Debian { "ssh" } else { "sshd" };
+                let svc = if self.os == OsFamily::Debian {
+                    "ssh"
+                } else {
+                    "sshd"
+                };
                 let _ = tokio::process::Command::new("systemctl")
                     .args(["restart", svc])
                     .output()
                     .await;
-                Ok(format!("PasswordAuthentication set to no, {} restarted", svc))
+                Ok(format!(
+                    "PasswordAuthentication set to no, {} restarted",
+                    svc
+                ))
             }
             "firewall_inactive" => match self.os {
                 OsFamily::Debian => {
@@ -340,8 +347,9 @@ impl SecurityAuditor for DefaultSecurityAuditor {
                     anyhow::bail!("ASLR fix is only applicable on Linux");
                 }
                 backup_file("/etc/sysctl.conf").await?;
-                let mut content =
-                    fs::read_to_string("/etc/sysctl.conf").await.unwrap_or_default();
+                let mut content = fs::read_to_string("/etc/sysctl.conf")
+                    .await
+                    .unwrap_or_default();
                 if !content.contains("randomize_va_space") {
                     content.push_str("\nkernel.randomize_va_space=2\n");
                     fs::write("/etc/sysctl.conf", &content).await?;

@@ -31,7 +31,11 @@ fn render_tabs(f: &mut Frame, app: &App, area: Rect) {
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::BOTTOM))
         .select(app.dashboard.active_tab.index())
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .divider(Span::raw(" │ "));
     f.render_widget(tabs, area);
 }
@@ -40,9 +44,9 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6),  // system info
-            Constraint::Length(3),  // memory gauge
-            Constraint::Min(4),     // cpu + disk
+            Constraint::Length(6), // system info
+            Constraint::Length(3), // memory gauge
+            Constraint::Min(4),    // cpu + disk
         ])
         .split(area);
 
@@ -64,7 +68,12 @@ fn render_sysinfo(f: &mut Frame, app: &App, area: Rect) {
         vec![
             Line::from(vec![
                 Span::styled("Hostname:  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&info.hostname, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    &info.hostname,
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("OS:        ", Style::default().fg(Color::DarkGray)),
@@ -88,7 +97,10 @@ fn render_sysinfo(f: &mut Frame, app: &App, area: Rect) {
             ]),
         ]
     } else {
-        vec![Line::from(Span::styled("Loading…", Style::default().fg(Color::DarkGray)))]
+        vec![Line::from(Span::styled(
+            "Loading…",
+            Style::default().fg(Color::DarkGray),
+        ))]
     };
 
     let block = Block::default().title(" System ").borders(Borders::ALL);
@@ -98,7 +110,11 @@ fn render_sysinfo(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_memory(f: &mut Frame, app: &App, area: Rect) {
     let (used, total, pct) = if let Some(mem) = &app.dashboard.mem {
-        let pct = if mem.total > 0 { (mem.used * 100 / mem.total) as u16 } else { 0 };
+        let pct = if mem.total > 0 {
+            (mem.used * 100 / mem.total) as u16
+        } else {
+            0
+        };
         (mem.used, mem.total, pct)
     } else {
         (0, 0, 0)
@@ -110,7 +126,13 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
         total as f64 / 1_073_741_824.0,
         pct
     );
-    let color = if pct > 85 { Color::Red } else if pct > 65 { Color::Yellow } else { Color::Green };
+    let color = if pct > 85 {
+        Color::Red
+    } else if pct > 65 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
     let gauge = Gauge::default()
         .block(Block::default().title(" Memory ").borders(Borders::ALL))
         .gauge_style(Style::default().fg(color))
@@ -120,23 +142,39 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_cpu(f: &mut Frame, app: &App, area: Rect) {
-    let block = Block::default().title(" CPU (per core) ").borders(Borders::ALL);
+    let block = Block::default()
+        .title(" CPU (per core) ")
+        .borders(Borders::ALL);
     let inner = block.inner(area);
     f.render_widget(block, area);
 
     if app.dashboard.cpu_pct.is_empty() {
-        let p = Paragraph::new(Span::styled("Loading…", Style::default().fg(Color::DarkGray)));
+        let p = Paragraph::new(Span::styled(
+            "Loading…",
+            Style::default().fg(Color::DarkGray),
+        ));
         f.render_widget(p, inner);
         return;
     }
 
     let n = app.dashboard.cpu_pct.len();
     let heights: Vec<Constraint> = (0..n).map(|_| Constraint::Length(1)).collect();
-    let rows = Layout::default().direction(Direction::Vertical).constraints(heights).split(inner);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(heights)
+        .split(inner);
 
     for (i, &pct) in app.dashboard.cpu_pct.iter().enumerate() {
-        if i >= rows.len() { break; }
-        let color = if pct > 85.0 { Color::Red } else if pct > 65.0 { Color::Yellow } else { Color::Green };
+        if i >= rows.len() {
+            break;
+        }
+        let color = if pct > 85.0 {
+            Color::Red
+        } else if pct > 65.0 {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
         let gauge = LineGauge::default()
             .filled_style(Style::default().fg(color))
             .label(format!("{:3}%", pct as u32))
@@ -151,19 +189,37 @@ fn render_disks(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(block, area);
 
     if app.dashboard.disks.is_empty() {
-        let p = Paragraph::new(Span::styled("Loading…", Style::default().fg(Color::DarkGray)));
+        let p = Paragraph::new(Span::styled(
+            "Loading…",
+            Style::default().fg(Color::DarkGray),
+        ));
         f.render_widget(p, inner);
         return;
     }
 
     let n = app.dashboard.disks.len();
     let heights: Vec<Constraint> = (0..n).map(|_| Constraint::Length(2)).collect();
-    let rows = Layout::default().direction(Direction::Vertical).constraints(heights).split(inner);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(heights)
+        .split(inner);
 
     for (i, disk) in app.dashboard.disks.iter().enumerate() {
-        if i >= rows.len() { break; }
-        let pct = if disk.total > 0 { (disk.used * 100 / disk.total) as u16 } else { 0 };
-        let color = if pct > 85 { Color::Red } else if pct > 65 { Color::Yellow } else { Color::Green };
+        if i >= rows.len() {
+            break;
+        }
+        let pct = if disk.total > 0 {
+            (disk.used * 100 / disk.total) as u16
+        } else {
+            0
+        };
+        let color = if pct > 85 {
+            Color::Red
+        } else if pct > 65 {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
         let label = format!(
             "{} {:.0}/{:.0}G {}%",
             disk.mount,

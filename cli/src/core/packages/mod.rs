@@ -1,6 +1,6 @@
+use crate::core::models::Package;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::core::models::Package;
 
 pub mod apt;
 pub mod brew;
@@ -51,7 +51,10 @@ pub trait PackageManager: Send + Sync {
     async fn check_packages(&self, names: &[&str]) -> Result<Vec<Package>> {
         let all = self.list_installed().await?;
         let want: std::collections::HashSet<&str> = names.iter().copied().collect();
-        Ok(all.into_iter().filter(|p| want.contains(p.name.as_str())).collect())
+        Ok(all
+            .into_iter()
+            .filter(|p| want.contains(p.name.as_str()))
+            .collect())
     }
 
     /// Remove with line-by-line progress forwarded to `tx`. Default falls back to `remove()`.
@@ -94,7 +97,9 @@ pub const CURATED: &[CuratedCategory] = &[
     },
     CuratedCategory {
         name: "System Tools",
-        packages: &["htop", "tmux", "git", "curl", "wget", "vim", "rsync", "jq", "unzip"],
+        packages: &[
+            "htop", "tmux", "git", "curl", "wget", "vim", "rsync", "jq", "unzip",
+        ],
     },
     CuratedCategory {
         name: "Runtimes",
@@ -102,7 +107,13 @@ pub const CURATED: &[CuratedCategory] = &[
     },
     CuratedCategory {
         name: "Security",
-        packages: &["fail2ban", "ufw", "tailscale", "nmap", "unattended-upgrades"],
+        packages: &[
+            "fail2ban",
+            "ufw",
+            "tailscale",
+            "nmap",
+            "unattended-upgrades",
+        ],
     },
 ];
 
@@ -211,6 +222,5 @@ pub async fn run_cmd_streaming(
 
 pub fn which(bin: &str) -> bool {
     let path_var = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path_var)
-        .any(|dir| dir.join(bin).is_file())
+    std::env::split_paths(&path_var).any(|dir| dir.join(bin).is_file())
 }

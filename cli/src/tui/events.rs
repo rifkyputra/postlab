@@ -2,7 +2,10 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::core::models::{Route, TunnelRoute};
 
-use super::app::{App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, PackageTab, ProcessSort, Screen, SecurityTab, TunnelPanel, PROTOS, ACTIONS};
+use super::app::{
+    App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, PackageTab, ProcessSort, Screen,
+    SecurityTab, TunnelPanel, ACTIONS, PROTOS,
+};
 
 /// Returns true if the app should quit.
 pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
@@ -28,12 +31,29 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_gateway_input(app, key);
         return false;
     }
-    if app.screen == Screen::Tunnel && matches!(app.tunnel.input_mode, InputMode::Editing | InputMode::AddingDomain | InputMode::EditingIngress) {
+    if app.screen == Screen::Tunnel
+        && matches!(
+            app.tunnel.input_mode,
+            InputMode::Editing | InputMode::AddingDomain | InputMode::EditingIngress
+        )
+    {
         handle_tunnel_input(app, key);
         return false;
     }
-    if app.screen == Screen::Users && matches!(app.users.input_mode, InputMode::Editing | InputMode::SettingPassword) {
+    if app.screen == Screen::Users
+        && matches!(
+            app.users.input_mode,
+            InputMode::Editing | InputMode::SettingPassword
+        )
+    {
         handle_users_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Docker
+        && app.docker.active_tab == super::app::DockerTab::Workloads
+        && app.docker.workloads.form.input_mode == InputMode::Editing
+    {
+        handle_docker_workload_input(app, key);
         return false;
     }
     if app.screen == Screen::Services && app.services.filter_mode == InputMode::Editing {
@@ -61,34 +81,75 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     // 3. Global keys — always reachable when not in text-entry mode
     match key.code {
         KeyCode::Char('q') => return true,
-        KeyCode::Char('1') => { app.set_screen_by_index(0); return false; }
-        KeyCode::Char('2') => { app.set_screen_by_index(1); return false; }
-        KeyCode::Char('3') => { app.set_screen_by_index(2); return false; }
-        KeyCode::Char('4') => { app.set_screen_by_index(3); return false; }
-        KeyCode::Char('5') => { app.set_screen_by_index(4); return false; }
-        KeyCode::Char('6') => { app.set_screen_by_index(5); return false; }
-        KeyCode::Char('7') => { app.set_screen_by_index(6); return false; }
-        KeyCode::Char('8') => { app.set_screen_by_index(7); return false; }
-        KeyCode::Char('9') => { app.set_screen_by_index(8); return false; }
-        KeyCode::Char('0') => { app.set_screen_by_index(9); return false; }
-        KeyCode::Char('m') | KeyCode::Char('M') => { app.set_screen_by_index(10); return false; }
-        KeyCode::Tab => { app.next_screen(); return false; }
-        KeyCode::BackTab => { app.prev_screen(); return false; }
+        KeyCode::Char('1') => {
+            app.set_screen_by_index(0);
+            return false;
+        }
+        KeyCode::Char('2') => {
+            app.set_screen_by_index(1);
+            return false;
+        }
+        KeyCode::Char('3') => {
+            app.set_screen_by_index(2);
+            return false;
+        }
+        KeyCode::Char('4') => {
+            app.set_screen_by_index(3);
+            return false;
+        }
+        KeyCode::Char('5') => {
+            app.set_screen_by_index(4);
+            return false;
+        }
+        KeyCode::Char('6') => {
+            app.set_screen_by_index(5);
+            return false;
+        }
+        KeyCode::Char('7') => {
+            app.set_screen_by_index(6);
+            return false;
+        }
+        KeyCode::Char('8') => {
+            app.set_screen_by_index(7);
+            return false;
+        }
+        KeyCode::Char('9') => {
+            app.set_screen_by_index(8);
+            return false;
+        }
+        KeyCode::Char('0') => {
+            app.set_screen_by_index(9);
+            return false;
+        }
+        KeyCode::Char('m') | KeyCode::Char('M') => {
+            app.set_screen_by_index(10);
+            return false;
+        }
+        KeyCode::Tab => {
+            app.next_screen();
+            return false;
+        }
+        KeyCode::BackTab => {
+            app.prev_screen();
+            return false;
+        }
         _ => {}
     }
 
     // 4. Screen-specific keys
     match app.screen.clone() {
-        Screen::Dashboard   => handle_dashboard_key(app, key),
-        Screen::Packages    => { handle_packages_key(app, key).await; }
-        Screen::Security    => handle_security_key(app, key),
-        Screen::Gateway     => handle_gateway_key(app, key),
-        Screen::Tunnel      => handle_tunnel_key(app, key),
-        Screen::Docker      => handle_docker_key(app, key),
-        Screen::WasmCloud   => handle_wasm_cloud_key(app, key),
-        Screen::Ghosts      => handle_ghost_key(app, key),
-        Screen::Users       => handle_users_key(app, key),
-        Screen::Services    => handle_services_key(app, key),
+        Screen::Dashboard => handle_dashboard_key(app, key),
+        Screen::Packages => {
+            handle_packages_key(app, key).await;
+        }
+        Screen::Security => handle_security_key(app, key),
+        Screen::Gateway => handle_gateway_key(app, key),
+        Screen::Tunnel => handle_tunnel_key(app, key),
+        Screen::Docker => handle_docker_key(app, key),
+        Screen::WasmCloud => handle_wasm_cloud_key(app, key),
+        Screen::Ghosts => handle_ghost_key(app, key),
+        Screen::Users => handle_users_key(app, key),
+        Screen::Services => handle_services_key(app, key),
         Screen::Maintenance => handle_maintenance_key(app, key),
     }
     false
@@ -137,15 +198,23 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
             tokio::spawn(async move {
                 let _ = platform.gateway.remove_route(&domain).await;
                 match platform.gateway.list_routes().await {
-                    Ok(routes) => { let _ = tx.send(crate::tui::app::TaskResult::RouteList(routes)); }
-                    Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                    Ok(routes) => {
+                        let _ = tx.send(crate::tui::app::TaskResult::RouteList(routes));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                    }
                 }
             });
         }
         ConfirmAction::DeleteTunnel { name: _ } => {
-            app.status_msg = Some("Tunnel deletion not yet implemented via cloudflared CLI".to_string());
+            app.status_msg =
+                Some("Tunnel deletion not yet implemented via cloudflared CLI".to_string());
         }
-        ConfirmAction::DeleteIngress { tunnel_id, hostname } => {
+        ConfirmAction::DeleteIngress {
+            tunnel_id,
+            hostname,
+        } => {
             let platform = std::sync::Arc::clone(&app.platform);
             let tx = app.task_tx.clone();
             tokio::spawn(async move {
@@ -154,21 +223,32 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
                         if let Ok(c) = platform.tunnel.config_content(&tunnel_id).await {
                             let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c));
                         }
-                        let _ = tx.send(crate::tui::app::TaskResult::Status(
-                            format!("Removed ingress entry: {}", hostname),
-                        ));
+                        let _ = tx.send(crate::tui::app::TaskResult::Status(format!(
+                            "Removed ingress entry: {}",
+                            hostname
+                        )));
                     }
-                    Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                    Err(e) => {
+                        let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                    }
                 }
             });
         }
-        ConfirmAction::StopContainer { id, name: _ } => app.spawn_docker_container_action("stop", id),
-        ConfirmAction::RemoveContainer { id, name: _ } => app.spawn_docker_container_action("remove", id),
+        ConfirmAction::StopContainer { id, name: _ } => {
+            app.spawn_docker_container_action("stop", id)
+        }
+        ConfirmAction::RemoveContainer { id, name: _ } => {
+            app.spawn_docker_container_action("remove", id)
+        }
         ConfirmAction::RemoveImage { id, tag: _ } => app.spawn_docker_image_remove(id),
+        ConfirmAction::DeleteWorkload { name } => app.spawn_delete_workload(name),
         ConfirmAction::DeleteFirewallRule { num } => app.spawn_firewall_delete_rule(num),
         ConfirmAction::Fail2BanForgive { ip, jail } => app.spawn_fail2ban_unban(jail, ip),
         ConfirmAction::Fail2BanBanish { ip, jail } => app.spawn_fail2ban_banish(jail, ip),
-        ConfirmAction::DeauthorizeKey { fingerprint, name: _ } => app.spawn_deauthorize_key(fingerprint),
+        ConfirmAction::DeauthorizeKey {
+            fingerprint,
+            name: _,
+        } => app.spawn_deauthorize_key(fingerprint),
         ConfirmAction::AuthorizeLocalKey { content, name: _ } => app.spawn_authorize_key(content),
         ConfirmAction::KillGhost { pid, name: _ } => {
             let tx = app.task_tx.clone();
@@ -206,7 +286,11 @@ fn handle_dashboard_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left | KeyCode::Char('H') => {
             let idx = app.dashboard.active_tab.index();
-            let prev = if idx == 0 { DashboardTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                DashboardTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.dashboard.active_tab = DashboardTab::all()[prev].clone();
             if app.dashboard.active_tab == DashboardTab::Processes {
                 app.spawn_load_processes();
@@ -245,7 +329,9 @@ fn handle_installed_tab(app: &mut App, key: KeyEvent) {
     if app.packages.filter_mode == InputMode::Editing {
         match key.code {
             KeyCode::Esc => app.packages.filter_mode = InputMode::Normal,
-            KeyCode::Backspace => { app.packages.filter.pop(); }
+            KeyCode::Backspace => {
+                app.packages.filter.pop();
+            }
             KeyCode::Char(c) => app.packages.filter.push(c),
             _ => {}
         }
@@ -268,7 +354,11 @@ fn handle_installed_tab(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left | KeyCode::Char('h') => {
             let idx = app.packages.active_tab.index();
-            let prev = if idx == 0 { PackageTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                PackageTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.packages.active_tab = PackageTab::all()[prev].clone();
         }
         _ => {}
@@ -286,7 +376,9 @@ async fn handle_search_tab(app: &mut App, key: KeyEvent) {
                     app.packages.search_mode = InputMode::Normal;
                 }
             }
-            KeyCode::Backspace => { app.packages.search_query.pop(); }
+            KeyCode::Backspace => {
+                app.packages.search_query.pop();
+            }
             KeyCode::Char(c) => app.packages.search_query.push(c),
             _ => {}
         }
@@ -294,7 +386,10 @@ async fn handle_search_tab(app: &mut App, key: KeyEvent) {
     }
     match key.code {
         KeyCode::Char('/') | KeyCode::Char('s') => app.packages.search_mode = InputMode::Editing,
-        KeyCode::Down => list_next(&mut app.packages.search_state, app.packages.search_results.len()),
+        KeyCode::Down => list_next(
+            &mut app.packages.search_state,
+            app.packages.search_results.len(),
+        ),
         KeyCode::Up => list_prev(&mut app.packages.search_state),
         KeyCode::Char(' ') => toggle_search_selected(app),
         KeyCode::Char('i') => install_search_selected(app),
@@ -304,7 +399,11 @@ async fn handle_search_tab(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left => {
             let idx = app.packages.active_tab.index();
-            let prev = if idx == 0 { PackageTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                PackageTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.packages.active_tab = PackageTab::all()[prev].clone();
         }
         _ => {}
@@ -313,17 +412,23 @@ async fn handle_search_tab(app: &mut App, key: KeyEvent) {
 
 fn handle_quick_install_tab(app: &mut App, key: KeyEvent) {
     use crate::core::packages::CURATED;
-    let flat: Vec<&'static str> = CURATED.iter().flat_map(|c| c.packages.iter().copied()).collect();
+    let flat: Vec<&'static str> = CURATED
+        .iter()
+        .flat_map(|c| c.packages.iter().copied())
+        .collect();
 
     // Build installed name set for O(1) lookup
-    let installed: std::collections::HashSet<&str> = app.packages.installed
+    let installed: std::collections::HashSet<&str> = app
+        .packages
+        .installed
         .iter()
         .map(|p| p.name.as_str())
         .collect();
 
     match key.code {
         KeyCode::Down => {
-            app.packages.curated_cursor = (app.packages.curated_cursor + 1).min(flat.len().saturating_sub(1));
+            app.packages.curated_cursor =
+                (app.packages.curated_cursor + 1).min(flat.len().saturating_sub(1));
         }
         KeyCode::Up => {
             app.packages.curated_cursor = app.packages.curated_cursor.saturating_sub(1);
@@ -371,7 +476,11 @@ fn handle_quick_install_tab(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left => {
             let idx = app.packages.active_tab.index();
-            let prev = if idx == 0 { PackageTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                PackageTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.packages.active_tab = PackageTab::all()[prev].clone();
         }
         _ => {}
@@ -385,7 +494,10 @@ fn handle_queue_tab(app: &mut App, key: KeyEvent) {
             let len = app.packages.queue.len();
             if len > 0 {
                 app.packages.queue_selected = Some(
-                    app.packages.queue_selected.map(|i| (i + 1).min(len - 1)).unwrap_or(0),
+                    app.packages
+                        .queue_selected
+                        .map(|i| (i + 1).min(len - 1))
+                        .unwrap_or(0),
                 );
                 app.packages.output_scroll = 0;
             }
@@ -393,7 +505,10 @@ fn handle_queue_tab(app: &mut App, key: KeyEvent) {
         KeyCode::Up => {
             if !app.packages.queue.is_empty() {
                 app.packages.queue_selected = Some(
-                    app.packages.queue_selected.map(|i| i.saturating_sub(1)).unwrap_or(0),
+                    app.packages
+                        .queue_selected
+                        .map(|i| i.saturating_sub(1))
+                        .unwrap_or(0),
                 );
                 app.packages.output_scroll = 0;
             }
@@ -410,7 +525,11 @@ fn handle_queue_tab(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left => {
             let idx = app.packages.active_tab.index();
-            let prev = if idx == 0 { PackageTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                PackageTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.packages.active_tab = PackageTab::all()[prev].clone();
         }
         _ => {}
@@ -475,7 +594,8 @@ fn remove_selected_packages(app: &mut App) {
 
 pub fn filtered_installed(app: &App) -> Vec<&Package> {
     let filter = app.packages.filter.to_lowercase();
-    app.packages.installed
+    app.packages
+        .installed
         .iter()
         .filter(|p| filter.is_empty() || p.name.to_lowercase().contains(&filter))
         .collect()
@@ -525,8 +645,15 @@ fn handle_processes_key(app: &mut App, key: KeyEvent) {
 
 fn sort_processes(app: &mut App) {
     match app.processes.sort {
-        ProcessSort::Cpu => app.processes.list.sort_by(|a, b| b.cpu_pct.partial_cmp(&a.cpu_pct).unwrap_or(std::cmp::Ordering::Equal)),
-        ProcessSort::Memory => app.processes.list.sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes)),
+        ProcessSort::Cpu => app.processes.list.sort_by(|a, b| {
+            b.cpu_pct
+                .partial_cmp(&a.cpu_pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        ProcessSort::Memory => app
+            .processes
+            .list
+            .sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes)),
         ProcessSort::Pid => app.processes.list.sort_by_key(|p| p.pid),
     }
 }
@@ -545,7 +672,11 @@ fn handle_security_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left | KeyCode::Char('H') => {
             let idx = app.security.active_tab.index();
-            let prev = if idx == 0 { SecurityTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                SecurityTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             let tab = SecurityTab::all()[prev].clone();
             app.security.active_tab = tab.clone();
             app.spawn_load_security_tab(tab);
@@ -557,8 +688,8 @@ fn handle_security_key(app: &mut App, key: KeyEvent) {
     match app.security.active_tab.clone() {
         SecurityTab::Findings => handle_security_findings_key(app, key),
         SecurityTab::Firewall => handle_firewall_key(app, key),
-        SecurityTab::Ports    => handle_portchecker_key(app, key),
-        SecurityTab::Ssh      => handle_ssh_key(app, key),
+        SecurityTab::Ports => handle_portchecker_key(app, key),
+        SecurityTab::Ssh => handle_ssh_key(app, key),
         SecurityTab::Fail2Ban => handle_fail2ban_key(app, key),
     }
 }
@@ -626,7 +757,10 @@ fn handle_fail2ban_key(app: &mut App, key: KeyEvent) {
                     let ip = entry.ip.clone();
                     let jail = entry.jail.clone();
                     app.confirm = Some(ConfirmDialog {
-                        message: format!("Banish {} permanently? Adds firewall DROP rule. (y/N)", ip),
+                        message: format!(
+                            "Banish {} permanently? Adds firewall DROP rule. (y/N)",
+                            ip
+                        ),
                         action: ConfirmAction::Fail2BanBanish { ip, jail },
                     });
                 }
@@ -675,26 +809,42 @@ fn handle_gateway_input(app: &mut App, key: KeyEvent) {
             if !domain.is_empty() && port > 0 {
                 let platform = std::sync::Arc::clone(&app.platform);
                 let tx = app.task_tx.clone();
-                let route = Route { domain, port, tls: true };
+                let route = Route {
+                    domain,
+                    port,
+                    tls: true,
+                };
                 tokio::spawn(async move {
                     match platform.gateway.add_route(route).await {
                         Ok(_) => match platform.gateway.list_routes().await {
-                            Ok(routes) => { let _ = tx.send(crate::tui::app::TaskResult::RouteList(routes)); }
-                            Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                            Ok(routes) => {
+                                let _ = tx.send(crate::tui::app::TaskResult::RouteList(routes));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                            }
                         },
-                        Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                        Err(e) => {
+                            let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                        }
                     }
                 });
             }
             app.gateway.input_mode = InputMode::Normal;
         }
         KeyCode::Backspace => {
-            if app.gateway.input_focus == 0 { app.gateway.input_domain.pop(); }
-            else { app.gateway.input_port.pop(); }
+            if app.gateway.input_focus == 0 {
+                app.gateway.input_domain.pop();
+            } else {
+                app.gateway.input_port.pop();
+            }
         }
         KeyCode::Char(c) => {
-            if app.gateway.input_focus == 0 { app.gateway.input_domain.push(c); }
-            else if c.is_ascii_digit() { app.gateway.input_port.push(c); }
+            if app.gateway.input_focus == 0 {
+                app.gateway.input_domain.push(c);
+            } else if c.is_ascii_digit() {
+                app.gateway.input_port.push(c);
+            }
         }
         _ => {}
     }
@@ -706,7 +856,9 @@ fn handle_services_key(app: &mut App, key: KeyEvent) {
     if app.services.filter_mode == InputMode::Editing {
         match key.code {
             KeyCode::Esc | KeyCode::Enter => app.services.filter_mode = InputMode::Normal,
-            KeyCode::Backspace => { app.services.filter.pop(); }
+            KeyCode::Backspace => {
+                app.services.filter.pop();
+            }
             KeyCode::Char(c) => app.services.filter.push(c),
             _ => {}
         }
@@ -720,8 +872,15 @@ fn handle_services_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('R') => app.spawn_load_services(),
         KeyCode::Down => {
             let filter = app.services.filter.to_lowercase();
-            let n = app.services.list.iter()
-                .filter(|s| filter.is_empty() || s.name.to_lowercase().contains(&filter) || s.description.to_lowercase().contains(&filter))
+            let n = app
+                .services
+                .list
+                .iter()
+                .filter(|s| {
+                    filter.is_empty()
+                        || s.name.to_lowercase().contains(&filter)
+                        || s.description.to_lowercase().contains(&filter)
+                })
                 .count();
             table_next(&mut app.services.table_state, n);
         }
@@ -737,8 +896,15 @@ fn handle_services_key(app: &mut App, key: KeyEvent) {
 
 fn service_action(app: &mut App, op: &'static str) {
     let filter = app.services.filter.to_lowercase();
-    let visible: Vec<_> = app.services.list.iter()
-        .filter(|s| filter.is_empty() || s.name.to_lowercase().contains(&filter) || s.description.to_lowercase().contains(&filter))
+    let visible: Vec<_> = app
+        .services
+        .list
+        .iter()
+        .filter(|s| {
+            filter.is_empty()
+                || s.name.to_lowercase().contains(&filter)
+                || s.description.to_lowercase().contains(&filter)
+        })
         .collect();
 
     if let Some(idx) = app.services.table_state.selected() {
@@ -747,7 +913,10 @@ fn service_action(app: &mut App, op: &'static str) {
             if matches!(op, "stop" | "restart" | "disable") {
                 app.confirm = Some(ConfirmDialog {
                     message: format!("{} service {}? (y/N)", op.to_uppercase(), name),
-                    action: ConfirmAction::ServiceAction { name, op: op.to_string() },
+                    action: ConfirmAction::ServiceAction {
+                        name,
+                        op: op.to_string(),
+                    },
                 });
             } else {
                 app.spawn_service_action(name, op.to_string());
@@ -767,7 +936,9 @@ fn handle_maintenance_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('c') => {
             app.confirm = Some(ConfirmDialog {
                 message: "Clean all package manager caches? (y/N)".to_string(),
-                action: ConfirmAction::MaintenanceAction { op: "clean_pkg_cache".to_string() },
+                action: ConfirmAction::MaintenanceAction {
+                    op: "clean_pkg_cache".to_string(),
+                },
             });
         }
         _ => {}
@@ -790,7 +961,10 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
     if app.tunnel.panel_focus == TunnelPanel::Ingress {
         match key.code {
             KeyCode::Down => {
-                list_next(&mut app.tunnel.ingress_state, app.tunnel.ingress_entries.len());
+                list_next(
+                    &mut app.tunnel.ingress_state,
+                    app.tunnel.ingress_entries.len(),
+                );
                 return;
             }
             KeyCode::Up => {
@@ -818,7 +992,10 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
                             let hostname = host.clone();
                             app.confirm = Some(ConfirmDialog {
                                 message: format!("Remove ingress {}? (y/N)", hostname),
-                                action: ConfirmAction::DeleteIngress { tunnel_id: tid, hostname },
+                                action: ConfirmAction::DeleteIngress {
+                                    tunnel_id: tid,
+                                    hostname,
+                                },
                             });
                         } else {
                             app.status_msg = Some("Select a tunnel first (Enter)".to_string());
@@ -874,11 +1051,21 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
                     let tx = app.task_tx.clone();
                     tokio::spawn(async move {
                         match platform.tunnel.config_content(&id).await {
-                            Ok(c) => { let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c)); }
-                            Err(_) => { let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(String::new())); }
+                            Ok(c) => {
+                                let _ =
+                                    tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c));
+                            }
+                            Err(_) => {
+                                let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(
+                                    String::new(),
+                                ));
+                            }
                         }
                         if let Ok((active, enabled)) = platform.tunnel.service_status().await {
-                            let _ = tx.send(crate::tui::app::TaskResult::TunnelServiceStatus { active, enabled });
+                            let _ = tx.send(crate::tui::app::TaskResult::TunnelServiceStatus {
+                                active,
+                                enabled,
+                            });
                         }
                     });
                 }
@@ -891,17 +1078,26 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
         }
         // [s] install service pointing at the active tunnel's per-tunnel config
         KeyCode::Char('s') => {
-            let tunnel_id = app.tunnel.active_tunnel_id.clone()
-                .or_else(|| app.tunnel.table_state.selected()
+            let tunnel_id = app.tunnel.active_tunnel_id.clone().or_else(|| {
+                app.tunnel
+                    .table_state
+                    .selected()
                     .and_then(|i| app.tunnel.tunnels.get(i))
-                    .map(|t| t.id.clone()));
+                    .map(|t| t.id.clone())
+            });
             if let Some(tid) = tunnel_id {
                 let platform = std::sync::Arc::clone(&app.platform);
                 let tx = app.task_tx.clone();
                 tokio::spawn(async move {
                     match platform.tunnel.install_service(&tid).await {
-                        Ok(_) => { let _ = tx.send(crate::tui::app::TaskResult::Status("Service installed".to_string())); }
-                        Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                        Ok(_) => {
+                            let _ = tx.send(crate::tui::app::TaskResult::Status(
+                                "Service installed".to_string(),
+                            ));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                        }
                     }
                 });
             } else {
@@ -911,20 +1107,36 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
         // [u] sync config → /etc/cloudflared + restart (use after editing config)
         KeyCode::Char('u') => {
             app.status_msg = Some("Syncing config…".to_string());
-            spawn_service_action(app, |p| Box::pin(async move { p.tunnel.sync_config().await }), "Config synced & service restarted");
+            spawn_service_action(
+                app,
+                |p| Box::pin(async move { p.tunnel.sync_config().await }),
+                "Config synced & service restarted",
+            );
         }
         // [T] start  [X] stop  [R] restart
         KeyCode::Char('T') => {
             app.status_msg = Some("Starting cloudflared…".to_string());
-            spawn_service_action(app, |p| Box::pin(async move { p.tunnel.service_start().await }), "Service started");
+            spawn_service_action(
+                app,
+                |p| Box::pin(async move { p.tunnel.service_start().await }),
+                "Service started",
+            );
         }
         KeyCode::Char('X') => {
             app.status_msg = Some("Stopping cloudflared…".to_string());
-            spawn_service_action(app, |p| Box::pin(async move { p.tunnel.service_stop().await }), "Service stopped");
+            spawn_service_action(
+                app,
+                |p| Box::pin(async move { p.tunnel.service_stop().await }),
+                "Service stopped",
+            );
         }
         KeyCode::Char('R') => {
             app.status_msg = Some("Restarting cloudflared…".to_string());
-            spawn_service_action(app, |p| Box::pin(async move { p.tunnel.service_restart().await }), "Service restarted");
+            spawn_service_action(
+                app,
+                |p| Box::pin(async move { p.tunnel.service_restart().await }),
+                "Service restarted",
+            );
         }
         _ => {}
     }
@@ -932,7 +1144,12 @@ fn handle_tunnel_key(app: &mut App, key: KeyEvent) {
 
 fn spawn_service_action<F>(app: &mut App, f: F, ok_msg: &'static str)
 where
-    F: FnOnce(std::sync::Arc<crate::core::Platform>) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> + Send + 'static,
+    F: FnOnce(
+            std::sync::Arc<crate::core::Platform>,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>>
+        + Send
+        + 'static,
 {
     let platform = std::sync::Arc::clone(&app.platform);
     let tx = app.task_tx.clone();
@@ -942,10 +1159,13 @@ where
                 let _ = tx.send(crate::tui::app::TaskResult::Status(ok_msg.to_string()));
                 // Refresh service status after action
                 if let Ok((active, enabled)) = platform.tunnel.service_status().await {
-                    let _ = tx.send(crate::tui::app::TaskResult::TunnelServiceStatus { active, enabled });
+                    let _ = tx
+                        .send(crate::tui::app::TaskResult::TunnelServiceStatus { active, enabled });
                 }
             }
-            Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+            Err(e) => {
+                let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+            }
         }
     });
 }
@@ -960,7 +1180,11 @@ fn normalize_service(s: &str) -> String {
     if s.is_empty() {
         return "http://localhost:3000".to_string();
     }
-    if s.starts_with("http://") || s.starts_with("https://") || s.starts_with("tcp://") || s.starts_with("ssh://") {
+    if s.starts_with("http://")
+        || s.starts_with("https://")
+        || s.starts_with("tcp://")
+        || s.starts_with("ssh://")
+    {
         return s.to_string();
     }
     // bare port number
@@ -975,7 +1199,11 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
     let editing_ingress = app.tunnel.input_mode == InputMode::EditingIngress;
     let adding_domain = app.tunnel.input_mode == InputMode::AddingDomain;
     // EditingIngress has 2 fields (hostname, service) like AddingDomain
-    let tab_fields = if adding_domain || editing_ingress { 2 } else { 3 };
+    let tab_fields = if adding_domain || editing_ingress {
+        2
+    } else {
+        3
+    };
     let submit_focus = tab_fields - 1;
 
     match key.code {
@@ -1005,11 +1233,18 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
                             match platform.tunnel.add_domain_to_config(route).await {
                                 Ok(_) => {
                                     if let Ok(c) = platform.tunnel.config_content(&tid).await {
-                                        let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c));
+                                        let _ = tx.send(
+                                            crate::tui::app::TaskResult::TunnelConfigContent(c),
+                                        );
                                     }
-                                    let _ = tx.send(crate::tui::app::TaskResult::Status("Ingress entry updated".to_string()));
+                                    let _ = tx.send(crate::tui::app::TaskResult::Status(
+                                        "Ingress entry updated".to_string(),
+                                    ));
                                 }
-                                Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                                Err(e) => {
+                                    let _ =
+                                        tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                                }
                             }
                         });
                     }
@@ -1019,7 +1254,10 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
             }
             if adding_domain {
                 // Add domain to selected existing tunnel (config + DNS)
-                let selected = app.tunnel.table_state.selected()
+                let selected = app
+                    .tunnel
+                    .table_state
+                    .selected()
                     .and_then(|i| app.tunnel.tunnels.get(i))
                     .cloned();
                 let host = app.tunnel.input_host.trim().to_string();
@@ -1039,14 +1277,32 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
                             match platform.tunnel.add_route(route).await {
                                 Ok(_) => {
                                     if let Ok(c) = platform.tunnel.config_content(&tid).await {
-                                        let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c));
+                                        let _ = tx.send(
+                                            crate::tui::app::TaskResult::TunnelConfigContent(c),
+                                        );
                                     }
-                                    let (active, enabled) = platform.tunnel.service_status().await.unwrap_or((false, false));
-                                    let _ = tx.send(crate::tui::app::TaskResult::TunnelServiceStatus { active, enabled });
-                                    let msg = if active { "Domain added" } else { "Domain added — press [s] to install service, [T] to start" };
-                                    let _ = tx.send(crate::tui::app::TaskResult::Status(msg.to_string()));
+                                    let (active, enabled) = platform
+                                        .tunnel
+                                        .service_status()
+                                        .await
+                                        .unwrap_or((false, false));
+                                    let _ =
+                                        tx.send(crate::tui::app::TaskResult::TunnelServiceStatus {
+                                            active,
+                                            enabled,
+                                        });
+                                    let msg = if active {
+                                        "Domain added"
+                                    } else {
+                                        "Domain added — press [s] to install service, [T] to start"
+                                    };
+                                    let _ = tx
+                                        .send(crate::tui::app::TaskResult::Status(msg.to_string()));
                                 }
-                                Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                                Err(e) => {
+                                    let _ =
+                                        tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                                }
                             }
                         });
                     }
@@ -1072,22 +1328,35 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
                                     };
                                     match platform.tunnel.add_route(route).await {
                                         Ok(_) => {
-                                            if let Ok(c) = platform.tunnel.config_content(&tid).await {
+                                            if let Ok(c) =
+                                                platform.tunnel.config_content(&tid).await
+                                            {
                                                 let _ = tx.send(crate::tui::app::TaskResult::TunnelConfigContent(c));
                                             }
-                                            let (active, enabled) = platform.tunnel.service_status().await.unwrap_or((false, false));
-                                            let _ = tx.send(crate::tui::app::TaskResult::TunnelServiceStatus { active, enabled });
+                                            let (active, enabled) = platform
+                                                .tunnel
+                                                .service_status()
+                                                .await
+                                                .unwrap_or((false, false));
+                                            let _ = tx.send(
+                                                crate::tui::app::TaskResult::TunnelServiceStatus {
+                                                    active,
+                                                    enabled,
+                                                },
+                                            );
                                         }
                                         Err(e) => {
                                             let _ = tx.send(crate::tui::app::TaskResult::Error(
-                                                format!("Tunnel created but route failed: {}", e)
+                                                format!("Tunnel created but route failed: {}", e),
                                             ));
                                         }
                                     }
                                 }
                                 let _ = tx.send(crate::tui::app::TaskResult::TunnelCreated(t));
                             }
-                            Err(e) => { let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string())); }
+                            Err(e) => {
+                                let _ = tx.send(crate::tui::app::TaskResult::Error(e.to_string()));
+                            }
                         }
                     });
                 }
@@ -1097,14 +1366,24 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
         KeyCode::Backspace => {
             if adding_domain || editing_ingress {
                 match app.tunnel.input_focus {
-                    0 => { app.tunnel.input_host.pop(); }
-                    _ => { app.tunnel.input_service.pop(); }
+                    0 => {
+                        app.tunnel.input_host.pop();
+                    }
+                    _ => {
+                        app.tunnel.input_service.pop();
+                    }
                 }
             } else {
                 match app.tunnel.input_focus {
-                    0 => { app.tunnel.input_name.pop(); }
-                    1 => { app.tunnel.input_host.pop(); }
-                    _ => { app.tunnel.input_service.pop(); }
+                    0 => {
+                        app.tunnel.input_name.pop();
+                    }
+                    1 => {
+                        app.tunnel.input_host.pop();
+                    }
+                    _ => {
+                        app.tunnel.input_service.pop();
+                    }
                 }
             }
         }
@@ -1129,7 +1408,9 @@ fn handle_tunnel_input(app: &mut App, key: KeyEvent) {
 // ── List / Table navigation helpers ──────────────────────────────────────
 
 fn list_next(state: &mut ratatui::widgets::ListState, len: usize) {
-    if len == 0 { return; }
+    if len == 0 {
+        return;
+    }
     let next = state.selected().map(|i| (i + 1).min(len - 1)).unwrap_or(0);
     state.select(Some(next));
 }
@@ -1140,7 +1421,9 @@ fn list_prev(state: &mut ratatui::widgets::ListState) {
 }
 
 fn table_next(state: &mut ratatui::widgets::TableState, len: usize) {
-    if len == 0 { return; }
+    if len == 0 {
+        return;
+    }
     let next = state.selected().map(|i| (i + 1).min(len - 1)).unwrap_or(0);
     state.select(Some(next));
 }
@@ -1253,8 +1536,12 @@ fn handle_firewall_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Backspace => match app.firewall.input_focus {
-            0 => { app.firewall.input_port.pop(); }
-            2 => { app.firewall.input_from.pop(); }
+            0 => {
+                app.firewall.input_port.pop();
+            }
+            2 => {
+                app.firewall.input_from.pop();
+            }
             _ => {}
         },
         KeyCode::Char(c) => match app.firewall.input_focus {
@@ -1283,6 +1570,7 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
             app.docker.active_tab = DockerTab::all()[idx].clone();
             match app.docker.active_tab {
                 DockerTab::Compose => app.spawn_load_compose(),
+                DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
                 _ => {}
             }
@@ -1290,10 +1578,15 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left | KeyCode::Char('h') => {
             let idx = app.docker.active_tab.index();
-            let prev = if idx == 0 { DockerTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                DockerTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             app.docker.active_tab = DockerTab::all()[prev].clone();
             match app.docker.active_tab {
                 DockerTab::Compose => app.spawn_load_compose(),
+                DockerTab::Workloads => app.spawn_load_workloads(),
                 DockerTab::Managed => app.spawn_load_managed_services(),
                 _ => {}
             }
@@ -1304,16 +1597,147 @@ fn handle_docker_key(app: &mut App, key: KeyEvent) {
 
     match app.docker.active_tab.clone() {
         DockerTab::Containers => handle_docker_containers_key(app, key),
-        DockerTab::Images     => handle_docker_images_key(app, key),
-        DockerTab::Compose    => handle_docker_compose_key(app, key),
-        DockerTab::Managed    => handle_docker_managed_key(app, key),
+        DockerTab::Images => handle_docker_images_key(app, key),
+        DockerTab::Compose => handle_docker_compose_key(app, key),
+        DockerTab::Workloads => handle_docker_workloads_key(app, key),
+        DockerTab::Managed => handle_docker_managed_key(app, key),
+    }
+}
+
+fn handle_docker_workloads_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down => table_next(
+            &mut app.docker.workloads.table_state,
+            app.docker.workloads.workloads.len(),
+        ),
+        KeyCode::Up => table_prev(&mut app.docker.workloads.table_state),
+        KeyCode::Char('r') => app.spawn_load_workloads(),
+        KeyCode::Char('a') => {
+            app.docker.workloads.form.reset_for_create();
+        }
+        KeyCode::Char('e') => {
+            if let Some(idx) = app.docker.workloads.table_state.selected() {
+                if let Some(spec) = app
+                    .docker
+                    .workloads
+                    .workloads
+                    .get(idx)
+                    .and_then(|workload| workload.spec.as_ref())
+                {
+                    app.docker.workloads.form.reset_for_edit(spec);
+                }
+            }
+        }
+        KeyCode::Char('s') => workload_action(app, "start"),
+        KeyCode::Char('x') => workload_action(app, "stop"),
+        KeyCode::Char('R') => workload_action(app, "restart"),
+        KeyCode::Char('n') => workload_action(app, "enable"),
+        KeyCode::Char('d') => workload_action(app, "disable"),
+        KeyCode::Char('D') => {
+            if let Some(idx) = app.docker.workloads.table_state.selected() {
+                if let Some(workload) = app.docker.workloads.workloads.get(idx) {
+                    let name = workload.name.clone();
+                    app.confirm = Some(ConfirmDialog {
+                        message: format!("Delete workload {}? (y/N)", name),
+                        action: ConfirmAction::DeleteWorkload { name },
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn workload_action(app: &mut App, action: &'static str) {
+    if let Some(idx) = app.docker.workloads.table_state.selected() {
+        if let Some(workload) = app.docker.workloads.workloads.get(idx) {
+            app.spawn_workload_action(action, workload.name.clone());
+        }
+    }
+}
+
+fn handle_docker_workload_input(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 7;
+
+    match key.code {
+        KeyCode::Esc => app.docker.workloads.form.input_mode = InputMode::Normal,
+        KeyCode::BackTab => {
+            let focus = app.docker.workloads.form.input_focus;
+            app.docker.workloads.form.input_focus = if focus == 0 {
+                NUM_FIELDS - 1
+            } else {
+                focus - 1
+            };
+        }
+        KeyCode::Tab => {
+            let focus = app.docker.workloads.form.input_focus;
+            app.docker.workloads.form.input_focus = (focus + 1) % NUM_FIELDS;
+        }
+        KeyCode::Enter if app.docker.workloads.form.input_focus == NUM_FIELDS - 1 => {
+            match app.workload_spec_from_form() {
+                Ok(spec) => {
+                    let editing_name = app.docker.workloads.form.editing_name.clone();
+                    if let Some(name) = editing_name {
+                        app.spawn_update_workload(name, spec);
+                    } else {
+                        app.spawn_create_workload(spec);
+                    }
+                    app.docker.workloads.form.input_mode = InputMode::Normal;
+                }
+                Err(e) => {
+                    app.status_msg = Some(format!("workload form: {}", e));
+                }
+            }
+        }
+        KeyCode::Enter => {
+            let focus = app.docker.workloads.form.input_focus;
+            app.docker.workloads.form.input_focus = (focus + 1) % NUM_FIELDS;
+        }
+        KeyCode::Backspace => match app.docker.workloads.form.input_focus {
+            0 => {
+                app.docker.workloads.form.name.pop();
+            }
+            1 => {
+                app.docker.workloads.form.image.pop();
+            }
+            2 => {
+                app.docker.workloads.form.command.pop();
+            }
+            3 => {
+                app.docker.workloads.form.env.pop();
+            }
+            4 => {
+                app.docker.workloads.form.ports.pop();
+            }
+            5 => {
+                app.docker.workloads.form.volumes.pop();
+            }
+            6 => {
+                app.docker.workloads.form.restart_policy.pop();
+            }
+            _ => {}
+        },
+        KeyCode::Char(c) => match app.docker.workloads.form.input_focus {
+            0 => app.docker.workloads.form.name.push(c),
+            1 => app.docker.workloads.form.image.push(c),
+            2 => app.docker.workloads.form.command.push(c),
+            3 => app.docker.workloads.form.env.push(c),
+            4 => app.docker.workloads.form.ports.push(c),
+            5 => app.docker.workloads.form.volumes.push(c),
+            6 => app.docker.workloads.form.restart_policy.push(c),
+            _ => {}
+        },
+        _ => {}
     }
 }
 
 fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Down      => table_next(&mut app.docker.managed_state, app.docker.managed_services.len()),
-        KeyCode::Up        => table_prev(&mut app.docker.managed_state),
+        KeyCode::Down => table_next(
+            &mut app.docker.managed_state,
+            app.docker.managed_services.len(),
+        ),
+        KeyCode::Up => table_prev(&mut app.docker.managed_state),
         KeyCode::Char('r') => app.spawn_load_managed_services(),
         KeyCode::Char('s') => {
             if let Some(idx) = app.docker.managed_state.selected() {
@@ -1322,7 +1746,7 @@ fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
                         "start",
                         svc.container_name.clone(),
                         svc.image.clone(),
-                        svc.ports.clone()
+                        svc.ports.clone(),
                     );
                 }
             }
@@ -1334,7 +1758,7 @@ fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
                         "stop",
                         svc.container_name.clone(),
                         svc.image.clone(),
-                        svc.ports.clone()
+                        svc.ports.clone(),
                     );
                 }
             }
@@ -1346,7 +1770,7 @@ fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
                         "restart",
                         svc.container_name.clone(),
                         svc.image.clone(),
-                        svc.ports.clone()
+                        svc.ports.clone(),
                     );
                 }
             }
@@ -1357,8 +1781,11 @@ fn handle_docker_managed_key(app: &mut App, key: KeyEvent) {
 
 fn handle_docker_containers_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Down => table_next(&mut app.docker.containers_state, app.docker.containers.len()),
-        KeyCode::Up   => table_prev(&mut app.docker.containers_state),
+        KeyCode::Down => table_next(
+            &mut app.docker.containers_state,
+            app.docker.containers.len(),
+        ),
+        KeyCode::Up => table_prev(&mut app.docker.containers_state),
         KeyCode::Char('r') => app.spawn_load_docker(),
         KeyCode::Char('s') => {
             if let Some(idx) = app.docker.containers_state.selected() {
@@ -1404,8 +1831,8 @@ fn handle_docker_containers_key(app: &mut App, key: KeyEvent) {
 
 fn handle_docker_images_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Down      => table_next(&mut app.docker.images_state, app.docker.images.len()),
-        KeyCode::Up        => table_prev(&mut app.docker.images_state),
+        KeyCode::Down => table_next(&mut app.docker.images_state, app.docker.images.len()),
+        KeyCode::Up => table_prev(&mut app.docker.images_state),
         KeyCode::Char('r') => app.spawn_load_docker(),
         KeyCode::Char('D') => {
             if let Some(idx) = app.docker.images_state.selected() {
@@ -1425,8 +1852,11 @@ fn handle_docker_images_key(app: &mut App, key: KeyEvent) {
 
 fn handle_docker_compose_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Down      => table_next(&mut app.docker.compose_state, app.docker.compose_services.len()),
-        KeyCode::Up        => table_prev(&mut app.docker.compose_state),
+        KeyCode::Down => table_next(
+            &mut app.docker.compose_state,
+            app.docker.compose_services.len(),
+        ),
+        KeyCode::Up => table_prev(&mut app.docker.compose_state),
         KeyCode::Char('r') => app.spawn_load_compose(),
         KeyCode::Char('u') => app.spawn_compose_action("up"),
         KeyCode::Char('d') => app.spawn_compose_action("down"),
@@ -1463,7 +1893,9 @@ fn handle_portchecker_key(app: &mut App, key: KeyEvent) {
                     if new_len == 0 {
                         app.portchecker.list_state.select(None);
                     } else {
-                        app.portchecker.list_state.select(Some(idx.min(new_len - 1)));
+                        app.portchecker
+                            .list_state
+                            .select(Some(idx.min(new_len - 1)));
                     }
                 }
             }
@@ -1473,7 +1905,7 @@ fn handle_portchecker_key(app: &mut App, key: KeyEvent) {
             if len > 0 {
                 let next = match app.portchecker.list_state.selected() {
                     Some(i) => (i + 1).min(len - 1),
-                    None    => 0,
+                    None => 0,
                 };
                 app.portchecker.list_state.select(Some(next));
             }
@@ -1553,14 +1985,20 @@ fn handle_ghost_key(app: &mut App, key: KeyEvent) {
         KeyCode::Down => {
             let n = app.ghost.ghosts.len();
             if n > 0 {
-                let next = app.ghost.table_state.selected()
+                let next = app
+                    .ghost
+                    .table_state
+                    .selected()
                     .map(|i| (i + 1).min(n - 1))
                     .unwrap_or(0);
                 app.ghost.table_state.select(Some(next));
             }
         }
         KeyCode::Up => {
-            let prev = app.ghost.table_state.selected()
+            let prev = app
+                .ghost
+                .table_state
+                .selected()
                 .map(|i| i.saturating_sub(1))
                 .unwrap_or(0);
             app.ghost.table_state.select(Some(prev));
@@ -1574,7 +2012,9 @@ fn handle_ghost_key(app: &mut App, key: KeyEvent) {
                     app.confirm = Some(ConfirmDialog {
                         message: format!(
                             "Kill {} (PID {}, {})? (y/N)",
-                            name, pid, g.reason.label()
+                            name,
+                            pid,
+                            g.reason.label()
                         ),
                         action: ConfirmAction::KillGhost { pid, name },
                     });
@@ -1630,23 +2070,43 @@ fn handle_ssh_key(app: &mut App, key: KeyEvent) {
             if app.ssh.focus == 0 {
                 let n = app.ssh.local_keys.len();
                 if n > 0 {
-                    let next = app.ssh.local_state.selected().map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                    let next = app
+                        .ssh
+                        .local_state
+                        .selected()
+                        .map(|i| (i + 1).min(n - 1))
+                        .unwrap_or(0);
                     app.ssh.local_state.select(Some(next));
                 }
             } else {
                 let n = app.ssh.authorized_keys.len();
                 if n > 0 {
-                    let next = app.ssh.authorized_state.selected().map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                    let next = app
+                        .ssh
+                        .authorized_state
+                        .selected()
+                        .map(|i| (i + 1).min(n - 1))
+                        .unwrap_or(0);
                     app.ssh.authorized_state.select(Some(next));
                 }
             }
         }
         KeyCode::Up => {
             if app.ssh.focus == 0 {
-                let prev = app.ssh.local_state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+                let prev = app
+                    .ssh
+                    .local_state
+                    .selected()
+                    .map(|i| i.saturating_sub(1))
+                    .unwrap_or(0);
                 app.ssh.local_state.select(Some(prev));
             } else {
-                let prev = app.ssh.authorized_state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+                let prev = app
+                    .ssh
+                    .authorized_state
+                    .selected()
+                    .map(|i| i.saturating_sub(1))
+                    .unwrap_or(0);
                 app.ssh.authorized_state.select(Some(prev));
             }
         }
@@ -1768,20 +2228,20 @@ fn handle_users_add_input(app: &mut App, key: KeyEvent) {
                 app.users.input_focus = (app.users.input_focus + 1) % NUM_FIELDS;
             }
         }
-        KeyCode::Backspace => {
-            match app.users.input_focus {
-                0 => { app.users.input_username.pop(); }
-                1 => { app.users.input_shell.pop(); }
-                _ => {}
+        KeyCode::Backspace => match app.users.input_focus {
+            0 => {
+                app.users.input_username.pop();
             }
-        }
-        KeyCode::Char(c) => {
-            match app.users.input_focus {
-                0 => app.users.input_username.push(c),
-                1 => app.users.input_shell.push(c),
-                _ => {}
+            1 => {
+                app.users.input_shell.pop();
             }
-        }
+            _ => {}
+        },
+        KeyCode::Char(c) => match app.users.input_focus {
+            0 => app.users.input_username.push(c),
+            1 => app.users.input_shell.push(c),
+            _ => {}
+        },
         _ => {}
     }
 }
@@ -1817,20 +2277,20 @@ fn handle_users_pw_input(app: &mut App, key: KeyEvent) {
                 app.users.pw_focus = (app.users.pw_focus + 1) % NUM_FIELDS;
             }
         }
-        KeyCode::Backspace => {
-            match app.users.pw_focus {
-                0 => { app.users.pw_password.pop(); }
-                1 => { app.users.pw_confirm.pop(); }
-                _ => {}
+        KeyCode::Backspace => match app.users.pw_focus {
+            0 => {
+                app.users.pw_password.pop();
             }
-        }
-        KeyCode::Char(c) => {
-            match app.users.pw_focus {
-                0 => app.users.pw_password.push(c),
-                1 => app.users.pw_confirm.push(c),
-                _ => {}
+            1 => {
+                app.users.pw_confirm.pop();
             }
-        }
+            _ => {}
+        },
+        KeyCode::Char(c) => match app.users.pw_focus {
+            0 => app.users.pw_password.push(c),
+            1 => app.users.pw_confirm.push(c),
+            _ => {}
+        },
         _ => {}
     }
 }
@@ -1875,21 +2335,36 @@ fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
             WasmCloudTab::Hosts => {
                 let n = app.wasm_cloud.hosts.len();
                 if n > 0 {
-                    let next = app.wasm_cloud.hosts_state.selected().map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                    let next = app
+                        .wasm_cloud
+                        .hosts_state
+                        .selected()
+                        .map(|i| (i + 1).min(n - 1))
+                        .unwrap_or(0);
                     app.wasm_cloud.hosts_state.select(Some(next));
                 }
             }
             WasmCloudTab::Components => {
                 let n = app.wasm_cloud.components.len();
                 if n > 0 {
-                    let next = app.wasm_cloud.components_state.selected().map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                    let next = app
+                        .wasm_cloud
+                        .components_state
+                        .selected()
+                        .map(|i| (i + 1).min(n - 1))
+                        .unwrap_or(0);
                     app.wasm_cloud.components_state.select(Some(next));
                 }
             }
             WasmCloudTab::Apps => {
                 let n = app.wasm_cloud.apps.len();
                 if n > 0 {
-                    let next = app.wasm_cloud.apps_state.selected().map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                    let next = app
+                        .wasm_cloud
+                        .apps_state
+                        .selected()
+                        .map(|i| (i + 1).min(n - 1))
+                        .unwrap_or(0);
                     app.wasm_cloud.apps_state.select(Some(next));
                 }
             }
@@ -1897,20 +2372,37 @@ fn handle_wasm_cloud_key(app: &mut App, key: KeyEvent) {
         },
         KeyCode::Up => match app.wasm_cloud.active_tab {
             WasmCloudTab::Hosts => {
-                let prev = app.wasm_cloud.hosts_state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+                let prev = app
+                    .wasm_cloud
+                    .hosts_state
+                    .selected()
+                    .map(|i| i.saturating_sub(1))
+                    .unwrap_or(0);
                 app.wasm_cloud.hosts_state.select(Some(prev));
             }
             WasmCloudTab::Components => {
-                let prev = app.wasm_cloud.components_state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+                let prev = app
+                    .wasm_cloud
+                    .components_state
+                    .selected()
+                    .map(|i| i.saturating_sub(1))
+                    .unwrap_or(0);
                 app.wasm_cloud.components_state.select(Some(prev));
             }
             WasmCloudTab::Apps => {
-                let prev = app.wasm_cloud.apps_state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+                let prev = app
+                    .wasm_cloud
+                    .apps_state
+                    .selected()
+                    .map(|i| i.saturating_sub(1))
+                    .unwrap_or(0);
                 app.wasm_cloud.apps_state.select(Some(prev));
             }
             WasmCloudTab::Inspector => {}
         },
-        KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('e') if app.wasm_cloud.active_tab == WasmCloudTab::Inspector => {
+        KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('e')
+            if app.wasm_cloud.active_tab == WasmCloudTab::Inspector =>
+        {
             app.wasm_cloud.input_mode = InputMode::Editing;
         }
         _ => {}

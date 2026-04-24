@@ -1,6 +1,6 @@
+use crate::core::models::{Tunnel, TunnelRoute};
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::core::models::{Tunnel, TunnelRoute};
 
 pub mod cloudflare;
 pub use cloudflare::CloudflareManager;

@@ -1,12 +1,14 @@
 use crate::core::models::{Deployment, DeploymentStatus, DeploymentType};
 use anyhow::Result;
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 
 pub async fn list_deployments(pool: &SqlitePool) -> Result<Vec<Deployment>> {
-    let rows = sqlx::query("SELECT id, repo_url, path, deploy_type, status, last_updated FROM deployments")
-        .fetch_all(pool)
-        .await?;
-        
+    let rows = sqlx::query(
+        "SELECT id, repo_url, path, deploy_type, status, last_updated FROM deployments",
+    )
+    .fetch_all(pool)
+    .await?;
+
     let mut deployments = Vec::new();
     for row in rows {
         let deploy_type_str: String = row.get("deploy_type");
@@ -21,10 +23,12 @@ pub async fn list_deployments(pool: &SqlitePool) -> Result<Vec<Deployment>> {
             "Deploying" => DeploymentStatus::Deploying,
             "Running" => DeploymentStatus::Running,
             "Stopped" => DeploymentStatus::Stopped,
-            s if s.starts_with("Failed:") => DeploymentStatus::Failed(s.replace("Failed:", "").trim().to_string()),
+            s if s.starts_with("Failed:") => {
+                DeploymentStatus::Failed(s.replace("Failed:", "").trim().to_string())
+            }
             _ => DeploymentStatus::Failed("Unknown".to_string()),
         };
-        
+
         deployments.push(Deployment {
             id: row.get("id"),
             repo_url: row.get("repo_url"),
@@ -34,7 +38,7 @@ pub async fn list_deployments(pool: &SqlitePool) -> Result<Vec<Deployment>> {
             last_updated: row.get("last_updated"),
         });
     }
-    
+
     Ok(deployments)
 }
 
@@ -44,7 +48,7 @@ pub async fn add_deployment(pool: &SqlitePool, deployment: &Deployment) -> Resul
         DeploymentType::WasmCloud => "WasmCloud",
         DeploymentType::Unknown => "Unknown",
     };
-    
+
     let status = match &deployment.status {
         DeploymentStatus::Cloning => "Cloning".to_string(),
         DeploymentStatus::Deploying => "Deploying".to_string(),
@@ -66,7 +70,12 @@ pub async fn add_deployment(pool: &SqlitePool, deployment: &Deployment) -> Resul
     Ok(())
 }
 
-pub async fn update_deployment_status(pool: &SqlitePool, id: &str, new_type: Option<&DeploymentType>, new_status: &DeploymentStatus) -> Result<()> {
+pub async fn update_deployment_status(
+    pool: &SqlitePool,
+    id: &str,
+    new_type: Option<&DeploymentType>,
+    new_status: &DeploymentStatus,
+) -> Result<()> {
     let status_str = match new_status {
         DeploymentStatus::Cloning => "Cloning".to_string(),
         DeploymentStatus::Deploying => "Deploying".to_string(),
@@ -82,13 +91,15 @@ pub async fn update_deployment_status(pool: &SqlitePool, id: &str, new_type: Opt
             DeploymentType::WasmCloud => "WasmCloud",
             DeploymentType::Unknown => "Unknown",
         };
-        sqlx::query("UPDATE deployments SET status = ?, deploy_type = ?, last_updated = ? WHERE id = ?")
-            .bind(status_str)
-            .bind(type_str)
-            .bind(now)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE deployments SET status = ?, deploy_type = ?, last_updated = ? WHERE id = ?",
+        )
+        .bind(status_str)
+        .bind(type_str)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
     } else {
         sqlx::query("UPDATE deployments SET status = ?, last_updated = ? WHERE id = ?")
             .bind(status_str)

@@ -34,12 +34,21 @@ impl ServiceManager for SystemdServiceManager {
         // We use --all and --type=service to get everything.
         // Format: UNIT LOAD ACTIVE SUB DESCRIPTION
         let output = tokio::process::Command::new("systemctl")
-            .args(["list-units", "--type=service", "--all", "--no-legend", "--no-pager"])
+            .args([
+                "list-units",
+                "--type=service",
+                "--all",
+                "--no-legend",
+                "--no-pager",
+            ])
             .output()
             .await?;
 
         if !output.status.success() {
-            anyhow::bail!("systemctl failed: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "systemctl failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -57,7 +66,7 @@ impl ServiceManager for SystemdServiceManager {
             // parts[3] is sub
             // parts[4..] is description
             let description = parts[4..].join(" ");
-            
+
             services.push(ServiceUnit {
                 name: parts[0].to_string(),
                 description,
@@ -98,7 +107,10 @@ async fn run_systemctl(args: Vec<&str>) -> Result<()> {
         .await?;
 
     if !output.status.success() {
-        anyhow::bail!("systemctl failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "systemctl failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     Ok(())
@@ -114,9 +126,19 @@ impl ServiceManager for MacosServiceManager {
         Ok(vec![])
     }
 
-    async fn start(&self, _name: &str) -> Result<()> { anyhow::bail!("Not implemented for macOS") }
-    async fn stop(&self, _name: &str) -> Result<()> { anyhow::bail!("Not implemented for macOS") }
-    async fn restart(&self, _name: &str) -> Result<()> { anyhow::bail!("Not implemented for macOS") }
-    async fn enable(&self, _name: &str) -> Result<()> { anyhow::bail!("Not implemented for macOS") }
-    async fn disable(&self, _name: &str) -> Result<()> { anyhow::bail!("Not implemented for macOS") }
+    async fn start(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Not implemented for macOS")
+    }
+    async fn stop(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Not implemented for macOS")
+    }
+    async fn restart(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Not implemented for macOS")
+    }
+    async fn enable(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Not implemented for macOS")
+    }
+    async fn disable(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Not implemented for macOS")
+    }
 }

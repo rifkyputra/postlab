@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::core::models::FirewallRule;
 use super::FirewallManager;
+use crate::core::models::FirewallRule;
 
 /// macOS pf (Packet Filter) backend.
 /// Write operations require root — this impl reports status/rules read-only
@@ -18,9 +18,9 @@ impl FirewallManager for PfManager {
             .await?;
         let text = String::from_utf8_lossy(&out.stdout);
         // "Status: Enabled" or "Status: Disabled"
-        let enabled = text.lines().any(|l| {
-            l.trim().to_lowercase().starts_with("status") && l.contains("Enabled")
-        });
+        let enabled = text
+            .lines()
+            .any(|l| l.trim().to_lowercase().starts_with("status") && l.contains("Enabled"));
         Ok((enabled, "pf".to_string()))
     }
 
