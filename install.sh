@@ -28,14 +28,17 @@ curl -fsSL --progress-bar "${URL}" -o /tmp/postlab_download
 
 chmod +x /tmp/postlab_download
 
-# ── Install ─────────────────────────────────────────────────────────────────
+# ── Install (replace any existing binary) ───────────────────────────────────
 
-if [ -w "$(dirname "${DEST}")" ]; then
-  mv /tmp/postlab_download "${DEST}"
+# `install -m 0755` atomically replaces the destination regardless of whether
+# it already exists. Fall back to sudo when the path isn't writable.
+if install -m 0755 /tmp/postlab_download "${DEST}" 2>/dev/null; then
+  :
 else
-  echo "Need sudo to write to $(dirname "${DEST}")"
-  sudo mv /tmp/postlab_download "${DEST}"
+  echo "Need sudo to install to ${DEST}"
+  sudo install -m 0755 /tmp/postlab_download "${DEST}"
 fi
+rm -f /tmp/postlab_download
 
 echo "Installed → ${DEST}"
 "${DEST}" --version 2>/dev/null || true
