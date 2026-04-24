@@ -32,6 +32,10 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_tunnel_input(app, key);
         return false;
     }
+    if app.screen == Screen::Users && app.users.input_mode == InputMode::Editing {
+        handle_users_input(app, key);
+        return false;
+    }
     if app.screen == Screen::Services && app.services.filter_mode == InputMode::Editing {
         handle_services_key(app, key);
         return false;
@@ -1694,12 +1698,61 @@ fn handle_users_key(app: &mut App, key: KeyEvent) {
             table_next(&mut app.users.table_state, n);
         }
         KeyCode::Up => table_prev(&mut app.users.table_state),
+        KeyCode::Char('a') => {
+            app.users.input_mode = InputMode::Editing;
+            app.users.input_focus = 0;
+            app.users.input_username.clear();
+            app.users.input_shell.clear();
+        }
         KeyCode::Char('d') => {
             if let Some(idx) = app.users.table_state.selected() {
                 if let Some(u) = app.users.users.get(idx) {
                     let username = u.username.clone();
                     app.spawn_user_action("delete".to_string(), username);
                 }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_users_input(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 2; // username, shell
+
+    match key.code {
+        KeyCode::Esc => {
+            app.users.input_mode = InputMode::Normal;
+        }
+        KeyCode::Tab => {
+            app.users.input_focus = (app.users.input_focus + 1) % NUM_FIELDS;
+        }
+        KeyCode::Enter => {
+            if app.users.input_focus == NUM_FIELDS - 1 {
+                let username = app.users.input_username.trim().to_string();
+                if username.is_empty() {
+                    app.status_msg = Some("Username is required".to_string());
+                } else {
+                    let shell = app.users.input_shell.trim().to_string();
+                    let shell_opt = if shell.is_empty() { None } else { Some(shell) };
+                    app.spawn_create_user(username, shell_opt);
+                }
+                app.users.input_mode = InputMode::Normal;
+            } else {
+                app.users.input_focus = (app.users.input_focus + 1) % NUM_FIELDS;
+            }
+        }
+        KeyCode::Backspace => {
+            match app.users.input_focus {
+                0 => { app.users.input_username.pop(); }
+                1 => { app.users.input_shell.pop(); }
+                _ => {}
+            }
+        }
+        KeyCode::Char(c) => {
+            match app.users.input_focus {
+                0 => app.users.input_username.push(c),
+                1 => app.users.input_shell.push(c),
+                _ => {}
             }
         }
         _ => {}

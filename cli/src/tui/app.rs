@@ -783,6 +783,11 @@ pub struct UsersState {
     pub users: Vec<UserInfo>,
     pub table_state: TableState,
     pub loading: bool,
+    pub input_mode: InputMode,
+    /// 0 = username, 1 = shell
+    pub input_focus: usize,
+    pub input_username: String,
+    pub input_shell: String,
 }
 
 impl Default for UsersState {
@@ -791,6 +796,10 @@ impl Default for UsersState {
             users: Vec::new(),
             table_state: TableState::default(),
             loading: false,
+            input_mode: InputMode::Normal,
+            input_focus: 0,
+            input_username: String::new(),
+            input_shell: String::new(),
         }
     }
 }
@@ -1709,6 +1718,24 @@ impl App {
             match platform.users.list_users().await {
                 Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
                 Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+            }
+        });
+    }
+
+    pub fn spawn_create_user(&mut self, username: String, shell: Option<String>) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let shell_ref = shell.as_deref();
+            match platform.users.create_user(&username, shell_ref).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::Status(format!("User '{}' created", username)));
+                    match platform.users.list_users().await {
+                        Ok(users) => { let _ = tx.send(TaskResult::UserList(users)); }
+                        Err(e) => { let _ = tx.send(TaskResult::Error(e.to_string())); }
+                    }
+                }
+                Err(e) => { let _ = tx.send(TaskResult::Error(format!("create user failed: {}", e))); }
             }
         });
     }
