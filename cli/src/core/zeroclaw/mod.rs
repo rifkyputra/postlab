@@ -126,6 +126,21 @@ pub static EASY_CONFIG_DEFS: &[(&str, &str, &str)] = &[
         "Log Level",
         "trace | debug | info | warn | error",
     ),
+    (
+        "providers.models.openrouter.api_key",
+        "OpenRouter API Key",
+        "API key for the OpenRouter model provider",
+    ),
+    (
+        "providers.models.openrouter.merge_system_into_user",
+        "OpenRouter Merge System",
+        "true | false — merge system prompts into the user message",
+    ),
+    (
+        "providers.models.openrouter.model",
+        "OpenRouter Model",
+        "OpenRouter model id (e.g. nvidia/nemotron-3-super-120b-a12b:free)",
+    ),
 ];
 
 #[derive(Debug, Clone)]
@@ -205,7 +220,10 @@ async fn find_zeroclaw() -> Option<String> {
 
     // Last: ask the shell (handles aliases / shims / nix / asdf etc.)
     if let Ok(out) = Command::new("sh")
-        .args(["-c", "which zeroclaw 2>/dev/null || command -v zeroclaw 2>/dev/null"])
+        .args([
+            "-c",
+            "which zeroclaw 2>/dev/null || command -v zeroclaw 2>/dev/null",
+        ])
         .output()
         .await
     {
@@ -265,7 +283,11 @@ pub async fn get_info() -> ZeroclawInfo {
             .ok()
             .and_then(|o| {
                 let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             })
     } else {
         None
@@ -279,11 +301,7 @@ pub async fn get_status() -> ZeroclawStatus {
         Some(b) => b,
         None => return ZeroclawStatus::default(),
     };
-    let out = match Command::new(&bin)
-        .args(["status"])
-        .output()
-        .await
-    {
+    let out = match Command::new(&bin).args(["status"]).output().await {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
         Err(_) => return ZeroclawStatus::default(),
     };
@@ -291,7 +309,9 @@ pub async fn get_status() -> ZeroclawStatus {
     // Check the gateway port directly — `zeroclaw status` reports the *system service*
     // state ("Service: stopped/running"), not whether the daemon process is alive.
     // A TCP connect to the gateway is the ground truth.
-    let daemon_running = tokio::net::TcpStream::connect("127.0.0.1:42617").await.is_ok();
+    let daemon_running = tokio::net::TcpStream::connect("127.0.0.1:42617")
+        .await
+        .is_ok();
 
     // Parse component lines — zeroclaw status often outputs lines like:
     //   gateway      ok
@@ -303,7 +323,10 @@ pub async fn get_status() -> ZeroclawStatus {
             let name = parts[0].to_string();
             let status = parts[1].to_string();
             // Only add lines that look like component rows
-            if matches!(status.as_str(), "ok" | "error" | "degraded" | "unknown" | "stopped") {
+            if matches!(
+                status.as_str(),
+                "ok" | "error" | "degraded" | "unknown" | "stopped"
+            ) {
                 components.push(ComponentHealth { name, status });
             }
         }
@@ -368,7 +391,14 @@ pub async fn install_from_release(
 
     emit!(format!("Downloading from GitHub Releases…"));
     let dl = Command::new("curl")
-        .args(["-fsSL", "--retry", "3", &url, "-o", archive.to_str().unwrap()])
+        .args([
+            "-fsSL",
+            "--retry",
+            "3",
+            &url,
+            "-o",
+            archive.to_str().unwrap(),
+        ])
         .output()
         .await?;
     if !dl.status.success() {
@@ -380,7 +410,13 @@ pub async fn install_from_release(
     // ── Extract binary ───────────────────────────────────────────
     emit!("Extracting…");
     let extract = Command::new("tar")
-        .args(["xzf", archive.to_str().unwrap(), "-C", tmp_dir.to_str().unwrap(), "zeroclaw"])
+        .args([
+            "xzf",
+            archive.to_str().unwrap(),
+            "-C",
+            tmp_dir.to_str().unwrap(),
+            "zeroclaw",
+        ])
         .output()
         .await?;
     if !extract.status.success() {
@@ -411,7 +447,9 @@ pub async fn install_from_release(
 
     let installed_path = dest.display().to_string();
     emit!(format!("Installed → {installed_path}"));
-    emit!(format!("Add to PATH if needed:  export PATH=\"$HOME/.local/bin:$PATH\""));
+    emit!(format!(
+        "Add to PATH if needed:  export PATH=\"$HOME/.local/bin:$PATH\""
+    ));
 
     Ok(format!("zeroclaw installed to {installed_path}"))
 }
@@ -474,9 +512,12 @@ fn mask_secrets(content: &str) -> String {
         .map(|line| {
             let lower = line.to_lowercase();
             // Mask lines that assign sensitive values
-            if lower.contains("api_key") || lower.contains("bot_token")
-                || lower.contains("secret") || lower.contains("password")
-                || lower.contains("token") || lower.contains("webhook")
+            if lower.contains("api_key")
+                || lower.contains("bot_token")
+                || lower.contains("secret")
+                || lower.contains("password")
+                || lower.contains("token")
+                || lower.contains("webhook")
                 || lower.contains("private_key")
             {
                 // Keep the key name, replace the value with ***
@@ -528,10 +569,7 @@ pub async fn list_channels() -> Vec<ZeroclawChannel> {
     channels_table
         .iter()
         .map(|(key, val)| {
-            let enabled = val
-                .get("enabled")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true);
+            let enabled = val.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
             let platform = platform_map
                 .iter()
                 .find(|(k, _)| key.starts_with(k))
@@ -551,11 +589,7 @@ pub async fn list_cron() -> Vec<CronJob> {
         Some(b) => b,
         None => return Vec::new(),
     };
-    let out = match Command::new(&bin)
-        .args(["cron", "list"])
-        .output()
-        .await
-    {
+    let out = match Command::new(&bin).args(["cron", "list"]).output().await {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
         Err(_) => return Vec::new(),
     };
@@ -603,11 +637,7 @@ pub async fn list_memory() -> Vec<MemoryEntry> {
         Some(b) => b,
         None => return Vec::new(),
     };
-    let out = match Command::new(&bin)
-        .args(["memory", "list"])
-        .output()
-        .await
-    {
+    let out = match Command::new(&bin).args(["memory", "list"]).output().await {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
         Err(_) => return Vec::new(),
     };
@@ -649,14 +679,19 @@ pub async fn delete_memory(key: &str) -> Result<()> {
 pub async fn get_easy_config() -> Vec<EasyConfigField> {
     let path = config_path();
     let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
-    let table: toml::Value = toml::from_str(&content)
-        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+    let table: toml::Value =
+        toml::from_str(&content).unwrap_or(toml::Value::Table(toml::map::Map::new()));
 
     EASY_CONFIG_DEFS
         .iter()
         .map(|(toml_path, label, desc)| {
             let value = read_toml_path(&table, toml_path).unwrap_or_default();
-            EasyConfigField { path: toml_path, label, desc, value }
+            EasyConfigField {
+                path: toml_path,
+                label,
+                desc,
+                value,
+            }
         })
         .collect()
 }
@@ -666,12 +701,13 @@ pub async fn get_easy_config() -> Vec<EasyConfigField> {
 pub async fn set_config_field(toml_path: &str, new_value: &str) -> Result<()> {
     let file = config_path();
     let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
-    let parts: Vec<&str> = toml_path.splitn(2, '.').collect();
-    let updated = match parts.as_slice() {
-        [key] => patch_toml_text(&content, None, key, new_value),
-        [section, key] => patch_toml_text(&content, Some(section), key, new_value),
-        _ => return Err(anyhow::anyhow!("invalid config path: {}", toml_path)),
+    let path_parts: Vec<&str> = toml_path.split('.').collect();
+    let (section_parts, key) = match path_parts.split_last() {
+        Some((key, [])) => (Vec::new(), *key),
+        Some((key, sections)) => (sections.to_vec(), *key),
+        None => return Err(anyhow::anyhow!("invalid config path: {}", toml_path)),
     };
+    let updated = patch_toml_text(&content, &section_parts, key, new_value);
     // Ensure parent directory exists
     if let Some(parent) = file.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -681,13 +717,11 @@ pub async fn set_config_field(toml_path: &str, new_value: &str) -> Result<()> {
 }
 
 fn read_toml_path(table: &toml::Value, path: &str) -> Option<String> {
-    let parts: Vec<&str> = path.splitn(2, '.').collect();
-    let val = match parts.as_slice() {
-        [key] => table.get(key)?,
-        [section, key] => table.get(section)?.get(key)?,
-        _ => return None,
-    };
-    Some(match val {
+    let mut current = table;
+    for part in path.split('.') {
+        current = current.get(part)?;
+    }
+    Some(match current {
         toml::Value::String(s) => s.clone(),
         toml::Value::Integer(i) => i.to_string(),
         toml::Value::Float(f) => f.to_string(),
@@ -720,8 +754,8 @@ pub fn comma_list_to_toml_array(s: &str) -> String {
 pub async fn get_permissions() -> Vec<PermissionField> {
     let path = config_path();
     let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
-    let table: toml::Value = toml::from_str(&content)
-        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+    let table: toml::Value =
+        toml::from_str(&content).unwrap_or(toml::Value::Table(toml::map::Map::new()));
 
     PERMISSION_DEFS
         .iter()
@@ -730,14 +764,20 @@ pub async fn get_permissions() -> Vec<PermissionField> {
                 PermFieldKind::Bool => "false".to_string(),
                 PermFieldKind::Text | PermFieldKind::TextList => String::new(),
             });
-            PermissionField { path: toml_path, label, desc, kind: *kind, value }
+            PermissionField {
+                path: toml_path,
+                label,
+                desc,
+                kind: *kind,
+                value,
+            }
         })
         .collect()
 }
 
 /// In-place line replacement that preserves comments and ordering.
 /// Values that are "true", "false", or valid numbers are written unquoted.
-fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str) -> String {
+fn patch_toml_text(content: &str, sections: &[&str], key: &str, value: &str) -> String {
     let needs_quotes = !matches!(value, "true" | "false")
         && value.parse::<f64>().is_err()
         && !value.starts_with('[');
@@ -748,17 +788,18 @@ fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str)
     };
     let raw: Vec<&str> = content.lines().collect();
     let mut out: Vec<String> = Vec::with_capacity(raw.len());
-    let mut in_target = section.is_none();
+    let mut in_target = sections.is_empty();
     let mut replaced = false;
     let mut section_header_out_idx: Option<usize> = None;
     let mut section_end_out_idx: Option<usize> = None;
+    let wanted_section = (!sections.is_empty()).then(|| sections.join("."));
     let mut i = 0;
     while i < raw.len() {
         let line = raw[i];
         let trimmed = line.trim();
         if trimmed.starts_with('[') && !trimmed.starts_with("[[") {
             let sec = trimmed.trim_matches(|c: char| c == '[' || c == ']').trim();
-            if let Some(wanted) = section {
+            if let Some(wanted) = wanted_section.as_deref() {
                 if sec == wanted {
                     in_target = true;
                     out.push(line.to_string());
@@ -801,7 +842,7 @@ fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str)
         i += 1;
     }
     if !replaced {
-        if let Some(sec) = section {
+        if let Some(sec) = wanted_section.as_deref() {
             if section_header_out_idx.is_some() {
                 let at = section_end_out_idx.unwrap_or(out.len());
                 out.insert(at, new_line);
@@ -822,5 +863,67 @@ fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str)
         format!("{}\n", joined)
     } else {
         joined
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{patch_toml_text, read_toml_path};
+
+    #[test]
+    fn reads_nested_toml_paths() {
+        let table: toml::Value = toml::from_str(
+            r#"
+[providers.models.openrouter]
+api_key = "***"
+merge_system_into_user = false
+model = "nvidia/nemotron-3-super-120b-a12b:free"
+"#,
+        )
+        .expect("valid toml");
+
+        assert_eq!(
+            read_toml_path(&table, "providers.models.openrouter.api_key").as_deref(),
+            Some("***")
+        );
+        assert_eq!(
+            read_toml_path(&table, "providers.models.openrouter.merge_system_into_user").as_deref(),
+            Some("false")
+        );
+        assert_eq!(
+            read_toml_path(&table, "providers.models.openrouter.model").as_deref(),
+            Some("nvidia/nemotron-3-super-120b-a12b:free")
+        );
+    }
+
+    #[test]
+    fn updates_existing_nested_section_field() {
+        let content = r#"[providers.models.openrouter]
+api_key = "***"
+merge_system_into_user = false
+"#;
+
+        let updated = patch_toml_text(
+            content,
+            &["providers", "models", "openrouter"],
+            "merge_system_into_user",
+            "true",
+        );
+
+        assert!(updated.contains("merge_system_into_user = true"));
+        assert!(!updated.contains("merge_system_into_user = false"));
+    }
+
+    #[test]
+    fn creates_missing_nested_section_for_field() {
+        let updated = patch_toml_text(
+            "",
+            &["providers", "models", "openrouter"],
+            "model",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+        );
+
+        assert!(updated.contains("[providers.models.openrouter]"));
+        assert!(updated.contains("model = \"nvidia/nemotron-3-super-120b-a12b:free\""));
     }
 }

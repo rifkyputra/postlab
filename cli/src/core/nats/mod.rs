@@ -239,13 +239,17 @@ websocket {{
     /// Async: initialise JetStream buckets + streams. Runs CLI on thread pool.
     pub async fn init_wasmcloud_buckets_async(&self) -> Result<()> {
         tokio::task::spawn_blocking(move || {
-            let (cli, srv_args): (&str, &[&str]) = if crate::core::packages::which("wash") {
-                ("wash", &[])
+            let wash_bin = crate::core::wasm_cloud::cli::find_wash();
+            let (cli_owned, srv_args_owned): (String, Vec<&'static str>) = if let Some(w) = wash_bin
+            {
+                (w, vec![])
             } else if crate::core::packages::which("nats") {
-                ("nats", &["-s", "nats://127.0.0.1:4222"])
+                ("nats".to_string(), vec!["-s", "nats://127.0.0.1:4222"])
             } else {
                 return; // wasmCloud will create them on first start
             };
+            let cli = cli_owned.as_str();
+            let srv_args = srv_args_owned.as_slice();
 
             let run = |extra: &[&'static str]| {
                 let _ = Command::new(cli).args(srv_args).args(extra).output();
@@ -284,14 +288,17 @@ websocket {{
 
     pub fn init_wasmcloud_buckets(&self) -> Result<()> {
         // Determine which CLI is available: prefer `wash`, fall back to `nats`.
-        let (cli, base_args): (&str, &[&str]) = if crate::core::packages::which("wash") {
-            ("wash", &[])
+        let wash_bin = crate::core::wasm_cloud::cli::find_wash();
+        let (cli_owned, base_args_owned): (String, Vec<&'static str>) = if let Some(w) = wash_bin {
+            (w, vec![])
         } else if crate::core::packages::which("nats") {
-            ("nats", &["-s", "nats://127.0.0.1:4222"])
+            ("nats".to_string(), vec!["-s", "nats://127.0.0.1:4222"])
         } else {
             // No CLI available; wasmCloud itself will create the buckets on first start.
             return Ok(());
         };
+        let cli = cli_owned.as_str();
+        let base_args = base_args_owned.as_slice();
 
         // Helper closure
         let run = |args: &[&str]| -> bool {

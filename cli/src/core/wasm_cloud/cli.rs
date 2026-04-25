@@ -8,14 +8,37 @@ use crate::core::packages::which;
 
 pub struct WasmCloudCliManager;
 
+/// Returns the path to the wash binary, checking PATH and the default install location.
+pub fn find_wash() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.wash/bin/wash"),
+        format!("{home}/.cargo/bin/wash"),
+        format!("{home}/.local/bin/wash"),
+        "/usr/local/bin/wash".to_string(),
+        "/usr/bin/wash".to_string(),
+    ];
+    for p in &candidates {
+        if std::path::Path::new(p).is_file() {
+            return Some(p.clone());
+        }
+    }
+    // Last resort: check PATH
+    if which("wash") {
+        return Some("wash".to_string());
+    }
+    None
+}
+
 #[async_trait]
 impl WasmCloudManager for WasmCloudCliManager {
     async fn is_installed(&self) -> bool {
-        which("wash")
+        find_wash().is_some()
     }
 
     async fn version(&self) -> Option<String> {
-        let output = Command::new("wash").arg("--version").output().ok()?;
+        let bin = find_wash()?;
+        let output = Command::new(&bin).arg("--version").output().ok()?;
 
         if output.status.success() {
             let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -125,10 +148,8 @@ impl WasmCloudManager for WasmCloudCliManager {
     }
 
     async fn inspect_component(&self, wasm_path: &str) -> Result<String> {
-        let output = Command::new("wash")
-            .arg("inspect")
-            .arg(wasm_path)
-            .output()?;
+        let bin = find_wash().ok_or_else(|| anyhow::anyhow!("wash not found"))?;
+        let output = Command::new(&bin).arg("inspect").arg(wasm_path).output()?;
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }

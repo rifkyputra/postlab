@@ -1,5 +1,4 @@
 pub mod deploy;
-pub mod zeroclaw;
 pub mod docker;
 pub mod firewall;
 pub mod gateway;
@@ -18,5 +17,6 @@ pub mod tunnel;
 pub mod users;
 pub mod wasm_cloud;
 pub mod workloads;
+pub mod zeroclaw;
 
 pub use platform::Platform;

@@ -64,9 +64,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_services_key(app, key);
         return false;
     }
-    if app.screen == Screen::Automation
-        && app.automation.cron_form_mode == InputMode::Editing
-    {
+    if app.screen == Screen::Automation && app.automation.cron_form_mode == InputMode::Editing {
         handle_automation_cron_input(app, key);
         return false;
     }
@@ -2496,7 +2494,11 @@ fn handle_automation_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Left | KeyCode::Char('H') => {
             let idx = app.automation.active_tab.index();
-            let prev = if idx == 0 { ZeroclawTab::all().len() - 1 } else { idx - 1 };
+            let prev = if idx == 0 {
+                ZeroclawTab::all().len() - 1
+            } else {
+                idx - 1
+            };
             let new_tab = ZeroclawTab::all()[prev].clone();
             switch_zeroclaw_tab(app, new_tab);
             return;
@@ -2586,7 +2588,9 @@ fn handle_zeroclaw_channels_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Up | KeyCode::Char('k') => {
             let i = app.automation.channels_state.selected().unwrap_or(0);
-            app.automation.channels_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+            app.automation
+                .channels_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
         KeyCode::Char('r') => {
             app.spawn_load_zeroclaw_channels();
@@ -2604,7 +2608,9 @@ fn handle_zeroclaw_cron_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
             let i = app.automation.cron_state.selected().unwrap_or(0);
-            app.automation.cron_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+            app.automation
+                .cron_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
         KeyCode::Char('a') => {
             app.automation.cron_form_mode = InputMode::Editing;
@@ -2640,7 +2646,9 @@ fn handle_zeroclaw_memory_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
             let i = app.automation.memory_state.selected().unwrap_or(0);
-            app.automation.memory_state.select(Some(if i == 0 { len - 1 } else { i - 1 }));
+            app.automation
+                .memory_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
         KeyCode::Char('d') => {
             if let Some(idx) = app.automation.memory_state.selected() {
@@ -2726,10 +2734,18 @@ fn config_search_jump(app: &mut App, forward: bool) {
     }
     let current = app.automation.config_scroll;
     if forward {
-        let next = matches.iter().find(|&&m| m > current).copied().unwrap_or(matches[0]);
+        let next = matches
+            .iter()
+            .find(|&&m| m > current)
+            .copied()
+            .unwrap_or(matches[0]);
         app.automation.config_scroll = next;
     } else {
-        let prev = matches.iter().rev().find(|&&m| m < current).copied()
+        let prev = matches
+            .iter()
+            .rev()
+            .find(|&&m| m < current)
+            .copied()
             .unwrap_or(*matches.last().unwrap());
         app.automation.config_scroll = prev;
     }
@@ -2748,8 +2764,7 @@ fn handle_easy_config_key(app: &mut App, key: KeyEvent) {
 
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.easy_config_selected =
-                (app.automation.easy_config_selected + 1) % len;
+            app.automation.easy_config_selected = (app.automation.easy_config_selected + 1) % len;
             app.automation.easy_config_status = None;
         }
         KeyCode::Up | KeyCode::Char('k') => {
@@ -2820,14 +2835,15 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
 
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.permissions_selected =
-                (app.automation.permissions_selected + 1) % len;
+            app.automation.permissions_selected = (app.automation.permissions_selected + 1) % len;
             app.automation.permissions_status = None;
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            app.automation.permissions_selected =
-                if app.automation.permissions_selected == 0 { len - 1 }
-                else { app.automation.permissions_selected - 1 };
+            app.automation.permissions_selected = if app.automation.permissions_selected == 0 {
+                len - 1
+            } else {
+                app.automation.permissions_selected - 1
+            };
             app.automation.permissions_status = None;
         }
         // Space toggles bools; Enter opens edit for text/list
@@ -2835,7 +2851,11 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
             let idx = app.automation.permissions_selected;
             if let Some(field) = app.automation.permissions.get(idx) {
                 if field.kind == PermFieldKind::Bool {
-                    let new_val = if field.value == "true" { "false" } else { "true" };
+                    let new_val = if field.value == "true" {
+                        "false"
+                    } else {
+                        "true"
+                    };
                     let path = field.path.to_string();
                     app.spawn_save_permission(path, new_val.to_string());
                     app.automation.permissions_status = None;
@@ -2847,7 +2867,11 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
             if let Some(field) = app.automation.permissions.get(idx) {
                 match field.kind {
                     PermFieldKind::Bool => {
-                        let new_val = if field.value == "true" { "false" } else { "true" };
+                        let new_val = if field.value == "true" {
+                            "false"
+                        } else {
+                            "true"
+                        };
                         let path = field.path.to_string();
                         app.spawn_save_permission(path, new_val.to_string());
                         app.automation.permissions_status = None;

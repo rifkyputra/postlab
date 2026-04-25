@@ -63,7 +63,11 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     } else {
         "  daemon stopped"
     };
-    let loading = if app.automation.loading { "  Loading…" } else { "" };
+    let loading = if app.automation.loading {
+        "  Loading…"
+    } else {
+        ""
+    };
     let text = Line::from(vec![
         Span::styled(dot, Style::default().fg(dot_color)),
         Span::raw(" ZeroClaw  "),
@@ -71,8 +75,8 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(daemon_state, Style::default().fg(Color::DarkGray)),
         Span::styled(loading, Style::default().fg(Color::Yellow)),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().title(" Automation ").borders(Borders::ALL));
+    let p =
+        Paragraph::new(text).block(Block::default().title(" Automation ").borders(Borders::ALL));
     f.render_widget(p, area);
 }
 
@@ -134,13 +138,20 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
             if app.automation.installing {
                 lines.push(Line::from(vec![Span::styled(
                     "  Installing…",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 )]));
             }
         } else {
             lines.push(Line::from(vec![
                 Span::styled("  Press ", Style::default().fg(Color::DarkGray)),
-                Span::styled("[I]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[I]",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     " to install from GitHub Releases (pre-built binary, no Rust needed)",
                     Style::default().fg(Color::DarkGray),
@@ -152,7 +163,8 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             )]));
         }
-        let p = Paragraph::new(lines).block(Block::default().title(" ZeroClaw ").borders(Borders::ALL));
+        let p =
+            Paragraph::new(lines).block(Block::default().title(" ZeroClaw ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
@@ -203,8 +215,11 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
             .block(Block::default().title(" Components ").borders(Borders::ALL));
         f.render_widget(p, chunks[1]);
     } else {
-        let header = Row::new(vec!["Component", "Status"])
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+        let header = Row::new(vec!["Component", "Status"]).style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
         let rows: Vec<Row> = app
             .automation
             .status
@@ -219,8 +234,7 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
                 };
                 Row::new(vec![
                     Cell::from(c.name.clone()),
-                    Cell::from(c.status.clone())
-                        .style(Style::default().fg(status_color)),
+                    Cell::from(c.status.clone()).style(Style::default().fg(status_color)),
                 ])
             })
             .collect();
@@ -243,14 +257,21 @@ fn render_channels(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header = Row::new(vec!["Name", "Platform", "Enabled"])
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+    let header = Row::new(vec!["Name", "Platform", "Enabled"]).style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
     let rows: Vec<Row> = app
         .automation
         .channels
         .iter()
         .map(|ch| {
-            let enabled_color = if ch.enabled { Color::Green } else { Color::DarkGray };
+            let enabled_color = if ch.enabled {
+                Color::Green
+            } else {
+                Color::DarkGray
+            };
             let enabled_text = if ch.enabled { "yes" } else { "no" };
             Row::new(vec![
                 Cell::from(ch.name.clone()),
@@ -261,7 +282,11 @@ fn render_channels(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let title = format!(" Channels ({}) ", app.automation.channels.len());
-    let widths = [Constraint::Fill(1), Constraint::Length(12), Constraint::Length(8)];
+    let widths = [
+        Constraint::Fill(1),
+        Constraint::Length(12),
+        Constraint::Length(8),
+    ];
     let mut state = app.automation.channels_state.clone();
     let table = Table::new(rows, widths)
         .header(header)
@@ -282,14 +307,17 @@ fn render_cron(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             )]),
         ];
-        let p = Paragraph::new(msg)
-            .block(Block::default().title(" Cron Jobs ").borders(Borders::ALL));
+        let p =
+            Paragraph::new(msg).block(Block::default().title(" Cron Jobs ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
 
-    let header = Row::new(vec!["ID", "Schedule", "Command", "Last Run", "Next Run"])
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+    let header = Row::new(vec!["ID", "Schedule", "Command", "Last Run", "Next Run"]).style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
     let rows: Vec<Row> = app
         .automation
         .cron
@@ -333,8 +361,7 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             )]),
         ];
-        let p = Paragraph::new(msg)
-            .block(Block::default().title(" Memory ").borders(Borders::ALL));
+        let p = Paragraph::new(msg).block(Block::default().title(" Memory ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
@@ -453,15 +480,26 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
             .automation
             .config_text
             .lines()
-            .filter(|l| l.to_lowercase().contains(&app.automation.config_search.to_lowercase()))
+            .filter(|l| {
+                l.to_lowercase()
+                    .contains(&app.automation.config_search.to_lowercase())
+            })
             .count();
         let suffix = if app.automation.config_search.is_empty() {
             String::new()
         } else {
-            format!("  ({} matches)  [n] next  [N] prev  [Esc] clear", match_count)
+            format!(
+                "  ({} matches)  [n] next  [N] prev  [Esc] clear",
+                match_count
+            )
         };
         let bar = Line::from(vec![
-            Span::styled(query_display, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                query_display,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(suffix, Style::default().fg(Color::DarkGray)),
         ]);
         f.render_widget(Paragraph::new(bar), search_area);
@@ -493,18 +531,18 @@ fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
         .map(|(i, field)| {
             let selected = i == app.automation.easy_config_selected;
             let label_style = if selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
 
             let value_cell = if selected && is_editing {
-                Cell::from(Line::from(vec![
-                    Span::styled(
-                        format!("{}{}", app.automation.easy_config_input, "█"),
-                        Style::default().fg(Color::Black).bg(Color::Yellow),
-                    ),
-                ]))
+                Cell::from(Line::from(vec![Span::styled(
+                    format!("{}{}", app.automation.easy_config_input, "█"),
+                    Style::default().fg(Color::Black).bg(Color::Yellow),
+                )]))
             } else {
                 let val = if field.value.is_empty() {
                     Span::styled("(not set)", Style::default().fg(Color::DarkGray))
@@ -519,25 +557,18 @@ fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
                 Cell::from(Line::from(vec![val])).style(row_bg)
             };
 
-            Row::new(vec![
-                Cell::from(field.label).style(label_style),
-                value_cell,
-            ])
-            .height(1)
+            Row::new(vec![Cell::from(field.label).style(label_style), value_cell]).height(1)
         })
         .collect();
 
     let count = app.automation.easy_config.len();
-    let table = Table::new(
-        items,
-        [Constraint::Length(18), Constraint::Fill(1)],
-    )
-    .block(
-        Block::default()
-            .title(format!(" Quick Settings ({} fields) ", count))
-            .borders(Borders::ALL),
-    )
-    .highlight_symbol("› ");
+    let table = Table::new(items, [Constraint::Length(26), Constraint::Fill(1)])
+        .block(
+            Block::default()
+                .title(format!(" Quick Settings ({} fields) ", count))
+                .borders(Borders::ALL),
+        )
+        .highlight_symbol("› ");
 
     let mut state = ratatui::widgets::TableState::default();
     state.select(Some(app.automation.easy_config_selected));
@@ -567,11 +598,7 @@ fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(desc_block, chunks[1]);
 
     // ── Status line ───────────────────────────────────────────────────────
-    let status_text = app
-        .automation
-        .easy_config_status
-        .as_deref()
-        .unwrap_or("");
+    let status_text = app.automation.easy_config_status.as_deref().unwrap_or("");
     let status_style = if status_text.starts_with("Error") {
         Style::default().fg(Color::Red)
     } else {
@@ -608,7 +635,9 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
         .map(|(i, field)| {
             let selected = i == app.automation.permissions_selected;
             let label_style = if selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -619,7 +648,14 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
                     let (text, bg) = if is_on {
                         (" ON ", Color::Green)
                     } else {
-                        ("OFF", if selected { Color::Red } else { Color::DarkGray })
+                        (
+                            "OFF",
+                            if selected {
+                                Color::Red
+                            } else {
+                                Color::DarkGray
+                            },
+                        )
                     };
                     Cell::from(format!("[{}]", text)).style(
                         Style::default()
@@ -674,7 +710,11 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
     let count = app.automation.permissions.len();
     let table = Table::new(
         rows,
-        [Constraint::Length(22), Constraint::Fill(1), Constraint::Length(5)],
+        [
+            Constraint::Length(22),
+            Constraint::Fill(1),
+            Constraint::Length(5),
+        ],
     )
     .block(
         Block::default()
@@ -732,7 +772,12 @@ fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
     let h = 7u16;
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;
-    let popup = Rect { x, y, width: w, height: h };
+    let popup = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
 
     f.render_widget(Clear, popup);
 
@@ -756,12 +801,16 @@ fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(block, popup);
 
     let sched_style = if app.automation.cron_form_focus == 0 {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::White)
     };
     let cmd_style = if app.automation.cron_form_focus == 1 {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::White)
     };
@@ -774,7 +823,11 @@ fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(format!(
             "{}{}",
             app.automation.cron_form_schedule,
-            if app.automation.cron_form_focus == 0 { "█" } else { "" }
+            if app.automation.cron_form_focus == 0 {
+                "█"
+            } else {
+                ""
+            }
         ))
         .style(sched_style),
         inner[2],
@@ -787,7 +840,11 @@ fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(format!(
             "{}{}",
             app.automation.cron_form_command,
-            if app.automation.cron_form_focus == 1 { "█" } else { "" }
+            if app.automation.cron_form_focus == 1 {
+                "█"
+            } else {
+                ""
+            }
         ))
         .style(cmd_style),
         inner[4],

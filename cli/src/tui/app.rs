@@ -205,7 +205,10 @@ impl ZeroclawTab {
         }
     }
     pub fn index(&self) -> usize {
-        ZeroclawTab::all().iter().position(|t| t == self).unwrap_or(0)
+        ZeroclawTab::all()
+            .iter()
+            .position(|t| t == self)
+            .unwrap_or(0)
     }
 }
 
@@ -318,7 +321,10 @@ pub enum TaskResult {
         success: bool,
     },
     ZeroclawInstallProgress(String),
-    ZeroclawInstallDone { output: String, success: bool },
+    ZeroclawInstallDone {
+        output: String,
+        success: bool,
+    },
     ZeroclawInfo(crate::core::zeroclaw::ZeroclawInfo),
     ZeroclawStatus(crate::core::zeroclaw::ZeroclawStatus),
     ZeroclawChannels(Vec<crate::core::zeroclaw::ZeroclawChannel>),
@@ -326,9 +332,15 @@ pub enum TaskResult {
     ZeroclawMemory(Vec<crate::core::zeroclaw::MemoryEntry>),
     ZeroclawConfig(String),
     EasyConfigLoaded(Vec<crate::core::zeroclaw::EasyConfigField>),
-    EasyConfigSaved { path: String, result: Result<(), String> },
+    EasyConfigSaved {
+        path: String,
+        result: Result<(), String>,
+    },
     PermissionsLoaded(Vec<crate::core::zeroclaw::PermissionField>),
-    PermissionSaved { path: String, result: Result<(), String> },
+    PermissionSaved {
+        path: String,
+        result: Result<(), String>,
+    },
     ZeroclawActionDone {
         action: String,
         output: String,
@@ -1316,7 +1328,6 @@ impl App {
                 self.spawn_load_zeroclaw_overview();
             }
             _ => {}
-
         }
     }
 
@@ -3402,35 +3413,30 @@ impl App {
                     self.automation.easy_config_selected = 0;
                 }
             }
-            TaskResult::EasyConfigSaved { path, result } => {
-                match result {
-                    Ok(()) => {
-                        self.automation.easy_config_status =
-                            Some(format!("Saved {}", path));
-                        self.spawn_load_easy_config();
-                    }
-                    Err(e) => {
-                        self.automation.easy_config_status = Some(format!("Error: {}", e));
-                    }
+            TaskResult::EasyConfigSaved { path, result } => match result {
+                Ok(()) => {
+                    self.automation.easy_config_status = Some(format!("Saved {}", path));
+                    self.spawn_load_easy_config();
                 }
-            }
+                Err(e) => {
+                    self.automation.easy_config_status = Some(format!("Error: {}", e));
+                }
+            },
             TaskResult::PermissionsLoaded(fields) => {
                 self.automation.permissions = fields;
                 if self.automation.permissions_selected >= self.automation.permissions.len() {
                     self.automation.permissions_selected = 0;
                 }
             }
-            TaskResult::PermissionSaved { path, result } => {
-                match result {
-                    Ok(()) => {
-                        self.automation.permissions_status = Some(format!("Saved {}", path));
-                        self.spawn_load_permissions();
-                    }
-                    Err(e) => {
-                        self.automation.permissions_status = Some(format!("Error: {}", e));
-                    }
+            TaskResult::PermissionSaved { path, result } => match result {
+                Ok(()) => {
+                    self.automation.permissions_status = Some(format!("Saved {}", path));
+                    self.spawn_load_permissions();
                 }
-            }
+                Err(e) => {
+                    self.automation.permissions_status = Some(format!("Error: {}", e));
+                }
+            },
             TaskResult::ZeroclawActionDone {
                 action,
                 output,
@@ -3440,7 +3446,11 @@ impl App {
                 self.status_msg = Some(if success {
                     format!("zeroclaw {} — done", action)
                 } else {
-                    format!("zeroclaw {} FAILED: {}", action, output.lines().next().unwrap_or(""))
+                    format!(
+                        "zeroclaw {} FAILED: {}",
+                        action,
+                        output.lines().next().unwrap_or("")
+                    )
                 });
                 // Refresh relevant tab after action
                 match action.as_str() {
@@ -3538,8 +3548,7 @@ impl App {
             }
             Screen::Automation => {
                 // Refresh zeroclaw status every 40 ticks (~10 s)
-                self.automation.poll_counter =
-                    self.automation.poll_counter.wrapping_add(1);
+                self.automation.poll_counter = self.automation.poll_counter.wrapping_add(1);
                 if self.automation.poll_counter % 40 == 0 {
                     self.spawn_load_zeroclaw_overview();
                 }
