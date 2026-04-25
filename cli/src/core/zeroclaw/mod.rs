@@ -740,57 +740,72 @@ pub async fn get_permissions() -> Vec<PermissionField> {
 fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str) -> String {
     let needs_quotes = !matches!(value, "true" | "false")
         && value.parse::<f64>().is_err()
-        && !value.starts_with('[');  // TOML inline arrays are already valid
+        && !value.starts_with('[');
     let new_line = if needs_quotes {
         format!("{} = \"{}\"", key, value)
     } else {
         format!("{} = {}", key, value)
     };
     let raw: Vec<&str> = content.lines().collect();
-    let mut out: Vec<String> = raw.iter().map(|l| l.to_string()).collect();
-
+    let mut out: Vec<String> = Vec::with_capacity(raw.len());
     let mut in_target = section.is_none();
-    let mut replaced: Option<usize> = None;
-    let mut section_header_idx: Option<usize> = None;
-    let mut section_end_idx: usize = raw.len();
-
-    for (i, line) in raw.iter().enumerate() {
+    let mut replaced = false;
+    let mut section_header_out_idx: Option<usize> = None;
+    let mut section_end_out_idx: Option<usize> = None;
+    let mut i = 0;
+    while i < raw.len() {
+        let line = raw[i];
         let trimmed = line.trim();
         if trimmed.starts_with('[') && !trimmed.starts_with("[[") {
             let sec = trimmed.trim_matches(|c: char| c == '[' || c == ']').trim();
             if let Some(wanted) = section {
                 if sec == wanted {
                     in_target = true;
-                    section_header_idx = Some(i);
-                    section_end_idx = raw.len(); // reset; updated below
-                } else if in_target {
-                    section_end_idx = i;
+                    out.push(line.to_string());
+                    section_header_out_idx = Some(out.len());
+                    i += 1;
+                    continue;
+                } else if in_target && section_end_out_idx.is_none() {
+                    section_end_out_idx = Some(out.len());
                     in_target = false;
                 }
-            } else if section.is_none() {
-                // Top-level: leaving as soon as any section starts
-                section_end_idx = i;
+            } else if in_target && section_end_out_idx.is_none() {
+                section_end_out_idx = Some(out.len());
                 in_target = false;
             }
         }
-
-        if in_target && replaced.is_none() {
-            if let Some((k, _)) = line.split_once('=') {
+        if in_target && !replaced {
+            if let Some((k, rest)) = line.split_once('=') {
                 if k.trim() == key {
-                    out[i] = new_line.clone();
-                    replaced = Some(i);
+                    out.push(new_line.clone());
+                    replaced = true;
+                    let rest_t = rest.trim();
+                    // Multi-line array: opening `[` without closing `]` on same line
+                    if rest_t.starts_with('[') && !rest_t.trim_end_matches(',').ends_with(']') {
+                        i += 1;
+                        while i < raw.len() {
+                            if raw[i].trim().starts_with(']') {
+                                i += 1;
+                                break;
+                            }
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                    continue;
                 }
             }
         }
+        out.push(line.to_string());
+        i += 1;
     }
-
-    if replaced.is_none() {
+    if !replaced {
         if let Some(sec) = section {
-            if let Some(_header) = section_header_idx {
-                // Insert just before the next section (or EOF)
-                out.insert(section_end_idx, new_line);
+            if section_header_out_idx.is_some() {
+                let at = section_end_out_idx.unwrap_or(out.len());
+                out.insert(at, new_line);
             } else {
-                // Section missing — append it
                 if out.last().map(|l| !l.is_empty()).unwrap_or(false) {
                     out.push(String::new());
                 }
@@ -798,13 +813,11 @@ fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str)
                 out.push(new_line);
             }
         } else {
-            // Top-level key missing — insert before first section or at EOF
-            out.insert(section_end_idx, new_line);
+            let at = section_end_out_idx.unwrap_or(out.len());
+            out.insert(at, new_line);
         }
     }
-
     let joined = out.join("\n");
-    // Preserve trailing newline if original had one
     if content.ends_with('\n') && !joined.ends_with('\n') {
         format!("{}\n", joined)
     } else {
