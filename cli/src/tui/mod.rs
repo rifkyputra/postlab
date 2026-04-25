@@ -76,7 +76,6 @@ async fn run_loop(
                 Screen::Ghosts => screens::ghost::render(f, app, chunks[1]),
                 Screen::Users => screens::users::render(f, app, chunks[1]),
                 Screen::Services => screens::services::render(f, app, chunks[1]),
-                Screen::Maintenance => screens::maintenance::render(f, app, chunks[1]),
                 Screen::Automation => screens::automation::render(f, app, chunks[1]),
             }
 

@@ -70,6 +70,27 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_automation_cron_input(app, key);
         return false;
     }
+    if app.screen == Screen::Automation
+        && app.automation.active_tab == ZeroclawTab::Config
+        && app.automation.config_search_mode == InputMode::Editing
+    {
+        handle_zeroclaw_config_search_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Automation
+        && app.automation.active_tab == ZeroclawTab::EasyConfig
+        && app.automation.easy_config_input_mode == InputMode::Editing
+    {
+        handle_easy_config_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Automation
+        && app.automation.active_tab == ZeroclawTab::Permissions
+        && app.automation.permissions_input_mode == InputMode::Editing
+    {
+        handle_permissions_text_input(app, key);
+        return false;
+    }
     if app.screen == Screen::Security {
         match app.security.active_tab {
             SecurityTab::Firewall if app.firewall.input_mode == InputMode::Editing => {
@@ -132,7 +153,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             return false;
         }
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            app.set_screen_by_index(10);
+            app.set_screen_by_index(9);
             return false;
         }
         KeyCode::Tab => {
@@ -159,7 +180,6 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::Ghosts => handle_ghost_key(app, key),
         Screen::Users => handle_users_key(app, key),
         Screen::Services => handle_services_key(app, key),
-        Screen::Maintenance => handle_maintenance_key(app, key),
         Screen::Automation => handle_automation_key(app, key),
     }
     false
@@ -322,7 +342,8 @@ fn handle_dashboard_key(app: &mut App, key: KeyEvent) {
             }
         }
         DashboardTab::Processes => handle_processes_key(app, key),
-        DashboardTab::Resources => {} // read-only sparklines, no keys needed
+        DashboardTab::Resources => {}
+        DashboardTab::Janitor => handle_maintenance_key(app, key),
     }
 }
 
@@ -2489,6 +2510,8 @@ fn handle_automation_key(app: &mut App, key: KeyEvent) {
         ZeroclawTab::Cron => handle_zeroclaw_cron_key(app, key),
         ZeroclawTab::Memory => handle_zeroclaw_memory_key(app, key),
         ZeroclawTab::Config => handle_zeroclaw_config_key(app, key),
+        ZeroclawTab::EasyConfig => handle_easy_config_key(app, key),
+        ZeroclawTab::Permissions => handle_permissions_key(app, key),
     }
 }
 
@@ -2500,6 +2523,8 @@ fn switch_zeroclaw_tab(app: &mut App, tab: ZeroclawTab) {
         ZeroclawTab::Cron => app.spawn_load_zeroclaw_cron(),
         ZeroclawTab::Memory => app.spawn_load_zeroclaw_memory(),
         ZeroclawTab::Config => app.spawn_load_zeroclaw_config(),
+        ZeroclawTab::EasyConfig => app.spawn_load_easy_config(),
+        ZeroclawTab::Permissions => app.spawn_load_permissions(),
     }
 }
 
@@ -2645,6 +2670,221 @@ fn handle_zeroclaw_config_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('r') => {
             app.spawn_load_zeroclaw_config();
+        }
+        KeyCode::Char('/') => {
+            app.automation.config_search_mode = InputMode::Editing;
+        }
+        KeyCode::Esc => {
+            app.automation.config_search.clear();
+            app.automation.config_search_mode = InputMode::Normal;
+        }
+        KeyCode::Char('n') if !app.automation.config_search.is_empty() => {
+            config_search_jump(app, true);
+        }
+        KeyCode::Char('N') if !app.automation.config_search.is_empty() => {
+            config_search_jump(app, false);
+        }
+        _ => {}
+    }
+}
+
+fn handle_zeroclaw_config_search_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.automation.config_search.clear();
+            app.automation.config_search_mode = InputMode::Normal;
+        }
+        KeyCode::Enter => {
+            app.automation.config_search_mode = InputMode::Normal;
+            config_search_jump(app, true);
+        }
+        KeyCode::Backspace => {
+            app.automation.config_search.pop();
+        }
+        KeyCode::Char(c) => {
+            app.automation.config_search.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn config_search_jump(app: &mut App, forward: bool) {
+    let query = app.automation.config_search.to_lowercase();
+    if query.is_empty() {
+        return;
+    }
+    let matches: Vec<u16> = app
+        .automation
+        .config_text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.to_lowercase().contains(&query))
+        .map(|(i, _)| i as u16)
+        .collect();
+    if matches.is_empty() {
+        return;
+    }
+    let current = app.automation.config_scroll;
+    if forward {
+        let next = matches.iter().find(|&&m| m > current).copied().unwrap_or(matches[0]);
+        app.automation.config_scroll = next;
+    } else {
+        let prev = matches.iter().rev().find(|&&m| m < current).copied()
+            .unwrap_or(*matches.last().unwrap());
+        app.automation.config_scroll = prev;
+    }
+}
+
+// ── Easy Config ───────────────────────────────────────────────────────────
+
+fn handle_easy_config_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.easy_config.len();
+    if len == 0 {
+        if key.code == KeyCode::Char('r') {
+            app.spawn_load_easy_config();
+        }
+        return;
+    }
+
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.automation.easy_config_selected =
+                (app.automation.easy_config_selected + 1) % len;
+            app.automation.easy_config_status = None;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.automation.easy_config_selected = if app.automation.easy_config_selected == 0 {
+                len - 1
+            } else {
+                app.automation.easy_config_selected - 1
+            };
+            app.automation.easy_config_status = None;
+        }
+        KeyCode::Enter | KeyCode::Char('e') => {
+            let current_val = app
+                .automation
+                .easy_config
+                .get(app.automation.easy_config_selected)
+                .map(|f| f.value.clone())
+                .unwrap_or_default();
+            app.automation.easy_config_input = current_val;
+            app.automation.easy_config_input_mode = InputMode::Editing;
+            app.automation.easy_config_status = None;
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_easy_config();
+            app.automation.easy_config_status = None;
+        }
+        _ => {}
+    }
+}
+
+fn handle_easy_config_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.automation.easy_config_input_mode = InputMode::Normal;
+            app.automation.easy_config_input.clear();
+        }
+        KeyCode::Enter => {
+            let idx = app.automation.easy_config_selected;
+            if let Some(field) = app.automation.easy_config.get(idx) {
+                let path = field.path.to_string();
+                let value = app.automation.easy_config_input.trim().to_string();
+                app.spawn_save_easy_config_field(path, value);
+            }
+            app.automation.easy_config_input_mode = InputMode::Normal;
+            app.automation.easy_config_input.clear();
+        }
+        KeyCode::Backspace => {
+            app.automation.easy_config_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.automation.easy_config_input.push(c);
+        }
+        _ => {}
+    }
+}
+
+// ── Permissions ───────────────────────────────────────────────────────────
+
+fn handle_permissions_key(app: &mut App, key: KeyEvent) {
+    use crate::core::zeroclaw::PermFieldKind;
+
+    let len = app.automation.permissions.len();
+    if len == 0 {
+        if key.code == KeyCode::Char('r') {
+            app.spawn_load_permissions();
+        }
+        return;
+    }
+
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.automation.permissions_selected =
+                (app.automation.permissions_selected + 1) % len;
+            app.automation.permissions_status = None;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.automation.permissions_selected =
+                if app.automation.permissions_selected == 0 { len - 1 }
+                else { app.automation.permissions_selected - 1 };
+            app.automation.permissions_status = None;
+        }
+        KeyCode::Char(' ') | KeyCode::Enter => {
+            let idx = app.automation.permissions_selected;
+            if let Some(field) = app.automation.permissions.get(idx) {
+                match field.kind {
+                    PermFieldKind::Bool => {
+                        let new_val = if field.value == "true" { "false" } else { "true" };
+                        let path = field.path.to_string();
+                        app.spawn_save_permission(path, new_val.to_string());
+                        app.automation.permissions_status = None;
+                    }
+                    PermFieldKind::Text => {
+                        app.automation.permissions_input = field.value.clone();
+                        app.automation.permissions_input_mode = InputMode::Editing;
+                        app.automation.permissions_status = None;
+                    }
+                }
+            }
+        }
+        KeyCode::Char('e') => {
+            let idx = app.automation.permissions_selected;
+            if let Some(field) = app.automation.permissions.get(idx) {
+                app.automation.permissions_input = field.value.clone();
+                app.automation.permissions_input_mode = InputMode::Editing;
+                app.automation.permissions_status = None;
+            }
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_permissions();
+            app.automation.permissions_status = None;
+        }
+        _ => {}
+    }
+}
+
+fn handle_permissions_text_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.automation.permissions_input_mode = InputMode::Normal;
+            app.automation.permissions_input.clear();
+        }
+        KeyCode::Enter => {
+            let idx = app.automation.permissions_selected;
+            if let Some(field) = app.automation.permissions.get(idx) {
+                let path = field.path.to_string();
+                let value = app.automation.permissions_input.trim().to_string();
+                app.spawn_save_permission(path, value);
+            }
+            app.automation.permissions_input_mode = InputMode::Normal;
+            app.automation.permissions_input.clear();
+        }
+        KeyCode::Backspace => {
+            app.automation.permissions_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.automation.permissions_input.push(c);
         }
         _ => {}
     }

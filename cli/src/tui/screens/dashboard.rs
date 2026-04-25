@@ -23,6 +23,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         DashboardTab::Overview => render_overview(f, app, chunks[1]),
         DashboardTab::Processes => super::processes::render(f, app, chunks[1]),
         DashboardTab::Resources => super::resources::render(f, app, chunks[1]),
+        DashboardTab::Janitor => super::maintenance::render(f, app, chunks[1]),
     }
 }
 

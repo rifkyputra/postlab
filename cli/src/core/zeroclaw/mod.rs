@@ -5,6 +5,99 @@ use tokio::process::Command;
 
 // ── Data types ────────────────────────────────────────────────────────────
 
+/// Kind of a permission field — controls how it is rendered and toggled.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PermFieldKind {
+    /// Boolean — toggled with Space/Enter, rendered as [ON]/[OFF].
+    Bool,
+    /// Free-form text — edited inline.
+    Text,
+}
+
+/// A single row shown in the Permission tab.
+#[derive(Debug, Clone)]
+pub struct PermissionField {
+    pub path: &'static str,
+    pub label: &'static str,
+    pub desc: &'static str,
+    pub kind: PermFieldKind,
+    pub value: String,
+}
+
+/// Ordered list of permission fields (toml_path, label, description, kind).
+pub static PERMISSION_DEFS: &[(&str, &str, &str, PermFieldKind)] = &[
+    (
+        "gateway.require_pairing",
+        "Require Pairing",
+        "New clients must complete a pairing handshake before use",
+        PermFieldKind::Bool,
+    ),
+    (
+        "gateway.allow_public_bind",
+        "Allow Public Bind",
+        "Gateway accepts connections from any network interface",
+        PermFieldKind::Bool,
+    ),
+    (
+        "cost.enabled",
+        "Cost Tracking",
+        "Track API usage costs and enforce spending limits",
+        PermFieldKind::Bool,
+    ),
+    (
+        "cost.daily_limit_usd",
+        "Daily Limit (USD)",
+        "Maximum API spend per day (e.g. 10.0)",
+        PermFieldKind::Text,
+    ),
+    (
+        "cost.monthly_limit_usd",
+        "Monthly Limit (USD)",
+        "Maximum API spend per month (e.g. 100.0)",
+        PermFieldKind::Text,
+    ),
+    (
+        "cost.allow_override",
+        "Allow Override",
+        "Allow privileged requests to exceed the spending limit",
+        PermFieldKind::Bool,
+    ),
+];
+
+/// A single editable field shown in the Easy Config tab.
+#[derive(Debug, Clone)]
+pub struct EasyConfigField {
+    pub path: &'static str,
+    pub label: &'static str,
+    pub desc: &'static str,
+    pub value: String,
+}
+
+/// Ordered list of fields exposed in the Easy Config tab.
+/// Each entry is (toml_path, display_label, description).
+pub static EASY_CONFIG_DEFS: &[(&str, &str, &str)] = &[
+    (
+        "ai.model",
+        "AI Model",
+        "LLM model (e.g. openai/gpt-4o-mini, anthropic/claude-3-5-sonnet)",
+    ),
+    (
+        "ai.provider",
+        "AI Provider",
+        "openrouter | openai | anthropic | ollama",
+    ),
+    (
+        "gateway.port",
+        "Gateway Port",
+        "Port the zeroclaw daemon listens on (default: 42617)",
+    ),
+    (
+        "log_level",
+        "Log Level",
+        "trace | debug | info | warn | error",
+    ),
+];
+
 #[derive(Debug, Clone)]
 pub struct ZeroclawInfo {
     pub installed: bool,
@@ -518,4 +611,152 @@ pub async fn list_memory() -> Vec<MemoryEntry> {
 
 pub async fn delete_memory(key: &str) -> Result<()> {
     run(&["memory", "clear", "--key", key]).await.map(|_| ())
+}
+
+// ── Easy Config ───────────────────────────────────────────────────────────
+
+/// Read the known easy-config fields from ~/.zeroclaw/config.toml.
+pub async fn get_easy_config() -> Vec<EasyConfigField> {
+    let path = config_path();
+    let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+    let table: toml::Value = toml::from_str(&content)
+        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+
+    EASY_CONFIG_DEFS
+        .iter()
+        .map(|(toml_path, label, desc)| {
+            let value = read_toml_path(&table, toml_path).unwrap_or_default();
+            EasyConfigField { path: toml_path, label, desc, value }
+        })
+        .collect()
+}
+
+/// Write a single field back to ~/.zeroclaw/config.toml preserving existing
+/// formatting and comments.  Creates the file (and `[section]` header) if absent.
+pub async fn set_config_field(toml_path: &str, new_value: &str) -> Result<()> {
+    let file = config_path();
+    let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
+    let parts: Vec<&str> = toml_path.splitn(2, '.').collect();
+    let updated = match parts.as_slice() {
+        [key] => patch_toml_text(&content, None, key, new_value),
+        [section, key] => patch_toml_text(&content, Some(section), key, new_value),
+        _ => return Err(anyhow::anyhow!("invalid config path: {}", toml_path)),
+    };
+    // Ensure parent directory exists
+    if let Some(parent) = file.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(&file, updated).await?;
+    Ok(())
+}
+
+fn read_toml_path(table: &toml::Value, path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.splitn(2, '.').collect();
+    let val = match parts.as_slice() {
+        [key] => table.get(key)?,
+        [section, key] => table.get(section)?.get(key)?,
+        _ => return None,
+    };
+    Some(match val {
+        toml::Value::String(s) => s.clone(),
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Float(f) => f.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        other => other.to_string(),
+    })
+}
+
+/// Read the known permission fields from ~/.zeroclaw/config.toml.
+pub async fn get_permissions() -> Vec<PermissionField> {
+    let path = config_path();
+    let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+    let table: toml::Value = toml::from_str(&content)
+        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+
+    PERMISSION_DEFS
+        .iter()
+        .map(|(toml_path, label, desc, kind)| {
+            let value = read_toml_path(&table, toml_path).unwrap_or_else(|| match kind {
+                PermFieldKind::Bool => "false".to_string(),
+                PermFieldKind::Text => String::new(),
+            });
+            PermissionField { path: toml_path, label, desc, kind: *kind, value }
+        })
+        .collect()
+}
+
+/// In-place line replacement that preserves comments and ordering.
+/// Values that are "true", "false", or valid numbers are written unquoted.
+fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str) -> String {
+    let needs_quotes =
+        !matches!(value, "true" | "false") && value.parse::<f64>().is_err();
+    let new_line = if needs_quotes {
+        format!("{} = \"{}\"", key, value)
+    } else {
+        format!("{} = {}", key, value)
+    };
+    let raw: Vec<&str> = content.lines().collect();
+    let mut out: Vec<String> = raw.iter().map(|l| l.to_string()).collect();
+
+    let mut in_target = section.is_none();
+    let mut replaced: Option<usize> = None;
+    let mut section_header_idx: Option<usize> = None;
+    let mut section_end_idx: usize = raw.len();
+
+    for (i, line) in raw.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && !trimmed.starts_with("[[") {
+            let sec = trimmed.trim_matches(|c: char| c == '[' || c == ']').trim();
+            if let Some(wanted) = section {
+                if sec == wanted {
+                    in_target = true;
+                    section_header_idx = Some(i);
+                    section_end_idx = raw.len(); // reset; updated below
+                } else if in_target {
+                    section_end_idx = i;
+                    in_target = false;
+                }
+            } else if section.is_none() {
+                // Top-level: leaving as soon as any section starts
+                section_end_idx = i;
+                in_target = false;
+            }
+        }
+
+        if in_target && replaced.is_none() {
+            if let Some((k, _)) = line.split_once('=') {
+                if k.trim() == key {
+                    out[i] = new_line.clone();
+                    replaced = Some(i);
+                }
+            }
+        }
+    }
+
+    if replaced.is_none() {
+        if let Some(sec) = section {
+            if let Some(_header) = section_header_idx {
+                // Insert just before the next section (or EOF)
+                out.insert(section_end_idx, new_line);
+            } else {
+                // Section missing — append it
+                if out.last().map(|l| !l.is_empty()).unwrap_or(false) {
+                    out.push(String::new());
+                }
+                out.push(format!("[{}]", sec));
+                out.push(new_line);
+            }
+        } else {
+            // Top-level key missing — insert before first section or at EOF
+            out.insert(section_end_idx, new_line);
+        }
+    }
+
+    let joined = out.join("\n");
+    // Preserve trailing newline if original had one
+    if content.ends_with('\n') && !joined.ends_with('\n') {
+        format!("{}\n", joined)
+    } else {
+        joined
+    }
 }

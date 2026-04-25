@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, InputMode, ZeroclawTab};
+use ratatui::text::Text;
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
@@ -28,6 +29,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Cron => render_cron(f, app, chunks[2]),
         ZeroclawTab::Memory => render_memory(f, app, chunks[2]),
         ZeroclawTab::Config => render_config(f, app, chunks[2]),
+        ZeroclawTab::EasyConfig => render_easy_config(f, app, chunks[2]),
+        ZeroclawTab::Permissions => render_permissions(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
@@ -100,7 +103,9 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Channels => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
         ZeroclawTab::Cron => "[←/→] tabs  [↑↓/jk] select  [a] add  [d] delete  [r] refresh",
         ZeroclawTab::Memory => "[←/→] tabs  [↑↓/jk] select  [d] delete  [r] refresh",
-        ZeroclawTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [r] refresh",
+        ZeroclawTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh",
+        ZeroclawTab::EasyConfig => "[←/→] tabs  [↑↓/jk] select  [Enter/e] edit  [Esc] cancel  [r] reload",
+        ZeroclawTab::Permissions => "[←/→] tabs  [↑↓/jk] select  [Space/Enter] toggle bool  [e] edit text  [Esc] cancel  [r] reload",
     };
     let p = Paragraph::new(Span::styled(hints, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
@@ -367,20 +372,356 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
 // ── Config ────────────────────────────────────────────────────────────────
 
 fn render_config(f: &mut Frame, app: &App, area: Rect) {
-    let text = if app.automation.config_text.is_empty() {
-        "  Loading config…  (press [r] to refresh)"
+    let searching = !app.automation.config_search.is_empty()
+        || app.automation.config_search_mode == InputMode::Editing;
+
+    let chunks = if searching {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(area)
     } else {
-        &app.automation.config_text
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0)])
+            .split(area)
     };
-    let p = Paragraph::new(text)
-        .style(Style::default().fg(Color::White))
-        .block(
+
+    let content_area = chunks[0];
+
+    if app.automation.config_text.is_empty() {
+        let p = Paragraph::new("  Loading config…  (press [r] to refresh)")
+            .style(Style::default().fg(Color::DarkGray))
+            .block(
+                Block::default()
+                    .title(" ~/.zeroclaw/config.toml (secrets masked) ")
+                    .borders(Borders::ALL),
+            );
+        f.render_widget(p, content_area);
+    } else {
+        let query = app.automation.config_search.to_lowercase();
+        let lines: Vec<Line> = app
+            .automation
+            .config_text
+            .lines()
+            .map(|line| {
+                if !query.is_empty() && line.to_lowercase().contains(&query) {
+                    let lower = line.to_lowercase();
+                    let mut spans = Vec::new();
+                    let mut remaining = line;
+                    let mut lower_remaining = lower.as_str();
+                    while let Some(pos) = lower_remaining.find(query.as_str()) {
+                        if pos > 0 {
+                            spans.push(Span::raw(&remaining[..pos]));
+                        }
+                        spans.push(Span::styled(
+                            &remaining[pos..pos + query.len()],
+                            Style::default().fg(Color::Black).bg(Color::Yellow),
+                        ));
+                        remaining = &remaining[pos + query.len()..];
+                        lower_remaining = &lower_remaining[pos + query.len()..];
+                    }
+                    if !remaining.is_empty() {
+                        spans.push(Span::raw(remaining));
+                    }
+                    Line::from(spans)
+                } else {
+                    Line::from(Span::styled(line, Style::default().fg(Color::White)))
+                }
+            })
+            .collect();
+
+        let p = Paragraph::new(Text::from(lines))
+            .block(
+                Block::default()
+                    .title(" ~/.zeroclaw/config.toml (secrets masked) ")
+                    .borders(Borders::ALL),
+            )
+            .scroll((app.automation.config_scroll, 0));
+        f.render_widget(p, content_area);
+    }
+
+    if searching {
+        let search_area = chunks[1];
+        let in_edit = app.automation.config_search_mode == InputMode::Editing;
+        let query_display = if in_edit {
+            format!("/{}{}", app.automation.config_search, "█")
+        } else {
+            format!("/{}", app.automation.config_search)
+        };
+        let match_count = app
+            .automation
+            .config_text
+            .lines()
+            .filter(|l| l.to_lowercase().contains(&app.automation.config_search.to_lowercase()))
+            .count();
+        let suffix = if app.automation.config_search.is_empty() {
+            String::new()
+        } else {
+            format!("  ({} matches)  [n] next  [N] prev  [Esc] clear", match_count)
+        };
+        let bar = Line::from(vec![
+            Span::styled(query_display, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(suffix, Style::default().fg(Color::DarkGray)),
+        ]);
+        f.render_widget(Paragraph::new(bar), search_area);
+    }
+}
+
+// ── Easy Config ───────────────────────────────────────────────────────────
+
+fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
+    use crate::tui::app::InputMode;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // field list
+            Constraint::Length(3), // description box
+            Constraint::Length(1), // status bar
+        ])
+        .split(area);
+
+    // ── Field list ────────────────────────────────────────────────────────
+    let is_editing = app.automation.easy_config_input_mode == InputMode::Editing;
+
+    let items: Vec<Row> = app
+        .automation
+        .easy_config
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let selected = i == app.automation.easy_config_selected;
+            let label_style = if selected {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let value_cell = if selected && is_editing {
+                Cell::from(Line::from(vec![
+                    Span::styled(
+                        format!("{}{}", app.automation.easy_config_input, "█"),
+                        Style::default().fg(Color::Black).bg(Color::Yellow),
+                    ),
+                ]))
+            } else {
+                let val = if field.value.is_empty() {
+                    Span::styled("(not set)", Style::default().fg(Color::DarkGray))
+                } else {
+                    Span::styled(field.value.as_str(), Style::default().fg(Color::Cyan))
+                };
+                let row_bg = if selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+                Cell::from(Line::from(vec![val])).style(row_bg)
+            };
+
+            Row::new(vec![
+                Cell::from(field.label).style(label_style),
+                value_cell,
+            ])
+            .height(1)
+        })
+        .collect();
+
+    let count = app.automation.easy_config.len();
+    let table = Table::new(
+        items,
+        [Constraint::Length(18), Constraint::Fill(1)],
+    )
+    .block(
+        Block::default()
+            .title(format!(" Quick Settings ({} fields) ", count))
+            .borders(Borders::ALL),
+    )
+    .highlight_symbol("› ");
+
+    let mut state = ratatui::widgets::TableState::default();
+    state.select(Some(app.automation.easy_config_selected));
+    f.render_stateful_widget(table, chunks[0], &mut state);
+
+    // ── Description for selected field ────────────────────────────────────
+    let desc = app
+        .automation
+        .easy_config
+        .get(app.automation.easy_config_selected)
+        .map(|f| {
+            Line::from(vec![
+                Span::styled(
+                    format!("  {} — ", f.label),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::styled(f.desc, Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .unwrap_or_else(|| Line::from(""));
+
+    let desc_block = Paragraph::new(desc).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
+    f.render_widget(desc_block, chunks[1]);
+
+    // ── Status line ───────────────────────────────────────────────────────
+    let status_text = app
+        .automation
+        .easy_config_status
+        .as_deref()
+        .unwrap_or("");
+    let status_style = if status_text.starts_with("Error") {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::Green)
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
+        chunks[2],
+    );
+}
+
+// ── Permissions ───────────────────────────────────────────────────────────
+
+fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
+    use crate::core::zeroclaw::PermFieldKind;
+    use crate::tui::app::InputMode;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // field table
+            Constraint::Length(3), // description
+            Constraint::Length(1), // status
+        ])
+        .split(area);
+
+    let is_editing = app.automation.permissions_input_mode == InputMode::Editing;
+
+    let rows: Vec<Row> = app
+        .automation
+        .permissions
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let selected = i == app.automation.permissions_selected;
+            let label_style = if selected {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let value_cell = match field.kind {
+                PermFieldKind::Bool => {
+                    let is_on = field.value == "true";
+                    let (text, color) = if is_on {
+                        (" ON ", Color::Green)
+                    } else {
+                        ("OFF", Color::DarkGray)
+                    };
+                    let mut style = Style::default()
+                        .fg(Color::Black)
+                        .bg(color)
+                        .add_modifier(Modifier::BOLD);
+                    if selected {
+                        style = style.bg(if is_on { Color::Green } else { Color::Red });
+                    }
+                    Cell::from(format!("[{}]", text)).style(style)
+                }
+                PermFieldKind::Text => {
+                    if selected && is_editing {
+                        Cell::from(Line::from(vec![Span::styled(
+                            format!("{}{}", app.automation.permissions_input, "█"),
+                            Style::default().fg(Color::Black).bg(Color::Yellow),
+                        )]))
+                    } else {
+                        let val = if field.value.is_empty() {
+                            Span::styled("(not set)", Style::default().fg(Color::DarkGray))
+                        } else {
+                            Span::styled(field.value.as_str(), Style::default().fg(Color::Cyan))
+                        };
+                        if selected {
+                            Cell::from(Line::from(vec![val]))
+                                .style(Style::default().bg(Color::DarkGray))
+                        } else {
+                            Cell::from(Line::from(vec![val]))
+                        }
+                    }
+                }
+            };
+
+            let kind_badge = match field.kind {
+                PermFieldKind::Bool => {
+                    Cell::from(Span::styled("bool", Style::default().fg(Color::DarkGray)))
+                }
+                PermFieldKind::Text => {
+                    Cell::from(Span::styled("text", Style::default().fg(Color::DarkGray)))
+                }
+            };
+
+            Row::new(vec![
+                Cell::from(field.label).style(label_style),
+                value_cell,
+                kind_badge,
+            ])
+            .height(1)
+        })
+        .collect();
+
+    let count = app.automation.permissions.len();
+    let table = Table::new(
+        rows,
+        [Constraint::Length(22), Constraint::Fill(1), Constraint::Length(5)],
+    )
+    .block(
+        Block::default()
+            .title(format!(" Permissions ({} fields) ", count))
+            .borders(Borders::ALL),
+    )
+    .highlight_symbol("› ");
+
+    let mut state = ratatui::widgets::TableState::default();
+    state.select(Some(app.automation.permissions_selected));
+    f.render_stateful_widget(table, chunks[0], &mut state);
+
+    // ── Description ───────────────────────────────────────────────────────
+    let desc = app
+        .automation
+        .permissions
+        .get(app.automation.permissions_selected)
+        .map(|f| {
+            Line::from(vec![
+                Span::styled(
+                    format!("  {} — ", f.label),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::styled(f.desc, Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .unwrap_or_else(|| Line::from(""));
+
+    f.render_widget(
+        Paragraph::new(desc).block(
             Block::default()
-                .title(" ~/.zeroclaw/config.toml (secrets masked) ")
-                .borders(Borders::ALL),
-        )
-        .scroll((app.automation.config_scroll, 0));
-    f.render_widget(p, area);
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        ),
+        chunks[1],
+    );
+
+    // ── Status ────────────────────────────────────────────────────────────
+    let status_text = app.automation.permissions_status.as_deref().unwrap_or("");
+    let status_style = if status_text.starts_with("Error") {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::Green)
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
+        chunks[2],
+    );
 }
 
 // ── Cron-add form popup ───────────────────────────────────────────────────

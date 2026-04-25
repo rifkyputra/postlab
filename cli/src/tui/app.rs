@@ -31,7 +31,6 @@ pub enum Screen {
     Ghosts,
     Users,
     Services,
-    Maintenance,
     Automation,
 }
 
@@ -47,7 +46,6 @@ impl Screen {
             Screen::Ghosts,
             Screen::Users,
             Screen::Services,
-            Screen::Maintenance,
             Screen::Automation,
         ]
     }
@@ -63,8 +61,7 @@ impl Screen {
             Screen::Ghosts => "7. Ghosts",
             Screen::Users => "8. Users",
             Screen::Services => "9. Services",
-            Screen::Maintenance => "0. Janitor",
-            Screen::Automation => "A. Automation",
+            Screen::Automation => "0. Automation",
         }
     }
 
@@ -141,6 +138,7 @@ pub enum DashboardTab {
     Overview,
     Processes,
     Resources,
+    Janitor,
 }
 
 impl DashboardTab {
@@ -149,6 +147,7 @@ impl DashboardTab {
             DashboardTab::Overview,
             DashboardTab::Processes,
             DashboardTab::Resources,
+            DashboardTab::Janitor,
         ]
     }
 
@@ -157,6 +156,7 @@ impl DashboardTab {
             DashboardTab::Overview => "Overview",
             DashboardTab::Processes => "Processes",
             DashboardTab::Resources => "Resources",
+            DashboardTab::Janitor => "Janitor",
         }
     }
 
@@ -177,6 +177,8 @@ pub enum ZeroclawTab {
     Cron,
     Memory,
     Config,
+    EasyConfig,
+    Permissions,
 }
 
 impl ZeroclawTab {
@@ -187,6 +189,8 @@ impl ZeroclawTab {
             ZeroclawTab::Cron,
             ZeroclawTab::Memory,
             ZeroclawTab::Config,
+            ZeroclawTab::EasyConfig,
+            ZeroclawTab::Permissions,
         ]
     }
     pub fn title(&self) -> &'static str {
@@ -196,6 +200,8 @@ impl ZeroclawTab {
             ZeroclawTab::Cron => "Cron",
             ZeroclawTab::Memory => "Memory",
             ZeroclawTab::Config => "Config",
+            ZeroclawTab::EasyConfig => "Easy Config",
+            ZeroclawTab::Permissions => "Permissions",
         }
     }
     pub fn index(&self) -> usize {
@@ -319,6 +325,10 @@ pub enum TaskResult {
     ZeroclawCron(Vec<crate::core::zeroclaw::CronJob>),
     ZeroclawMemory(Vec<crate::core::zeroclaw::MemoryEntry>),
     ZeroclawConfig(String),
+    EasyConfigLoaded(Vec<crate::core::zeroclaw::EasyConfigField>),
+    EasyConfigSaved { path: String, result: Result<(), String> },
+    PermissionsLoaded(Vec<crate::core::zeroclaw::PermissionField>),
+    PermissionSaved { path: String, result: Result<(), String> },
     ZeroclawActionDone {
         action: String,
         output: String,
@@ -873,6 +883,20 @@ pub struct AutomationState {
     pub memory_state: ListState,
     pub config_text: String,
     pub config_scroll: u16,
+    pub config_search: String,
+    pub config_search_mode: InputMode,
+    // Easy Config tab
+    pub easy_config: Vec<crate::core::zeroclaw::EasyConfigField>,
+    pub easy_config_selected: usize,
+    pub easy_config_input_mode: InputMode,
+    pub easy_config_input: String,
+    pub easy_config_status: Option<String>,
+    // Permissions tab
+    pub permissions: Vec<crate::core::zeroclaw::PermissionField>,
+    pub permissions_selected: usize,
+    pub permissions_input_mode: InputMode,
+    pub permissions_input: String,
+    pub permissions_status: Option<String>,
     pub loading: bool,
     pub installing: bool,
     pub install_log: Vec<String>,
@@ -903,6 +927,18 @@ impl Default for AutomationState {
             memory_state: ListState::default(),
             config_text: String::new(),
             config_scroll: 0,
+            config_search: String::new(),
+            config_search_mode: InputMode::Normal,
+            easy_config: Vec::new(),
+            easy_config_selected: 0,
+            easy_config_input_mode: InputMode::Normal,
+            easy_config_input: String::new(),
+            easy_config_status: None,
+            permissions: Vec::new(),
+            permissions_selected: 0,
+            permissions_input_mode: InputMode::Normal,
+            permissions_input: String::new(),
+            permissions_status: None,
             loading: false,
             installing: false,
             install_log: Vec::new(),
@@ -1280,6 +1316,7 @@ impl App {
                 self.spawn_load_zeroclaw_overview();
             }
             _ => {}
+
         }
     }
 
@@ -2755,6 +2792,42 @@ impl App {
         });
     }
 
+    pub fn spawn_load_easy_config(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let fields = crate::core::zeroclaw::get_easy_config().await;
+            let _ = tx.send(TaskResult::EasyConfigLoaded(fields));
+        });
+    }
+
+    pub fn spawn_save_easy_config_field(&mut self, path: String, value: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::core::zeroclaw::set_config_field(&path, &value)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(TaskResult::EasyConfigSaved { path, result });
+        });
+    }
+
+    pub fn spawn_load_permissions(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let fields = crate::core::zeroclaw::get_permissions().await;
+            let _ = tx.send(TaskResult::PermissionsLoaded(fields));
+        });
+    }
+
+    pub fn spawn_save_permission(&mut self, path: String, value: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::core::zeroclaw::set_config_field(&path, &value)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(TaskResult::PermissionSaved { path, result });
+        });
+    }
+
     pub fn spawn_zeroclaw_action(&mut self, action: &'static str) {
         let tx = self.task_tx.clone();
         let pool = self.pool.clone();
@@ -3322,6 +3395,41 @@ impl App {
             TaskResult::ZeroclawConfig(text) => {
                 self.automation.config_text = text;
                 self.automation.config_scroll = 0;
+            }
+            TaskResult::EasyConfigLoaded(fields) => {
+                self.automation.easy_config = fields;
+                if self.automation.easy_config_selected >= self.automation.easy_config.len() {
+                    self.automation.easy_config_selected = 0;
+                }
+            }
+            TaskResult::EasyConfigSaved { path, result } => {
+                match result {
+                    Ok(()) => {
+                        self.automation.easy_config_status =
+                            Some(format!("Saved {}", path));
+                        self.spawn_load_easy_config();
+                    }
+                    Err(e) => {
+                        self.automation.easy_config_status = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+            TaskResult::PermissionsLoaded(fields) => {
+                self.automation.permissions = fields;
+                if self.automation.permissions_selected >= self.automation.permissions.len() {
+                    self.automation.permissions_selected = 0;
+                }
+            }
+            TaskResult::PermissionSaved { path, result } => {
+                match result {
+                    Ok(()) => {
+                        self.automation.permissions_status = Some(format!("Saved {}", path));
+                        self.spawn_load_permissions();
+                    }
+                    Err(e) => {
+                        self.automation.permissions_status = Some(format!("Error: {}", e));
+                    }
+                }
             }
             TaskResult::ZeroclawActionDone {
                 action,
