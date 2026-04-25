@@ -51,3 +51,5 @@ Thumbs.db
 *.pem
 id_rsa
 id_ed25519
+
+.omx
