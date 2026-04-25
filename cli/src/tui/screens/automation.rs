@@ -105,7 +105,7 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Memory => "[←/→] tabs  [↑↓/jk] select  [d] delete  [r] refresh",
         ZeroclawTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh",
         ZeroclawTab::EasyConfig => "[←/→] tabs  [↑↓/jk] select  [Enter/e] edit  [Esc] cancel  [r] reload",
-        ZeroclawTab::Permissions => "[←/→] tabs  [↑↓/jk] select  [Space/Enter] toggle bool  [e] edit text  [Esc] cancel  [r] reload",
+        ZeroclawTab::Permissions => "[←/→] tabs  [↑↓/jk] select  [Space] toggle bool  [Enter/e] edit text/list (comma-sep)  [Esc] cancel  [r] reload",
     };
     let p = Paragraph::new(Span::styled(hints, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
@@ -616,21 +616,19 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
             let value_cell = match field.kind {
                 PermFieldKind::Bool => {
                     let is_on = field.value == "true";
-                    let (text, color) = if is_on {
+                    let (text, bg) = if is_on {
                         (" ON ", Color::Green)
                     } else {
-                        ("OFF", Color::DarkGray)
+                        ("OFF", if selected { Color::Red } else { Color::DarkGray })
                     };
-                    let mut style = Style::default()
-                        .fg(Color::Black)
-                        .bg(color)
-                        .add_modifier(Modifier::BOLD);
-                    if selected {
-                        style = style.bg(if is_on { Color::Green } else { Color::Red });
-                    }
-                    Cell::from(format!("[{}]", text)).style(style)
+                    Cell::from(format!("[{}]", text)).style(
+                        Style::default()
+                            .fg(Color::Black)
+                            .bg(bg)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 }
-                PermFieldKind::Text => {
+                PermFieldKind::Text | PermFieldKind::TextList => {
                     if selected && is_editing {
                         Cell::from(Line::from(vec![Span::styled(
                             format!("{}{}", app.automation.permissions_input, "█"),
@@ -642,12 +640,12 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
                         } else {
                             Span::styled(field.value.as_str(), Style::default().fg(Color::Cyan))
                         };
-                        if selected {
-                            Cell::from(Line::from(vec![val]))
-                                .style(Style::default().bg(Color::DarkGray))
+                        let style = if selected {
+                            Style::default().bg(Color::DarkGray)
                         } else {
-                            Cell::from(Line::from(vec![val]))
-                        }
+                            Style::default()
+                        };
+                        Cell::from(Line::from(vec![val])).style(style)
                     }
                 }
             };
@@ -658,6 +656,9 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
                 }
                 PermFieldKind::Text => {
                     Cell::from(Span::styled("text", Style::default().fg(Color::DarkGray)))
+                }
+                PermFieldKind::TextList => {
+                    Cell::from(Span::styled("list", Style::default().fg(Color::Blue)))
                 }
             };
 

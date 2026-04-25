@@ -2830,7 +2830,19 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
                 else { app.automation.permissions_selected - 1 };
             app.automation.permissions_status = None;
         }
-        KeyCode::Char(' ') | KeyCode::Enter => {
+        // Space toggles bools; Enter opens edit for text/list
+        KeyCode::Char(' ') => {
+            let idx = app.automation.permissions_selected;
+            if let Some(field) = app.automation.permissions.get(idx) {
+                if field.kind == PermFieldKind::Bool {
+                    let new_val = if field.value == "true" { "false" } else { "true" };
+                    let path = field.path.to_string();
+                    app.spawn_save_permission(path, new_val.to_string());
+                    app.automation.permissions_status = None;
+                }
+            }
+        }
+        KeyCode::Enter | KeyCode::Char('e') => {
             let idx = app.automation.permissions_selected;
             if let Some(field) = app.automation.permissions.get(idx) {
                 match field.kind {
@@ -2840,20 +2852,12 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
                         app.spawn_save_permission(path, new_val.to_string());
                         app.automation.permissions_status = None;
                     }
-                    PermFieldKind::Text => {
+                    PermFieldKind::Text | PermFieldKind::TextList => {
                         app.automation.permissions_input = field.value.clone();
                         app.automation.permissions_input_mode = InputMode::Editing;
                         app.automation.permissions_status = None;
                     }
                 }
-            }
-        }
-        KeyCode::Char('e') => {
-            let idx = app.automation.permissions_selected;
-            if let Some(field) = app.automation.permissions.get(idx) {
-                app.automation.permissions_input = field.value.clone();
-                app.automation.permissions_input_mode = InputMode::Editing;
-                app.automation.permissions_status = None;
             }
         }
         KeyCode::Char('r') => {
@@ -2865,6 +2869,8 @@ fn handle_permissions_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_permissions_text_input(app: &mut App, key: KeyEvent) {
+    use crate::core::zeroclaw::PermFieldKind;
+
     match key.code {
         KeyCode::Esc => {
             app.automation.permissions_input_mode = InputMode::Normal;
@@ -2874,7 +2880,12 @@ fn handle_permissions_text_input(app: &mut App, key: KeyEvent) {
             let idx = app.automation.permissions_selected;
             if let Some(field) = app.automation.permissions.get(idx) {
                 let path = field.path.to_string();
-                let value = app.automation.permissions_input.trim().to_string();
+                let raw = app.automation.permissions_input.trim().to_string();
+                let value = if field.kind == PermFieldKind::TextList {
+                    crate::core::zeroclaw::comma_list_to_toml_array(&raw)
+                } else {
+                    raw
+                };
                 app.spawn_save_permission(path, value);
             }
             app.automation.permissions_input_mode = InputMode::Normal;

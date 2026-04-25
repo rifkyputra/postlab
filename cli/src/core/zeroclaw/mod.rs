@@ -5,13 +5,15 @@ use tokio::process::Command;
 
 // ── Data types ────────────────────────────────────────────────────────────
 
-/// Kind of a permission field — controls how it is rendered and toggled.
+/// Kind of a permission field — controls how it is rendered and edited.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PermFieldKind {
     /// Boolean — toggled with Space/Enter, rendered as [ON]/[OFF].
     Bool,
     /// Free-form text — edited inline.
     Text,
+    /// Comma-separated list — edited as "a, b, c", saved as TOML array ["a","b","c"].
+    TextList,
 }
 
 /// A single row shown in the Permission tab.
@@ -25,42 +27,70 @@ pub struct PermissionField {
 }
 
 /// Ordered list of permission fields (toml_path, label, description, kind).
+/// These map directly to [`autonomy`] and [`browser`] in config.toml — the
+/// fields that control what zeroclaw's tool-calling can actually execute.
 pub static PERMISSION_DEFS: &[(&str, &str, &str, PermFieldKind)] = &[
+    // ── Autonomy / shell execution ────────────────────────────────────────
     (
-        "gateway.require_pairing",
-        "Require Pairing",
-        "New clients must complete a pairing handshake before use",
-        PermFieldKind::Bool,
-    ),
-    (
-        "gateway.allow_public_bind",
-        "Allow Public Bind",
-        "Gateway accepts connections from any network interface",
-        PermFieldKind::Bool,
-    ),
-    (
-        "cost.enabled",
-        "Cost Tracking",
-        "Track API usage costs and enforce spending limits",
-        PermFieldKind::Bool,
-    ),
-    (
-        "cost.daily_limit_usd",
-        "Daily Limit (USD)",
-        "Maximum API spend per day (e.g. 10.0)",
+        "autonomy.level",
+        "Autonomy Level",
+        "read_only | supervised | full — overall agent permission tier",
         PermFieldKind::Text,
     ),
     (
-        "cost.monthly_limit_usd",
-        "Monthly Limit (USD)",
-        "Maximum API spend per month (e.g. 100.0)",
+        "autonomy.block_high_risk_commands",
+        "Block High-Risk Cmds",
+        "Block dangerous shell commands even when allowlisted",
+        PermFieldKind::Bool,
+    ),
+    (
+        "autonomy.require_approval_for_medium_risk",
+        "Approval: Medium Risk",
+        "Require user approval before running medium-risk commands",
+        PermFieldKind::Bool,
+    ),
+    (
+        "autonomy.workspace_only",
+        "Workspace Only",
+        "Restrict filesystem access to workspace-relative paths only",
+        PermFieldKind::Bool,
+    ),
+    (
+        "autonomy.allowed_commands",
+        "Allowed Commands",
+        "Commands zeroclaw may run, comma-separated (e.g. uname, echo, git, curl)",
+        PermFieldKind::TextList,
+    ),
+    (
+        "autonomy.shell_env_passthrough",
+        "Env Passthrough",
+        "Env vars forwarded to shell subprocesses (e.g. USER, TERM, LANG)",
+        PermFieldKind::TextList,
+    ),
+    (
+        "autonomy.shell_timeout_secs",
+        "Shell Timeout (secs)",
+        "Max seconds a shell subprocess may run before being killed (default: 60)",
+        PermFieldKind::Text,
+    ),
+    // ── Browser ───────────────────────────────────────────────────────────
+    (
+        "browser.enabled",
+        "Browser Tool",
+        "Enable the browser_open tool (open URLs in the system browser)",
+        PermFieldKind::Bool,
+    ),
+    (
+        "browser.backend",
+        "Browser Backend",
+        "agent_browser | rust_native | computer_use | auto",
         PermFieldKind::Text,
     ),
     (
-        "cost.allow_override",
-        "Allow Override",
-        "Allow privileged requests to exceed the spending limit",
-        PermFieldKind::Bool,
+        "browser.native_chrome_path",
+        "Chrome Binary Path",
+        "Path to Chrome/Chromium (e.g. /usr/bin/chromium-browser, /usr/bin/google-chrome)",
+        PermFieldKind::Text,
     ),
 ];
 
@@ -662,8 +692,28 @@ fn read_toml_path(table: &toml::Value, path: &str) -> Option<String> {
         toml::Value::Integer(i) => i.to_string(),
         toml::Value::Float(f) => f.to_string(),
         toml::Value::Boolean(b) => b.to_string(),
+        toml::Value::Array(arr) => arr
+            .iter()
+            .map(|v| match v {
+                toml::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
         other => other.to_string(),
     })
+}
+
+/// Convert a comma-separated user string into a TOML inline array literal.
+/// "git, cargo, uname" → ["git", "cargo", "uname"]
+pub fn comma_list_to_toml_array(s: &str) -> String {
+    let items: Vec<String> = s
+        .split(',')
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| format!("\"{}\"", item))
+        .collect();
+    format!("[{}]", items.join(", "))
 }
 
 /// Read the known permission fields from ~/.zeroclaw/config.toml.
@@ -678,7 +728,7 @@ pub async fn get_permissions() -> Vec<PermissionField> {
         .map(|(toml_path, label, desc, kind)| {
             let value = read_toml_path(&table, toml_path).unwrap_or_else(|| match kind {
                 PermFieldKind::Bool => "false".to_string(),
-                PermFieldKind::Text => String::new(),
+                PermFieldKind::Text | PermFieldKind::TextList => String::new(),
             });
             PermissionField { path: toml_path, label, desc, kind: *kind, value }
         })
@@ -688,8 +738,9 @@ pub async fn get_permissions() -> Vec<PermissionField> {
 /// In-place line replacement that preserves comments and ordering.
 /// Values that are "true", "false", or valid numbers are written unquoted.
 fn patch_toml_text(content: &str, section: Option<&str>, key: &str, value: &str) -> String {
-    let needs_quotes =
-        !matches!(value, "true" | "false") && value.parse::<f64>().is_err();
+    let needs_quotes = !matches!(value, "true" | "false")
+        && value.parse::<f64>().is_err()
+        && !value.starts_with('[');  // TOML inline arrays are already valid
     let new_line = if needs_quotes {
         format!("{} = \"{}\"", key, value)
     } else {
