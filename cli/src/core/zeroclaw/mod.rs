@@ -165,7 +165,10 @@ pub async fn get_status() -> ZeroclawStatus {
         Err(_) => return ZeroclawStatus::default(),
     };
 
-    let daemon_running = out.contains("running") || out.contains("Running");
+    // Check the gateway port directly — `zeroclaw status` reports the *system service*
+    // state ("Service: stopped/running"), not whether the daemon process is alive.
+    // A TCP connect to the gateway is the ground truth.
+    let daemon_running = tokio::net::TcpStream::connect("127.0.0.1:42617").await.is_ok();
 
     // Parse component lines — zeroclaw status often outputs lines like:
     //   gateway      ok

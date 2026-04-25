@@ -34,11 +34,10 @@ impl WasmCloudManager for WasmCloudCliManager {
             return mgr.install("wasmcloud/wasmcloud/wash").await;
         }
 
-        // Debian/Ubuntu
-        if crate::core::packages::which("apt-get") {
-            // Official install script from wasmcloud docs
+        // Any Linux with curl — official install script handles Debian, CentOS/RHEL/Fedora, etc.
+        if crate::core::packages::which("curl") {
             let script =
-                "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
+                "curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/install.sh | bash";
             let out = Command::new("sh").args(["-c", script]).output()?;
             if !out.status.success() {
                 anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
@@ -74,10 +73,10 @@ impl WasmCloudManager for WasmCloudCliManager {
                 .await;
         }
 
-        // Debian/Ubuntu
-        if crate::core::packages::which("apt-get") {
+        // Any Linux with curl — official install script handles Debian, CentOS/RHEL/Fedora, etc.
+        if crate::core::packages::which("curl") {
             let script =
-                "curl -s https://raw.githubusercontent.com/wasmCloud/wash/main/install.sh | bash";
+                "curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/install.sh | bash";
             return run_cmd_streaming("sh", &["-c", script], tx).await;
         }
 

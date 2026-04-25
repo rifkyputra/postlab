@@ -3,8 +3,8 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::core::models::{Route, TunnelRoute};
 
 use super::app::{
-    App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, PackageTab, ProcessSort, Screen,
-    SecurityTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
+    App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, NetworkingTab, PackageTab,
+    ProcessSort, Screen, SecurityTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -27,11 +27,15 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_packages_key(app, key).await;
         return false;
     }
-    if app.screen == Screen::Gateway && app.gateway.input_mode == InputMode::Editing {
+    if app.screen == Screen::Networking
+        && app.networking_tab == NetworkingTab::Gateway
+        && app.gateway.input_mode == InputMode::Editing
+    {
         handle_gateway_input(app, key);
         return false;
     }
-    if app.screen == Screen::Tunnel
+    if app.screen == Screen::Networking
+        && app.networking_tab == NetworkingTab::Tunnel
         && matches!(
             app.tunnel.input_mode,
             InputMode::Editing | InputMode::AddingDomain | InputMode::EditingIngress
@@ -127,12 +131,8 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(9);
             return false;
         }
-        KeyCode::Char('m') | KeyCode::Char('M') => {
-            app.set_screen_by_index(10);
-            return false;
-        }
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            app.set_screen_by_index(11);
+            app.set_screen_by_index(10);
             return false;
         }
         KeyCode::Tab => {
@@ -153,8 +153,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             handle_packages_key(app, key).await;
         }
         Screen::Security => handle_security_key(app, key),
-        Screen::Gateway => handle_gateway_key(app, key),
-        Screen::Tunnel => handle_tunnel_key(app, key),
+        Screen::Networking => handle_networking_key(app, key),
         Screen::Docker => handle_docker_key(app, key),
         Screen::WasmCloud => handle_wasm_cloud_key(app, key),
         Screen::Ghosts => handle_ghost_key(app, key),
@@ -781,6 +780,23 @@ fn handle_fail2ban_key(app: &mut App, key: KeyEvent) {
             }
         }
         _ => {}
+    }
+}
+
+// ── Networking (Gateway + Tunnel sub-tabs) ────────────────────────────────
+
+fn handle_networking_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Left => {
+            app.networking_tab = NetworkingTab::Gateway;
+        }
+        KeyCode::Right => {
+            app.networking_tab = NetworkingTab::Tunnel;
+        }
+        _ => match app.networking_tab {
+            NetworkingTab::Gateway => handle_gateway_key(app, key),
+            NetworkingTab::Tunnel => handle_tunnel_key(app, key),
+        },
     }
 }
 

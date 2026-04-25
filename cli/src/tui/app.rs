@@ -25,8 +25,7 @@ pub enum Screen {
     Dashboard,
     Packages,
     Security,
-    Gateway,
-    Tunnel,
+    Networking,
     Docker,
     WasmCloud,
     Ghosts,
@@ -42,8 +41,7 @@ impl Screen {
             Screen::Dashboard,
             Screen::Packages,
             Screen::Security,
-            Screen::Gateway,
-            Screen::Tunnel,
+            Screen::Networking,
             Screen::Docker,
             Screen::WasmCloud,
             Screen::Ghosts,
@@ -59,20 +57,45 @@ impl Screen {
             Screen::Dashboard => "1. Dashboard",
             Screen::Packages => "2. Packages",
             Screen::Security => "3. Security",
-            Screen::Gateway => "4. Gateway",
-            Screen::Tunnel => "5. Tunnel",
-            Screen::Docker => "6. Docker",
-            Screen::WasmCloud => "7. wasmCloud",
-            Screen::Ghosts => "8. Ghosts",
-            Screen::Users => "9. Users",
-            Screen::Services => "0. Services",
-            Screen::Maintenance => "M. Janitor",
+            Screen::Networking => "4. Networking",
+            Screen::Docker => "5. Docker",
+            Screen::WasmCloud => "6. wasmCloud",
+            Screen::Ghosts => "7. Ghosts",
+            Screen::Users => "8. Users",
+            Screen::Services => "9. Services",
+            Screen::Maintenance => "0. Janitor",
             Screen::Automation => "A. Automation",
         }
     }
 
     pub fn index(&self) -> usize {
         Screen::all().iter().position(|s| s == self).unwrap_or(0)
+    }
+}
+
+// ── Networking tabs ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum NetworkingTab {
+    #[default]
+    Gateway,
+    Tunnel,
+}
+
+impl NetworkingTab {
+    pub fn all() -> &'static [NetworkingTab] {
+        &[NetworkingTab::Gateway, NetworkingTab::Tunnel]
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            NetworkingTab::Gateway => "Gateway",
+            NetworkingTab::Tunnel => "Tunnel",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::all().iter().position(|t| t == self).unwrap_or(0)
     }
 }
 
@@ -1147,6 +1170,9 @@ pub struct App {
     pub platform: Arc<Platform>,
     pub pool: SqlitePool,
 
+    // Networking sub-tab
+    pub networking_tab: NetworkingTab,
+
     // Screen state
     pub dashboard: DashboardState,
     pub packages: PackagesState,
@@ -1182,6 +1208,7 @@ impl App {
         let (task_tx, task_rx) = mpsc::unbounded_channel();
         Self {
             screen: Screen::Dashboard,
+            networking_tab: NetworkingTab::default(),
             platform: Arc::new(platform),
             pool,
             dashboard: DashboardState::default(),
@@ -1224,8 +1251,8 @@ impl App {
                 let tab = self.security.active_tab.clone();
                 self.spawn_load_security_tab(tab);
             }
-            Screen::Gateway => self.spawn_load_gateway(),
-            Screen::Tunnel => {
+            Screen::Networking => {
+                self.spawn_load_gateway();
                 self.spawn_load_tunnels();
                 let id = self.tunnel.active_tunnel_id.clone();
                 self.spawn_tunnel_extras(id);

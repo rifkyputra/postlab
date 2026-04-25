@@ -124,6 +124,16 @@ sudo postlab list    # Print installed packages
 
 ---
 
+## zeroclaw/ — Reference Copy
+
+The `zeroclaw/` directory at the repo root is a **temporary reference copy** of the [zeroclaw-labs/zeroclaw](https://github.com/zeroclaw-labs/zeroclaw) project, cloned to study its architecture while building the **Automation → ZeroClaw** management screen in postlab.
+
+- Postlab does **not** import any code from `zeroclaw/`.
+- The zeroclaw management feature lives entirely in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`.
+- This directory will be **deleted** once it is no longer needed for reference.
+
+---
+
 ## Architecture
 
 Postlab is built with a clean separation between the core logic and the TUI. The `core/` layer can be used independently (e.g., by an API or a future web interface).
