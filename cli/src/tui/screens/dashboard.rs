@@ -46,17 +46,19 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
         .constraints([
             Constraint::Length(6), // system info
             Constraint::Length(3), // memory gauge
+            Constraint::Length(3), // swap gauge
             Constraint::Min(4),    // cpu + disk
         ])
         .split(area);
 
     render_sysinfo(f, app, chunks[0]);
     render_memory(f, app, chunks[1]);
+    render_swap(f, app, chunks[2]);
 
     let bottom = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[2]);
+        .split(chunks[3]);
 
     render_cpu(f, app, bottom[0]);
     render_disks(f, app, bottom[1]);
@@ -135,6 +137,47 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
     };
     let gauge = Gauge::default()
         .block(Block::default().title(" Memory ").borders(Borders::ALL))
+        .gauge_style(Style::default().fg(color))
+        .label(label)
+        .percent(pct);
+    f.render_widget(gauge, area);
+}
+
+fn render_swap(f: &mut Frame, app: &App, area: Rect) {
+    let (used, total, pct) = if let Some(s) = &app.swap.status {
+        let pct = if s.total > 0 {
+            (s.used * 100 / s.total) as u16
+        } else {
+            0
+        };
+        (s.used, s.total, pct)
+    } else {
+        (0, 0, 0)
+    };
+
+    let label = if app.swap.status.is_none() {
+        " Loading…".to_string()
+    } else if total == 0 {
+        " No swap configured".to_string()
+    } else {
+        format!(
+            " {:.1} / {:.1} GB  {}%",
+            used as f64 / 1_073_741_824.0,
+            total as f64 / 1_073_741_824.0,
+            pct,
+        )
+    };
+
+    let color = if pct > 85 {
+        Color::Red
+    } else if pct > 50 {
+        Color::Yellow
+    } else {
+        Color::Cyan
+    };
+
+    let gauge = Gauge::default()
+        .block(Block::default().title(" Swap ").borders(Borders::ALL))
         .gauge_style(Style::default().fg(color))
         .label(label)
         .percent(pct);

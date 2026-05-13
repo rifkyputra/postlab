@@ -1354,6 +1354,11 @@ impl App {
         self.status_msg = None;
         // Trigger initial data load for screens that need it
         match &screen {
+            Screen::Dashboard => {
+                if self.swap.status.is_none() {
+                    self.spawn_load_swap();
+                }
+            }
             Screen::Packages => {
                 if self.packages.installed.is_empty() {
                     self.spawn_load_packages();
