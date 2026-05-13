@@ -778,6 +778,14 @@ pub async fn get_permissions() -> Vec<PermissionField> {
 /// In-place line replacement that preserves comments and ordering.
 /// Values that are "true", "false", or valid numbers are written unquoted.
 fn patch_toml_text(content: &str, sections: &[&str], key: &str, value: &str) -> String {
+    let normalized_content;
+    let content = if content.is_empty() || content.ends_with('\n') {
+        content
+    } else {
+        normalized_content = format!("{content}\n");
+        &normalized_content
+    };
+
     let needs_quotes = !matches!(value, "true" | "false")
         && value.parse::<f64>().is_err()
         && !value.starts_with('[');
@@ -925,5 +933,24 @@ merge_system_into_user = false
 
         assert!(updated.contains("[providers.models.openrouter]"));
         assert!(updated.contains("model = \"nvidia/nemotron-3-super-120b-a12b:free\""));
+    }
+
+    #[test]
+    fn appends_missing_nested_section_after_file_without_trailing_newline() {
+        let content = r#"[ai]
+provider = "openrouter"
+model = "nvidia/nemotron-3-super-120b-a12b:free""#;
+
+        let updated = patch_toml_text(
+            content,
+            &["providers", "models", "openrouter"],
+            "api_key",
+            "***",
+        );
+
+        assert!(updated.contains(
+            "model = \"nvidia/nemotron-3-super-120b-a12b:free\"\n\n[providers.models.openrouter]"
+        ));
+        assert!(updated.contains("api_key = \"***\""));
     }
 }

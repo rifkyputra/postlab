@@ -299,6 +299,23 @@ pub struct WasmCloudApp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapEntry {
+    pub path: String,      // e.g. "/swapfile" or "/dev/sda2"
+    pub kind: String,      // "file" or "partition"
+    pub size_bytes: u64,
+    pub used_bytes: u64,
+    pub priority: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SwapStatus {
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
+    pub entries: Vec<SwapEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,
     pub uid: u32,

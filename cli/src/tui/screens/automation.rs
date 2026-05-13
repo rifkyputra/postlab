@@ -539,10 +539,12 @@ fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
             };
 
             let value_cell = if selected && is_editing {
-                Cell::from(Line::from(vec![Span::styled(
-                    format!("{}{}", app.automation.easy_config_input, "█"),
-                    Style::default().fg(Color::Black).bg(Color::Yellow),
-                )]))
+                Cell::from(format!("{}{}", app.automation.easy_config_input, "█")).style(
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
             } else {
                 let val = if field.value.is_empty() {
                     Span::styled("(not set)", Style::default().fg(Color::DarkGray))
@@ -666,10 +668,12 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
                 }
                 PermFieldKind::Text | PermFieldKind::TextList => {
                     if selected && is_editing {
-                        Cell::from(Line::from(vec![Span::styled(
-                            format!("{}{}", app.automation.permissions_input, "█"),
-                            Style::default().fg(Color::Black).bg(Color::Yellow),
-                        )]))
+                        Cell::from(format!("{}{}", app.automation.permissions_input, "█")).style(
+                            Style::default()
+                                .fg(Color::Black)
+                                .bg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        )
                     } else {
                         let val = if field.value.is_empty() {
                             Span::styled("(not set)", Style::default().fg(Color::DarkGray))
