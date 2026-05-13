@@ -11,7 +11,7 @@ use crate::core::{
         DiskInfo, DockerComposeService, DockerContainer, DockerImage, FirewallRule, GhostProcess,
         JailedIp, ManagedDockerService, ManagedWorkload, ManagedWorkloadCapabilities,
         ManagedWorkloadSpec, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding,
-        SshKey, Tunnel, UserInfo, WasmCloudApp, WasmCloudComponent, WasmCloudHost,
+        SshKey, SwapStatus, Tunnel, UserInfo, WasmCloudApp, WasmCloudComponent, WasmCloudHost,
     },
     portcheck::{default_entries, PortEntry, PortStatus},
     services::ServiceUnit,
@@ -28,10 +28,8 @@ pub enum Screen {
     Networking,
     Docker,
     WasmCloud,
-    Ghosts,
-    Users,
-    Services,
     Automation,
+    System,
 }
 
 impl Screen {
@@ -43,10 +41,8 @@ impl Screen {
             Screen::Networking,
             Screen::Docker,
             Screen::WasmCloud,
-            Screen::Ghosts,
-            Screen::Users,
-            Screen::Services,
             Screen::Automation,
+            Screen::System,
         ]
     }
 
@@ -58,15 +54,51 @@ impl Screen {
             Screen::Networking => "4. Networking",
             Screen::Docker => "5. Docker",
             Screen::WasmCloud => "6. wasmCloud",
-            Screen::Ghosts => "7. Ghosts",
-            Screen::Users => "8. Users",
-            Screen::Services => "9. Services",
-            Screen::Automation => "0. Automation",
+            Screen::Automation => "7. Automation",
+            Screen::System => "8. System",
         }
     }
 
     pub fn index(&self) -> usize {
         Screen::all().iter().position(|s| s == self).unwrap_or(0)
+    }
+}
+
+// ── System tabs ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum SystemTab {
+    #[default]
+    Ghosts,
+    Janitor,
+    Services,
+    Users,
+    Swap,
+}
+
+impl SystemTab {
+    pub fn all() -> &'static [SystemTab] {
+        &[
+            SystemTab::Ghosts,
+            SystemTab::Janitor,
+            SystemTab::Services,
+            SystemTab::Users,
+            SystemTab::Swap,
+        ]
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            SystemTab::Ghosts => "Ghosts",
+            SystemTab::Janitor => "Janitor",
+            SystemTab::Services => "Services",
+            SystemTab::Users => "Users",
+            SystemTab::Swap => "Swap",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::all().iter().position(|t| t == self).unwrap_or(0)
     }
 }
 
@@ -138,7 +170,6 @@ pub enum DashboardTab {
     Overview,
     Processes,
     Resources,
-    Janitor,
 }
 
 impl DashboardTab {
@@ -147,7 +178,6 @@ impl DashboardTab {
             DashboardTab::Overview,
             DashboardTab::Processes,
             DashboardTab::Resources,
-            DashboardTab::Janitor,
         ]
     }
 
@@ -156,7 +186,6 @@ impl DashboardTab {
             DashboardTab::Overview => "Overview",
             DashboardTab::Processes => "Processes",
             DashboardTab::Resources => "Resources",
-            DashboardTab::Janitor => "Janitor",
         }
     }
 
@@ -346,6 +375,8 @@ pub enum TaskResult {
         output: String,
         success: bool,
     },
+    SwapLoaded(SwapStatus),
+    SwapOpDone { op: String, success: bool },
     Status(String),
     Error(String),
 }
@@ -375,6 +406,7 @@ pub enum ConfirmAction {
     DeleteCronJob { id: String, schedule: String },
     DeleteMemoryEntry { key: String },
     ZeroclawDaemonStop,
+    DeleteSwap { path: String },
 }
 
 #[derive(Debug)]
@@ -1139,6 +1171,34 @@ impl Default for GhostState {
     }
 }
 
+// ── Swap state ───────────────────────────────────────────────────────────────
+
+pub struct SwapState {
+    pub status: Option<SwapStatus>,
+    pub loading: bool,
+    pub table_state: TableState,
+    pub input_mode: InputMode,
+    pub input_path: String,
+    pub input_size: String,
+    pub input_focus: usize, // 0 = path, 1 = size
+    pub resize_mode: bool,  // true when resizing an existing entry
+}
+
+impl Default for SwapState {
+    fn default() -> Self {
+        Self {
+            status: None,
+            loading: false,
+            table_state: TableState::default(),
+            input_mode: InputMode::Normal,
+            input_path: String::from("/swapfile"),
+            input_size: String::from("2048"),
+            input_focus: 0,
+            resize_mode: false,
+        }
+    }
+}
+
 // ── Users state ─────────────────────────────────────────────────────────────
 pub struct UsersState {
     pub users: Vec<UserInfo>,
@@ -1218,8 +1278,9 @@ pub struct App {
     pub platform: Arc<Platform>,
     pub pool: SqlitePool,
 
-    // Networking sub-tab
+    // Sub-tabs
     pub networking_tab: NetworkingTab,
+    pub system_tab: SystemTab,
 
     // Screen state
     pub dashboard: DashboardState,
@@ -1239,6 +1300,7 @@ pub struct App {
     pub services: ServicesState,
     pub maintenance: MaintenanceState,
     pub automation: AutomationState,
+    pub swap: SwapState,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
@@ -1257,6 +1319,7 @@ impl App {
         Self {
             screen: Screen::Dashboard,
             networking_tab: NetworkingTab::default(),
+            system_tab: SystemTab::default(),
             platform: Arc::new(platform),
             pool,
             dashboard: DashboardState::default(),
@@ -1276,6 +1339,7 @@ impl App {
             services: ServicesState::default(),
             maintenance: MaintenanceState::default(),
             automation: AutomationState::default(),
+            swap: SwapState::default(),
             task_tx,
             task_rx,
             confirm: None,
@@ -1313,19 +1377,11 @@ impl App {
                 self.spawn_load_wasm_cloud();
                 self.spawn_poll_nats_status();
             }
-            Screen::Ghosts => {
-                if self.ghost.ghosts.is_empty() {
-                    self.spawn_ghost_scan();
-                }
-            }
-            Screen::Users => {
-                self.spawn_load_users();
-            }
-            Screen::Services => {
-                self.spawn_load_services();
-            }
             Screen::Automation => {
                 self.spawn_load_zeroclaw_overview();
+            }
+            Screen::System => {
+                self.spawn_load_system_tab(self.system_tab.clone());
             }
             _ => {}
         }
@@ -1371,6 +1427,20 @@ impl App {
             }
             SecurityTab::Ssh => self.spawn_load_ssh(),
             SecurityTab::Fail2Ban => self.spawn_fail2ban_list(),
+        }
+    }
+
+    pub fn spawn_load_system_tab(&mut self, tab: SystemTab) {
+        match tab {
+            SystemTab::Ghosts => {
+                if self.ghost.ghosts.is_empty() {
+                    self.spawn_ghost_scan();
+                }
+            }
+            SystemTab::Janitor => {}
+            SystemTab::Services => self.spawn_load_services(),
+            SystemTab::Users => self.spawn_load_users(),
+            SystemTab::Swap => self.spawn_load_swap(),
         }
     }
 
@@ -2707,6 +2777,102 @@ impl App {
         });
     }
 
+    pub fn spawn_load_swap(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.swap.loading = true;
+        tokio::spawn(async move {
+            match platform.system.swap_status().await {
+                Ok(status) => {
+                    let _ = tx.send(TaskResult::SwapLoaded(status));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_swap_create(&mut self, path: String, size_mb: u64) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.system.swap_create(&path, size_mb).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "create".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "create".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_swap_delete(&mut self, path: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.system.swap_delete(&path).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "delete".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "delete".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_swap_enable(&mut self, path: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.system.swap_enable(&path).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "enable".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "enable".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_swap_disable(&mut self, path: String) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.system.swap_disable(&path).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "disable".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "disable".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_swap_resize(&mut self, path: String, size_mb: u64) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match platform.system.swap_resize(&path, size_mb).await {
+                Ok(()) => {
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "resize".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::SwapOpDone { op: "resize".into(), success: false });
+                }
+            }
+        });
+    }
+
     pub fn spawn_service_action(&mut self, name: String, op: String) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -3461,10 +3627,26 @@ impl App {
                     _ => {}
                 }
             }
+            TaskResult::SwapLoaded(status) => {
+                if self.swap.table_state.selected().is_none() && !status.entries.is_empty() {
+                    self.swap.table_state.select(Some(0));
+                }
+                self.swap.status = Some(status);
+                self.swap.loading = false;
+            }
+            TaskResult::SwapOpDone { op, success } => {
+                self.status_msg = Some(if success {
+                    format!("Swap {} succeeded", op)
+                } else {
+                    format!("Swap {} FAILED", op)
+                });
+                self.spawn_load_swap();
+            }
             TaskResult::Error(e) => {
                 self.portchecker.ip_loading = false;
                 self.portchecker.checking = false;
                 self.ghost.scanning = false;
+                self.swap.loading = false;
                 self.status_msg = Some(format!("Error: {}", e));
             }
         }

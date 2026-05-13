@@ -13,6 +13,8 @@ pub mod resources;
 pub mod security;
 pub mod services;
 pub mod ssh;
+pub mod swap;
+pub mod system;
 pub mod tunnel;
 pub mod users;
 pub mod wasmcloud;

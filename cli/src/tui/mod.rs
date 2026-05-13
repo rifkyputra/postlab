@@ -73,10 +73,8 @@ async fn run_loop(
                 Screen::Networking => screens::networking::render(f, app, chunks[1]),
                 Screen::Docker => screens::docker::render(f, app, chunks[1]),
                 Screen::WasmCloud => screens::wasmcloud::render(f, app, chunks[1]),
-                Screen::Ghosts => screens::ghost::render(f, app, chunks[1]),
-                Screen::Users => screens::users::render(f, app, chunks[1]),
-                Screen::Services => screens::services::render(f, app, chunks[1]),
                 Screen::Automation => screens::automation::render(f, app, chunks[1]),
+                Screen::System => screens::system::render(f, app, chunks[1]),
             }
 
             render_status_bar(f, app, chunks[2]);

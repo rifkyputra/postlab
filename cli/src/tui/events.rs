@@ -4,7 +4,7 @@ use crate::core::models::{Route, TunnelRoute};
 
 use super::app::{
     App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, NetworkingTab, PackageTab,
-    ProcessSort, Screen, SecurityTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
+    ProcessSort, Screen, SecurityTab, SystemTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -44,7 +44,8 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_tunnel_input(app, key);
         return false;
     }
-    if app.screen == Screen::Users
+    if app.screen == Screen::System
+        && app.system_tab == SystemTab::Users
         && matches!(
             app.users.input_mode,
             InputMode::Editing | InputMode::SettingPassword
@@ -60,7 +61,10 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_docker_workload_input(app, key);
         return false;
     }
-    if app.screen == Screen::Services && app.services.filter_mode == InputMode::Editing {
+    if app.screen == Screen::System
+        && app.system_tab == SystemTab::Services
+        && app.services.filter_mode == InputMode::Editing
+    {
         handle_services_key(app, key);
         return false;
     }
@@ -87,6 +91,13 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         && app.automation.permissions_input_mode == InputMode::Editing
     {
         handle_permissions_text_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::System
+        && app.system_tab == SystemTab::Swap
+        && app.swap.input_mode == InputMode::Editing
+    {
+        handle_swap_key(app, key);
         return false;
     }
     if app.screen == Screen::Security {
@@ -142,16 +153,12 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(7);
             return false;
         }
-        KeyCode::Char('9') => {
-            app.set_screen_by_index(8);
-            return false;
-        }
-        KeyCode::Char('0') => {
-            app.set_screen_by_index(9);
-            return false;
-        }
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            app.set_screen_by_index(9);
+            app.set_screen_by_index(6);
+            return false;
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') => {
+            app.set_screen_by_index(7);
             return false;
         }
         KeyCode::Tab => {
@@ -175,10 +182,8 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::Networking => handle_networking_key(app, key),
         Screen::Docker => handle_docker_key(app, key),
         Screen::WasmCloud => handle_wasm_cloud_key(app, key),
-        Screen::Ghosts => handle_ghost_key(app, key),
-        Screen::Users => handle_users_key(app, key),
-        Screen::Services => handle_services_key(app, key),
         Screen::Automation => handle_automation_key(app, key),
+        Screen::System => handle_system_key(app, key),
     }
     false
 }
@@ -298,6 +303,7 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
         ConfirmAction::DeleteCronJob { id, .. } => app.spawn_zeroclaw_delete_cron(id),
         ConfirmAction::DeleteMemoryEntry { key } => app.spawn_zeroclaw_delete_memory(key),
         ConfirmAction::ZeroclawDaemonStop => app.spawn_zeroclaw_action("daemon_stop"),
+        ConfirmAction::DeleteSwap { path } => app.spawn_swap_delete(path),
     }
 }
 
@@ -341,7 +347,39 @@ fn handle_dashboard_key(app: &mut App, key: KeyEvent) {
         }
         DashboardTab::Processes => handle_processes_key(app, key),
         DashboardTab::Resources => {}
-        DashboardTab::Janitor => handle_maintenance_key(app, key),
+    }
+}
+
+// ── System ────────────────────────────────────────────────────────────────
+
+fn handle_system_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Right | KeyCode::Char('L') => {
+            let idx = (app.system_tab.index() + 1) % SystemTab::all().len();
+            app.system_tab = SystemTab::all()[idx].clone();
+            app.spawn_load_system_tab(app.system_tab.clone());
+            return;
+        }
+        KeyCode::Left | KeyCode::Char('H') => {
+            let idx = app.system_tab.index();
+            let prev = if idx == 0 {
+                SystemTab::all().len() - 1
+            } else {
+                idx - 1
+            };
+            app.system_tab = SystemTab::all()[prev].clone();
+            app.spawn_load_system_tab(app.system_tab.clone());
+            return;
+        }
+        _ => {}
+    }
+
+    match app.system_tab {
+        SystemTab::Ghosts => handle_ghost_key(app, key),
+        SystemTab::Janitor => handle_maintenance_key(app, key),
+        SystemTab::Services => handle_services_key(app, key),
+        SystemTab::Users => handle_users_key(app, key),
+        SystemTab::Swap => handle_swap_key(app, key),
     }
 }
 
@@ -2954,6 +2992,126 @@ fn handle_automation_cron_input(app: &mut App, key: KeyEvent) {
             } else {
                 app.automation.cron_form_command.push(c);
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_swap_key(app: &mut App, key: KeyEvent) {
+    if app.swap.input_mode == InputMode::Editing {
+        match key.code {
+            KeyCode::Esc => {
+                app.swap.input_mode = InputMode::Normal;
+                app.swap.resize_mode = false;
+            }
+            KeyCode::Tab => {
+                app.swap.input_focus = 1 - app.swap.input_focus;
+            }
+            KeyCode::Enter => {
+                let path = app.swap.input_path.clone();
+                let size_str = app.swap.input_size.clone();
+                let size_mb: u64 = size_str.trim().parse().unwrap_or(0);
+                if size_mb == 0 {
+                    app.status_msg = Some("Invalid size — must be a positive number (MiB)".to_string());
+                    return;
+                }
+                app.swap.input_mode = InputMode::Normal;
+                if app.swap.resize_mode {
+                    app.swap.resize_mode = false;
+                    app.spawn_swap_resize(path, size_mb);
+                } else {
+                    app.spawn_swap_create(path, size_mb);
+                }
+            }
+            KeyCode::Backspace => {
+                if app.swap.input_focus == 0 {
+                    app.swap.input_path.pop();
+                } else {
+                    app.swap.input_size.pop();
+                }
+            }
+            KeyCode::Char(c) => {
+                if app.swap.input_focus == 0 {
+                    app.swap.input_path.push(c);
+                } else if c.is_ascii_digit() {
+                    app.swap.input_size.push(c);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            let len = app
+                .swap
+                .status
+                .as_ref()
+                .map(|s| s.entries.len())
+                .unwrap_or(0);
+            if len > 0 {
+                let next = app
+                    .swap
+                    .table_state
+                    .selected()
+                    .map(|i| (i + 1).min(len - 1))
+                    .unwrap_or(0);
+                app.swap.table_state.select(Some(next));
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if let Some(i) = app.swap.table_state.selected() {
+                if i > 0 {
+                    app.swap.table_state.select(Some(i - 1));
+                }
+            }
+        }
+        KeyCode::Char('n') => {
+            app.swap.input_mode = InputMode::Editing;
+            app.swap.resize_mode = false;
+            app.swap.input_path = "/swapfile".to_string();
+            app.swap.input_size = "2048".to_string();
+            app.swap.input_focus = 0;
+        }
+        KeyCode::Char('d') => {
+            if let Some(idx) = app.swap.table_state.selected() {
+                if let Some(entry) = app.swap.status.as_ref().and_then(|s| s.entries.get(idx)) {
+                    let path = entry.path.clone();
+                    app.confirm = Some(crate::tui::app::ConfirmDialog {
+                        message: format!("Delete swap {}? [y/N]", path),
+                        action: crate::tui::app::ConfirmAction::DeleteSwap { path },
+                    });
+                }
+            }
+        }
+        KeyCode::Char('e') => {
+            if let Some(idx) = app.swap.table_state.selected() {
+                if let Some(entry) = app.swap.status.as_ref().and_then(|s| s.entries.get(idx)) {
+                    app.spawn_swap_enable(entry.path.clone());
+                }
+            }
+        }
+        KeyCode::Char('x') => {
+            if let Some(idx) = app.swap.table_state.selected() {
+                if let Some(entry) = app.swap.status.as_ref().and_then(|s| s.entries.get(idx)) {
+                    app.spawn_swap_disable(entry.path.clone());
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            if let Some(idx) = app.swap.table_state.selected() {
+                if let Some(entry) = app.swap.status.as_ref().and_then(|s| s.entries.get(idx)) {
+                    app.swap.input_path = entry.path.clone();
+                    app.swap.input_size = (entry.size_bytes / (1024 * 1024)).to_string();
+                    app.swap.input_focus = 1;
+                    app.swap.resize_mode = true;
+                    app.swap.input_mode = InputMode::Editing;
+                }
+            }
+        }
+        KeyCode::Char('R') => {
+            app.spawn_load_swap();
         }
         _ => {}
     }
