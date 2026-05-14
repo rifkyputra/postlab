@@ -31,6 +31,9 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Config => render_config(f, app, chunks[2]),
         ZeroclawTab::EasyConfig => render_easy_config(f, app, chunks[2]),
         ZeroclawTab::Permissions => render_permissions(f, app, chunks[2]),
+        ZeroclawTab::Skills => render_skills(f, app, chunks[2]),
+        ZeroclawTab::Auth => render_auth(f, app, chunks[2]),
+        ZeroclawTab::Logs => render_logs(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
@@ -110,6 +113,9 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         ZeroclawTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh",
         ZeroclawTab::EasyConfig => "[←/→] tabs  [↑↓/jk] select  [Enter/e] edit  [Esc] cancel  [r] reload",
         ZeroclawTab::Permissions => "[←/→] tabs  [↑↓/jk] select  [Space] toggle bool  [Enter/e] edit text/list (comma-sep)  [Esc] cancel  [r] reload",
+        ZeroclawTab::Skills => "[←/→] tabs  [↑↓/jk] select  [d] remove skill  [r] refresh",
+        ZeroclawTab::Auth => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
+        ZeroclawTab::Logs => "[←/→] tabs  [↑↓/jk] scroll  [f] toggle follow  [R] reload",
     };
     let p = Paragraph::new(Span::styled(hints, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
@@ -767,6 +773,198 @@ fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
         chunks[2],
     );
+}
+
+// ── Skills ────────────────────────────────────────────────────────────────
+
+fn render_skills(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(area);
+
+    if app.automation.skills.is_empty() {
+        let msg = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  No skills installed.  Install with: zeroclaw skills install <url>",
+                Style::default().fg(Color::DarkGray),
+            )]),
+        ];
+        let p = Paragraph::new(msg)
+            .block(Block::default().title(" Skills ").borders(Borders::ALL));
+        f.render_widget(p, chunks[0]);
+    } else {
+        let header = Row::new(vec!["Name", "Source", "Description"]).style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
+        let rows: Vec<Row> = app
+            .automation
+            .skills
+            .iter()
+            .map(|s| {
+                Row::new(vec![
+                    Cell::from(s.name.clone()),
+                    Cell::from(Span::styled(
+                        s.source.as_str(),
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                    Cell::from(s.description.as_str()),
+                ])
+            })
+            .collect();
+
+        let title = format!(" Skills ({}) ", app.automation.skills.len());
+        let widths = [
+            Constraint::Length(24),
+            Constraint::Length(32),
+            Constraint::Fill(1),
+        ];
+        let mut state = app.automation.skills_state.clone();
+        let table = Table::new(rows, widths)
+            .header(header)
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+            .highlight_symbol("› ");
+        f.render_stateful_widget(table, chunks[0], &mut state);
+    }
+
+    // Status line
+    let status = app.automation.skills_status.as_deref().unwrap_or("");
+    let style = if status.starts_with("Failed") {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::Green)
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(format!("  {}", status), style)),
+        chunks[1],
+    );
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+fn render_auth(f: &mut Frame, app: &App, area: Rect) {
+    if app.automation.auth_entries.is_empty() {
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  No auth entries.  Run: zeroclaw auth login --provider <name>",
+                Style::default().fg(Color::DarkGray),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  Supported providers: openrouter, openai, anthropic, ollama, gemini",
+                Style::default().fg(Color::DarkGray),
+            )]),
+        ];
+        let p = Paragraph::new(lines)
+            .block(Block::default().title(" Auth Status ").borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let header = Row::new(vec!["Provider", "Profile", "Status"]).style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let rows: Vec<Row> = app
+        .automation
+        .auth_entries
+        .iter()
+        .map(|e| {
+            let (status_color, status_icon) = match e.status.to_lowercase().as_str() {
+                s if s.contains("ok") || s.contains("valid") || s.contains("authenticated") => {
+                    (Color::Green, "●")
+                }
+                s if s.contains("expired") || s.contains("invalid") => (Color::Red, "●"),
+                _ => (Color::DarkGray, "○"),
+            };
+            Row::new(vec![
+                Cell::from(e.provider.clone()),
+                Cell::from(Span::styled(
+                    e.profile.as_str(),
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Cell::from(Line::from(vec![
+                    Span::styled(
+                        format!("{} ", status_icon),
+                        Style::default().fg(status_color),
+                    ),
+                    Span::styled(e.status.as_str(), Style::default().fg(status_color)),
+                ])),
+            ])
+        })
+        .collect();
+
+    let title = format!(" Auth ({} providers) ", app.automation.auth_entries.len());
+    let widths = [
+        Constraint::Length(20),
+        Constraint::Length(16),
+        Constraint::Fill(1),
+    ];
+    let mut state = app.automation.auth_state.clone();
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("› ");
+    f.render_stateful_widget(table, area, &mut state);
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────
+
+fn render_logs(f: &mut Frame, app: &App, area: Rect) {
+    let follow_indicator = if app.automation.logs_follow {
+        " [FOLLOW]"
+    } else {
+        ""
+    };
+    let title = format!(" Daemon Logs{} ", follow_indicator);
+
+    if app.automation.logs.is_empty() {
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  No log file found. Start the daemon first, or check ~/.zeroclaw/",
+                Style::default().fg(Color::DarkGray),
+            )]),
+        ];
+        let p =
+            Paragraph::new(lines).block(Block::default().title(title).borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let lines: Vec<Line> = app
+        .automation
+        .logs
+        .iter()
+        .map(|line| {
+            let lower = line.to_lowercase();
+            let style = if lower.contains("error") || lower.contains("err]") {
+                Style::default().fg(Color::Red)
+            } else if lower.contains("warn") {
+                Style::default().fg(Color::Yellow)
+            } else if lower.contains("info") || lower.contains("inf]") {
+                Style::default().fg(Color::White)
+            } else if lower.contains("debug") || lower.contains("dbg]") {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            Line::from(Span::styled(line.as_str(), style))
+        })
+        .collect();
+
+    let p = Paragraph::new(Text::from(lines))
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .scroll((app.automation.logs_scroll, 0));
+    f.render_widget(p, area);
 }
 
 // ── Cron-add form popup ───────────────────────────────────────────────────

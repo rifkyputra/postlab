@@ -208,6 +208,9 @@ pub enum ZeroclawTab {
     Config,
     EasyConfig,
     Permissions,
+    Skills,
+    Auth,
+    Logs,
 }
 
 impl ZeroclawTab {
@@ -220,6 +223,9 @@ impl ZeroclawTab {
             ZeroclawTab::Config,
             ZeroclawTab::EasyConfig,
             ZeroclawTab::Permissions,
+            ZeroclawTab::Skills,
+            ZeroclawTab::Auth,
+            ZeroclawTab::Logs,
         ]
     }
     pub fn title(&self) -> &'static str {
@@ -231,6 +237,9 @@ impl ZeroclawTab {
             ZeroclawTab::Config => "Config",
             ZeroclawTab::EasyConfig => "Easy Config",
             ZeroclawTab::Permissions => "Permissions",
+            ZeroclawTab::Skills => "Skills",
+            ZeroclawTab::Auth => "Auth",
+            ZeroclawTab::Logs => "Logs",
         }
     }
     pub fn index(&self) -> usize {
@@ -375,6 +384,10 @@ pub enum TaskResult {
         output: String,
         success: bool,
     },
+    ZeroclawSkills(Vec<crate::core::zeroclaw::ZeroclawSkill>),
+    ZeroclawSkillRemoved { name: String, success: bool },
+    ZeroclawAuth(Vec<crate::core::zeroclaw::ZeroclawAuthEntry>),
+    ZeroclawLogs(Vec<String>),
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
     Status(String),
@@ -952,6 +965,19 @@ pub struct AutomationState {
     pub cron_form_schedule: String,
     pub cron_form_command: String,
     pub cron_form_focus: usize,
+    // Skills tab
+    pub skills: Vec<crate::core::zeroclaw::ZeroclawSkill>,
+    pub skills_state: TableState,
+    pub skills_input_mode: InputMode,
+    pub skills_input: String,
+    pub skills_status: Option<String>,
+    // Auth tab
+    pub auth_entries: Vec<crate::core::zeroclaw::ZeroclawAuthEntry>,
+    pub auth_state: TableState,
+    // Logs tab
+    pub logs: Vec<String>,
+    pub logs_scroll: u16,
+    pub logs_follow: bool,
 }
 
 impl Default for AutomationState {
@@ -992,6 +1018,16 @@ impl Default for AutomationState {
             cron_form_schedule: String::new(),
             cron_form_command: String::new(),
             cron_form_focus: 0,
+            skills: Vec::new(),
+            skills_state: TableState::default(),
+            skills_input_mode: InputMode::Normal,
+            skills_input: String::new(),
+            skills_status: None,
+            auth_entries: Vec::new(),
+            auth_state: TableState::default(),
+            logs: Vec::new(),
+            logs_scroll: 0,
+            logs_follow: true,
         }
     }
 }
@@ -3000,6 +3036,38 @@ impl App {
         });
     }
 
+    pub fn spawn_load_zeroclaw_skills(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let skills = crate::core::zeroclaw::list_skills().await;
+            let _ = tx.send(TaskResult::ZeroclawSkills(skills));
+        });
+    }
+
+    pub fn spawn_zeroclaw_remove_skill(&mut self, name: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let success = crate::core::zeroclaw::remove_skill(&name).await.is_ok();
+            let _ = tx.send(TaskResult::ZeroclawSkillRemoved { name, success });
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_auth(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let entries = crate::core::zeroclaw::get_auth_status().await;
+            let _ = tx.send(TaskResult::ZeroclawAuth(entries));
+        });
+    }
+
+    pub fn spawn_load_zeroclaw_logs(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let lines = crate::core::zeroclaw::get_logs(200).await;
+            let _ = tx.send(TaskResult::ZeroclawLogs(lines));
+        });
+    }
+
     pub fn spawn_save_permission(&mut self, path: String, value: String) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
@@ -3630,6 +3698,38 @@ impl App {
                     "daemon_start" | "daemon_stop" | "service_start" | "service_stop"
                     | "service_install" => self.spawn_load_zeroclaw_overview(),
                     _ => {}
+                }
+            }
+            TaskResult::ZeroclawSkills(skills) => {
+                self.automation.skills = skills;
+                if self.automation.skills_state.selected().is_none()
+                    && !self.automation.skills.is_empty()
+                {
+                    self.automation.skills_state.select(Some(0));
+                }
+            }
+            TaskResult::ZeroclawSkillRemoved { name, success } => {
+                self.automation.skills_status = Some(if success {
+                    format!("Removed skill '{}'", name)
+                } else {
+                    format!("Failed to remove '{}'", name)
+                });
+                self.spawn_load_zeroclaw_skills();
+            }
+            TaskResult::ZeroclawAuth(entries) => {
+                self.automation.auth_entries = entries;
+                if self.automation.auth_state.selected().is_none()
+                    && !self.automation.auth_entries.is_empty()
+                {
+                    self.automation.auth_state.select(Some(0));
+                }
+            }
+            TaskResult::ZeroclawLogs(lines) => {
+                self.automation.logs = lines;
+                if self.automation.logs_follow {
+                    // Scroll to bottom when following
+                    self.automation.logs_scroll =
+                        (self.automation.logs.len() as u16).saturating_sub(20);
                 }
             }
             TaskResult::SwapLoaded(status) => {

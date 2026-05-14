@@ -186,6 +186,20 @@ pub struct MemoryEntry {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct ZeroclawSkill {
+    pub name: String,
+    pub source: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ZeroclawAuthEntry {
+    pub provider: String,
+    pub profile: String,
+    pub status: String,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 fn config_path() -> PathBuf {
@@ -671,6 +685,114 @@ pub async fn list_memory() -> Vec<MemoryEntry> {
 
 pub async fn delete_memory(key: &str) -> Result<()> {
     run(&["memory", "clear", "--key", key]).await.map(|_| ())
+}
+
+pub async fn list_skills() -> Vec<ZeroclawSkill> {
+    let bin = match find_zeroclaw().await {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    let out = match Command::new(&bin).args(["skills", "list"]).output().await {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+        Err(_) => return Vec::new(),
+    };
+
+    // Parse: lines like "name  source  description" (tab or multi-space separated)
+    out.lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with("Name") && !l.starts_with('-'))
+        .map(|line| {
+            let parts: Vec<&str> = line.splitn(3, '\t').collect();
+            if parts.len() >= 2 {
+                ZeroclawSkill {
+                    name: parts[0].trim().to_string(),
+                    source: parts[1].trim().to_string(),
+                    description: parts.get(2).unwrap_or(&"").trim().to_string(),
+                }
+            } else {
+                // Fallback: single word is the skill name
+                ZeroclawSkill {
+                    name: line.trim().to_string(),
+                    source: String::new(),
+                    description: String::new(),
+                }
+            }
+        })
+        .collect()
+}
+
+pub async fn remove_skill(name: &str) -> Result<()> {
+    run(&["skills", "remove", name]).await.map(|_| ())
+}
+
+pub async fn get_auth_status() -> Vec<ZeroclawAuthEntry> {
+    let bin = match find_zeroclaw().await {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    let out = match Command::new(&bin).args(["auth", "status"]).output().await {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+        Err(_) => return Vec::new(),
+    };
+
+    // Parse output: lines like "provider  profile  status"
+    out.lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with("Provider") && !l.starts_with('-'))
+        .map(|line| {
+            let parts: Vec<&str> = line.splitn(3, '\t').collect();
+            if parts.len() >= 2 {
+                ZeroclawAuthEntry {
+                    provider: parts[0].trim().to_string(),
+                    profile: parts[1].trim().to_string(),
+                    status: parts.get(2).unwrap_or(&"unknown").trim().to_string(),
+                }
+            } else {
+                // space-split fallback
+                let sp: Vec<&str> = line.splitn(3, ' ').collect();
+                ZeroclawAuthEntry {
+                    provider: sp.first().unwrap_or(&"").trim().to_string(),
+                    profile: sp.get(1).unwrap_or(&"default").trim().to_string(),
+                    status: sp.get(2).unwrap_or(&"unknown").trim().to_string(),
+                }
+            }
+        })
+        .collect()
+}
+
+/// Tail the last `lines` lines of the zeroclaw log file.
+/// Searches common log locations: ~/.zeroclaw/zeroclaw.log, ~/.zeroclaw/daemon.log, etc.
+pub async fn get_logs(lines: usize) -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let candidates = [
+        format!("{home}/.zeroclaw/zeroclaw.log"),
+        format!("{home}/.zeroclaw/daemon.log"),
+        format!("{home}/.zeroclaw/gateway.log"),
+        format!("{home}/.local/share/zeroclaw/zeroclaw.log"),
+        "/var/log/zeroclaw.log".to_string(),
+    ];
+
+    for path in &candidates {
+        if let Ok(content) = tokio::fs::read_to_string(path).await {
+            let all_lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+            let start = all_lines.len().saturating_sub(lines);
+            return all_lines[start..].to_vec();
+        }
+    }
+
+    // Fallback: try `journalctl` for systemd environments
+    if let Ok(out) = Command::new("journalctl")
+        .args(["-u", "zeroclaw", "--no-pager", "-n", &lines.to_string()])
+        .output()
+        .await
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            if !s.trim().is_empty() {
+                return s.lines().map(|l| l.to_string()).collect();
+            }
+        }
+    }
+
+    Vec::new()
 }
 
 // ── Easy Config ───────────────────────────────────────────────────────────

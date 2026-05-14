@@ -2552,6 +2552,9 @@ fn handle_automation_key(app: &mut App, key: KeyEvent) {
         ZeroclawTab::Config => handle_zeroclaw_config_key(app, key),
         ZeroclawTab::EasyConfig => handle_easy_config_key(app, key),
         ZeroclawTab::Permissions => handle_permissions_key(app, key),
+        ZeroclawTab::Skills => handle_zeroclaw_skills_key(app, key),
+        ZeroclawTab::Auth => handle_zeroclaw_auth_key(app, key),
+        ZeroclawTab::Logs => handle_zeroclaw_logs_key(app, key),
     }
 }
 
@@ -2565,6 +2568,9 @@ fn switch_zeroclaw_tab(app: &mut App, tab: ZeroclawTab) {
         ZeroclawTab::Config => app.spawn_load_zeroclaw_config(),
         ZeroclawTab::EasyConfig => app.spawn_load_easy_config(),
         ZeroclawTab::Permissions => app.spawn_load_permissions(),
+        ZeroclawTab::Skills => app.spawn_load_zeroclaw_skills(),
+        ZeroclawTab::Auth => app.spawn_load_zeroclaw_auth(),
+        ZeroclawTab::Logs => app.spawn_load_zeroclaw_logs(),
     }
 }
 
@@ -2786,6 +2792,85 @@ fn config_search_jump(app: &mut App, forward: bool) {
             .copied()
             .unwrap_or(*matches.last().unwrap());
         app.automation.config_scroll = prev;
+    }
+}
+
+// ── Skills ────────────────────────────────────────────────────────────────
+
+fn handle_zeroclaw_skills_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.skills.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.automation.skills_state.selected().unwrap_or(0);
+            app.automation.skills_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.automation.skills_state.selected().unwrap_or(0);
+            app.automation
+                .skills_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('d') => {
+            if let Some(idx) = app.automation.skills_state.selected() {
+                if let Some(skill) = app.automation.skills.get(idx) {
+                    let name = skill.name.clone();
+                    app.spawn_zeroclaw_remove_skill(name);
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            app.automation.skills_status = None;
+            app.spawn_load_zeroclaw_skills();
+        }
+        _ => {}
+    }
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+fn handle_zeroclaw_auth_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.auth_entries.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.automation.auth_state.selected().unwrap_or(0);
+            app.automation.auth_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.automation.auth_state.selected().unwrap_or(0);
+            app.automation
+                .auth_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_auth();
+        }
+        _ => {}
+    }
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────
+
+fn handle_zeroclaw_logs_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.automation.logs_follow = false;
+            app.automation.logs_scroll = app.automation.logs_scroll.saturating_add(1);
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.automation.logs_follow = false;
+            app.automation.logs_scroll = app.automation.logs_scroll.saturating_sub(1);
+        }
+        KeyCode::Char('f') => {
+            app.automation.logs_follow = !app.automation.logs_follow;
+            if app.automation.logs_follow {
+                app.automation.logs_scroll =
+                    (app.automation.logs.len() as u16).saturating_sub(20);
+            }
+        }
+        KeyCode::Char('R') | KeyCode::Char('r') => {
+            app.spawn_load_zeroclaw_logs();
+        }
+        _ => {}
     }
 }
 
