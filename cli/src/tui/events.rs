@@ -153,11 +153,11 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(7);
             return false;
         }
-        KeyCode::Char('a') | KeyCode::Char('A') => {
+        KeyCode::Char('a') | KeyCode::Char('A') if app.screen != Screen::Automation => {
             app.set_screen_by_index(6);
             return false;
         }
-        KeyCode::Char('s') | KeyCode::Char('S') => {
+        KeyCode::Char('s') | KeyCode::Char('S') if app.screen != Screen::Automation => {
             app.set_screen_by_index(7);
             return false;
         }
