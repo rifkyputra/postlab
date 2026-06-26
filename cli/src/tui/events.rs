@@ -3,8 +3,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::core::models::{Route, TunnelRoute};
 
 use super::app::{
-    App, ConfirmAction, ConfirmDialog, DashboardTab, InputMode, NetworkingTab, PackageTab,
-    ProcessSort, Screen, SecurityTab, SystemTab, TunnelPanel, ZeroclawTab, ACTIONS, PROTOS,
+    App, ConfirmAction, ConfirmDialog, DashboardTab, DockerTab, InputMode, NetworkingTab,
+    PackageTab, ProcessSort, Screen, SecurityTab, SystemTab, TunnelPanel, WasmCloudTab,
+    ZeroclawTab, ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -723,7 +724,7 @@ fn sort_processes(app: &mut App) {
         ProcessSort::Memory => app
             .processes
             .list
-            .sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes)),
+            .sort_by_key(|p| std::cmp::Reverse(p.mem_bytes)),
         ProcessSort::Pid => app.processes.list.sort_by_key(|p| p.pid),
     }
 }
@@ -1019,16 +1020,13 @@ fn handle_maintenance_key(app: &mut App, key: KeyEvent) {
         return; // Block input while running
     }
 
-    match key.code {
-        KeyCode::Char('c') => {
-            app.confirm = Some(ConfirmDialog {
-                message: "Clean all package manager caches? (y/N)".to_string(),
-                action: ConfirmAction::MaintenanceAction {
-                    op: "clean_pkg_cache".to_string(),
-                },
-            });
-        }
-        _ => {}
+    if let KeyCode::Char('c') = key.code {
+        app.confirm = Some(ConfirmDialog {
+            message: "Clean all package manager caches? (y/N)".to_string(),
+            action: ConfirmAction::MaintenanceAction {
+                op: "clean_pkg_cache".to_string(),
+            },
+        });
     }
 }
 
@@ -1518,6 +1516,127 @@ fn table_next(state: &mut ratatui::widgets::TableState, len: usize) {
 fn table_prev(state: &mut ratatui::widgets::TableState) {
     let prev = state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
     state.select(Some(prev));
+}
+
+// ── Click handler ─────────────────────────────────────────────────────────
+
+/// Width of the default Tabs left/right padding (single space each).
+const TAB_PAD: u16 = 1;
+
+/// Find which tab index was clicked at `col` in a row of sequential tabs.
+/// `titles` must be in the same order as they are rendered by `Tabs::new()`.
+/// `inner_left` is the x-coordinate of the inner area (after block borders).
+/// `divider_w` is the width of the divider between tabs (1 for default "│",
+/// 3 for custom " │ ").
+/// Returns `Some(index)` if the click fell within the bounds of a tab's title+padding.
+fn tab_at_col(col: u16, titles: &[&str], inner_left: u16, divider_w: u16) -> Option<usize> {
+    let mut x = inner_left;
+    for (i, title) in titles.iter().enumerate() {
+        let title_w = title.len() as u16;
+        let is_last = i == titles.len() - 1;
+        // This tab occupies: [left_pad][title][right_pad][divider](except last)
+        let tab_total = TAB_PAD + title_w + TAB_PAD + if is_last { 0 } else { divider_w };
+        // Check if click falls within the tab's clickable region (padding + title)
+        if col >= x && col < x + TAB_PAD + title_w + TAB_PAD {
+            return Some(i);
+        }
+        x += tab_total;
+    }
+    None
+}
+
+/// Handle mouse clicks. `col`/`row` are 0-based terminal coordinates.
+pub fn handle_click(app: &mut App, col: u16, row: u16) {
+    // Nav bar occupies the top 3 rows (y=0,1,2).
+    // Row 0 = top border (with version title), Row 1 = tab text, Row 2 = bottom border.
+    // The block's inner area starts at x=1, y=1. Default divider is "│" (width 1).
+    if row == 1 && app.terminal_width > 0 {
+        let titles: Vec<&str> = Screen::all().iter().map(|s| s.title()).collect();
+        if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+            let new_screen = Screen::all()[idx].clone();
+            if new_screen != app.screen {
+                app.set_screen(new_screen);
+            }
+            return;
+        }
+    }
+
+    // Screen-specific click handling — content area starts at terminal row 3.
+    match app.screen {
+        Screen::Dashboard => {
+            // Dashboard: height 2 tab bar (Borders::BOTTOM), custom divider " │ " (w=3)
+            if row == 3 {
+                let titles: Vec<&str> = DashboardTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 0, 3) {
+                    app.dashboard.active_tab = DashboardTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Packages => {
+            // Packages: height 3 tab bar (Borders::ALL), default divider "│" (w=1)
+            if row == 4 {
+                let titles: Vec<&str> = PackageTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.packages.active_tab = PackageTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Security => {
+            // Security: height 3 tab bar, custom divider " │ " (w=3)
+            if row == 4 {
+                let titles: Vec<&str> = SecurityTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 3) {
+                    app.security.active_tab = SecurityTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Networking => {
+            // Networking: height 3 tab bar, default divider (w=1)
+            if row == 4 {
+                let titles: Vec<&str> = NetworkingTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.networking_tab = NetworkingTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Docker => {
+            // Docker: height 3 tab bar, default divider (w=1)
+            if row == 4 {
+                let titles: Vec<&str> = DockerTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.docker.active_tab = DockerTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::System => {
+            // System: height 2 tab bar (Borders::BOTTOM), custom divider " │ " (w=3)
+            if row == 3 {
+                let titles: Vec<&str> = SystemTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 0, 3) {
+                    app.system_tab = SystemTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Automation => {
+            // Automation: header (h=3) + height 3 tab bar, default divider (w=1)
+            // Header rows 3,4,5; tab bar rows 6,7,8 → text at row 7
+            if row == 7 {
+                let titles: Vec<&str> = ZeroclawTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.automation.active_tab = ZeroclawTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::WasmCloud => {
+            // WasmCloud: height 3 tab bar, default divider (w=1)
+            if row == 4 {
+                let titles: Vec<&str> = WasmCloudTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.wasm_cloud.active_tab = WasmCloudTab::all()[idx].clone();
+                }
+            }
+        }
+    }
 }
 
 use crate::core::models::Package;

@@ -76,7 +76,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Unix Users "))
-    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol(">> ");
 
     f.render_stateful_widget(t, area, &mut app.users.table_state);

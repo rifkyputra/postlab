@@ -55,11 +55,7 @@ fn render_summary(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(inner);
 
-    let pct = if status.total > 0 {
-        (status.used * 100 / status.total) as u16
-    } else {
-        0
-    };
+    let pct = (status.used * 100).checked_div(status.total).unwrap_or(0) as u16;
     let gauge_color = if pct > 85 {
         Color::Red
     } else if pct > 65 {
@@ -125,11 +121,7 @@ fn render_entries(f: &mut Frame, app: &App, area: Rect) {
     let rows: Vec<Row> = entries
         .iter()
         .map(|e| {
-            let used_pct = if e.size_bytes > 0 {
-                e.used_bytes * 100 / e.size_bytes
-            } else {
-                0
-            };
+            let used_pct = (e.used_bytes * 100).checked_div(e.size_bytes).unwrap_or(0);
             let used_color = if used_pct > 85 {
                 Color::Red
             } else if used_pct > 65 {

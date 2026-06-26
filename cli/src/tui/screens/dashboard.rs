@@ -112,11 +112,7 @@ fn render_sysinfo(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_memory(f: &mut Frame, app: &App, area: Rect) {
     let (used, total, pct) = if let Some(mem) = &app.dashboard.mem {
-        let pct = if mem.total > 0 {
-            (mem.used * 100 / mem.total) as u16
-        } else {
-            0
-        };
+        let pct = (mem.used * 100).checked_div(mem.total).unwrap_or(0) as u16;
         (mem.used, mem.total, pct)
     } else {
         (0, 0, 0)
@@ -145,11 +141,7 @@ fn render_memory(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_swap(f: &mut Frame, app: &App, area: Rect) {
     let (used, total, pct) = if let Some(s) = &app.swap.status {
-        let pct = if s.total > 0 {
-            (s.used * 100 / s.total) as u16
-        } else {
-            0
-        };
+        let pct = (s.used * 100).checked_div(s.total).unwrap_or(0) as u16;
         (s.used, s.total, pct)
     } else {
         (0, 0, 0)
@@ -251,11 +243,7 @@ fn render_disks(f: &mut Frame, app: &App, area: Rect) {
         if i >= rows.len() {
             break;
         }
-        let pct = if disk.total > 0 {
-            (disk.used * 100 / disk.total) as u16
-        } else {
-            0
-        };
+        let pct = (disk.used * 100).checked_div(disk.total).unwrap_or(0) as u16;
         let color = if pct > 85 {
             Color::Red
         } else if pct > 65 {
