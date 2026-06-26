@@ -10,6 +10,7 @@ pub trait TunnelManager: Send + Sync {
     async fn is_installed(&self) -> bool;
     async fn version(&self) -> Option<String>;
     async fn install(&self) -> Result<String>;
+    #[expect(dead_code)]
     async fn login(&self) -> Result<()>;
     async fn list_tunnels(&self) -> Result<Vec<Tunnel>>;
     async fn create(&self, name: &str) -> Result<Tunnel>;

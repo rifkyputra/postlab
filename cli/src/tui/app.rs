@@ -253,6 +253,7 @@ impl ZeroclawTab {
 // ── Background task results ───────────────────────────────────────────────
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum TaskResult {
     PackageList(Vec<Package>),
     PackagesUpdated(Vec<Package>), // merge/add specific entries without full reload
@@ -397,6 +398,7 @@ pub enum TaskResult {
 // ── Confirm dialog ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ConfirmAction {
     KillProcess { pid: u32, name: String },
     RemovePackage { name: String },
@@ -483,22 +485,12 @@ impl WorkloadFormState {
     }
 }
 
+#[derive(Default)]
 pub struct DockerWorkloadsState {
     pub capabilities: Option<ManagedWorkloadCapabilities>,
     pub workloads: Vec<ManagedWorkload>,
     pub table_state: TableState,
     pub form: WorkloadFormState,
-}
-
-impl Default for DockerWorkloadsState {
-    fn default() -> Self {
-        Self {
-            capabilities: None,
-            workloads: Vec::new(),
-            table_state: TableState::default(),
-            form: WorkloadFormState::default(),
-        }
-    }
 }
 
 // ── Input mode ────────────────────────────────────────────────────────────
@@ -637,6 +629,7 @@ pub struct QueuedOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum OpStatus {
     Pending,
     Running,
@@ -697,6 +690,7 @@ pub struct PackagesState {
     pub curated_cursor: usize,
     // Queue
     pub queue: VecDeque<QueuedOp>,
+    #[allow(dead_code)]
     pub queue_state: ListState,
     pub queue_selected: Option<usize>,
     pub output_scroll: usize,
@@ -784,6 +778,7 @@ impl Default for SecurityState {
     }
 }
 
+#[derive(Default)]
 pub struct ResourcesState {
     pub cpu_history: Vec<Vec<u64>>,
     pub mem_history: Vec<u64>,
@@ -791,19 +786,6 @@ pub struct ResourcesState {
     pub net_tx_history: Vec<u64>,
     pub last_net_rx: u64,
     pub last_net_tx: u64,
-}
-
-impl Default for ResourcesState {
-    fn default() -> Self {
-        Self {
-            cpu_history: Vec::new(),
-            mem_history: Vec::new(),
-            net_rx_history: Vec::new(),
-            net_tx_history: Vec::new(),
-            last_net_rx: 0,
-            last_net_tx: 0,
-        }
-    }
 }
 
 pub struct GatewayState {
@@ -968,7 +950,9 @@ pub struct AutomationState {
     // Skills tab
     pub skills: Vec<crate::core::zeroclaw::ZeroclawSkill>,
     pub skills_state: TableState,
+    #[allow(dead_code)]
     pub skills_input_mode: InputMode,
+    #[allow(dead_code)]
     pub skills_input: String,
     pub skills_status: Option<String>,
     // Auth tab
@@ -1189,22 +1173,11 @@ impl Default for WasmCloudState {
 
 // ── Ghost Services Hunter state ────────────────────────────────────────────
 
+#[derive(Default)]
 pub struct GhostState {
-    /// Results from the last scan.
     pub ghosts: Vec<GhostProcess>,
     pub table_state: TableState,
-    /// True while a scan is running in the background.
     pub scanning: bool,
-}
-
-impl Default for GhostState {
-    fn default() -> Self {
-        Self {
-            ghosts: Vec::new(),
-            table_state: TableState::default(),
-            scanning: false,
-        }
-    }
 }
 
 // ── Swap state ───────────────────────────────────────────────────────────────
@@ -1293,18 +1266,10 @@ impl Default for ServicesState {
 }
 
 // ── Maintenance state ─────────────────────────────────────────────────────
+#[derive(Default)]
 pub struct MaintenanceState {
     pub running_op: Option<String>,
     pub last_output: String,
-}
-
-impl Default for MaintenanceState {
-    fn default() -> Self {
-        Self {
-            running_op: None,
-            last_output: String::new(),
-        }
-    }
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────
@@ -1337,6 +1302,8 @@ pub struct App {
     pub maintenance: MaintenanceState,
     pub automation: AutomationState,
     pub swap: SwapState,
+
+    pub terminal_width: u16,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
@@ -1381,6 +1348,7 @@ impl App {
             confirm: None,
             status_msg: None,
             last_tick: Instant::now(),
+            terminal_width: 0,
             needs_login: false,
         }
     }
@@ -1424,7 +1392,6 @@ impl App {
             Screen::System => {
                 self.spawn_load_system_tab(self.system_tab.clone());
             }
-            _ => {}
         }
     }
 
@@ -1487,6 +1454,7 @@ impl App {
 
     // ── async data loaders (spawn background tasks) ───────────────────────
 
+    #[allow(dead_code)]
     pub fn spawn_load_dashboard(&mut self) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -1786,11 +1754,8 @@ impl App {
                     }
                 }
             }
-            match platform.tunnel.service_status().await {
-                Ok((active, enabled)) => {
-                    let _ = tx.send(TaskResult::TunnelServiceStatus { active, enabled });
-                }
-                Err(_) => {}
+            if let Ok((active, enabled)) = platform.tunnel.service_status().await {
+                let _ = tx.send(TaskResult::TunnelServiceStatus { active, enabled });
             }
         });
     }
@@ -2682,6 +2647,7 @@ impl App {
         });
     }
 
+    #[allow(dead_code)]
     pub fn spawn_wasm_cloud_hosts(&mut self) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -2692,6 +2658,7 @@ impl App {
         });
     }
 
+    #[allow(dead_code)]
     pub fn spawn_wasm_cloud_components(&mut self) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -2702,6 +2669,7 @@ impl App {
         });
     }
 
+    #[allow(dead_code)]
     pub fn spawn_wasm_cloud_apps(&mut self) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -3362,7 +3330,7 @@ impl App {
                     if let Some(id) = content
                         .lines()
                         .find(|l| l.trim_start().starts_with("tunnel:"))
-                        .and_then(|l| l.splitn(2, ':').nth(1))
+                        .and_then(|l| l.split_once(':').map(|x| x.1))
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
                     {
@@ -3786,11 +3754,7 @@ impl App {
                     let _ = avg;
                 }
                 if let Ok(mem) = self.platform.system.mem().await {
-                    let pct = if mem.total > 0 {
-                        mem.used * 100 / mem.total
-                    } else {
-                        0
-                    };
+                    let pct = (mem.used * 100).checked_div(mem.total).unwrap_or(0);
                     self.resources.mem_history.push(pct);
                     if self.resources.mem_history.len() > 60 {
                         self.resources.mem_history.remove(0);
@@ -3829,14 +3793,14 @@ impl App {
                 // Poll NATS health every 20 ticks (~5 s)
                 self.wasm_cloud.nats_poll_counter =
                     self.wasm_cloud.nats_poll_counter.wrapping_add(1);
-                if self.wasm_cloud.nats_poll_counter % 20 == 0 {
+                if self.wasm_cloud.nats_poll_counter.is_multiple_of(20) {
                     self.spawn_poll_nats_status();
                 }
             }
             Screen::Automation => {
                 // Refresh zeroclaw status every 40 ticks (~10 s)
                 self.automation.poll_counter = self.automation.poll_counter.wrapping_add(1);
-                if self.automation.poll_counter % 40 == 0 {
+                if self.automation.poll_counter.is_multiple_of(40) {
                     self.spawn_load_zeroclaw_overview();
                 }
             }
@@ -3866,10 +3830,10 @@ pub fn parse_ingress_entries(content: &str) -> Vec<(String, String)> {
             if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty() {
                 break;
             }
-            if trimmed.starts_with("hostname:") {
-                current_host = Some(trimmed["hostname:".len()..].trim().to_string());
-            } else if trimmed.starts_with("service:") {
-                let svc = trimmed["service:".len()..].trim().to_string();
+            if let Some(stripped) = trimmed.strip_prefix("hostname:") {
+                current_host = Some(stripped.trim().to_string());
+            } else if let Some(stripped) = trimmed.strip_prefix("service:") {
+                let svc = stripped.trim().to_string();
                 if let Some(host) = current_host.take() {
                     entries.push((host, svc));
                 }

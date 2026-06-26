@@ -46,7 +46,7 @@ fn render_filter(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(p, area);
 
     if app.services.filter_mode == InputMode::Editing {
-        f.set_cursor(area.x + app.services.filter.len() as u16 + 1, area.y + 1);
+        f.set_cursor_position((area.x + app.services.filter.len() as u16 + 1, area.y + 1));
     }
 }
 

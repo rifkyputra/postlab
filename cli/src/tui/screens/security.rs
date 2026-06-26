@@ -112,12 +112,12 @@ fn render_findings_list(f: &mut Frame, app: &App, area: Rect) {
         .security
         .findings
         .iter()
-        .flat_map(|finding| {
+        .map(|finding| {
             let selected = app.security.selected.contains(&finding.id);
             let sel_sym = if selected { "[*]" } else { "   " };
             let dot_color = finding.severity.color();
-            vec![
-                ListItem::new(Line::from(vec![
+            ListItem::new(vec![
+                Line::from(vec![
                     Span::styled(sel_sym, Style::default().fg(Color::Yellow)),
                     Span::raw(" "),
                     Span::styled("●", Style::default().fg(dot_color)),
@@ -133,18 +133,18 @@ fn render_findings_list(f: &mut Frame, app: &App, area: Rect) {
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD),
                     ),
-                ])),
-                ListItem::new(Line::from(vec![
+                ]),
+                Line::from(vec![
                     Span::raw("         "),
                     Span::styled(&finding.description, Style::default().fg(Color::DarkGray)),
-                ])),
-                ListItem::new(Line::from(vec![
+                ]),
+                Line::from(vec![
                     Span::raw("         "),
                     Span::styled("Fix: ", Style::default().fg(Color::Green)),
                     Span::styled(&finding.fix_description, Style::default().fg(Color::Green)),
-                ])),
-                ListItem::new(Line::from("")),
-            ]
+                ]),
+                Line::from(""),
+            ])
         })
         .collect();
 

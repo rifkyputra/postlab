@@ -1,0 +1,271 @@
+{
+  "project": "postlab",
+  "version": "0.2.0",
+  "cli_commands": [
+    {
+      "command": "postlab",
+      "description": "Launch interactive TUI (default)"
+    },
+    {
+      "command": "postlab info",
+      "description": "Print OS, kernel, CPU, memory, and uptime"
+    },
+    {
+      "command": "postlab list",
+      "description": "List all installed packages"
+    }
+  ],
+  "screens": [
+    {
+      "id": "dashboard",
+      "name": "Dashboard",
+      "nav_key": "1",
+      "tabs": [
+        {
+          "id": "overview",
+          "name": "Overview",
+          "description": "CPU, memory, disk, swap gauges with hostname and uptime"
+        },
+        {
+          "id": "processes",
+          "name": "Processes",
+          "description": "Live process table sorted by CPU/memory; kill selected process"
+        },
+        {
+          "id": "resources",
+          "name": "Resources",
+          "description": "Per-core CPU sparklines, memory and swap history over 60 seconds"
+        }
+      ]
+    },
+    {
+      "id": "packages",
+      "name": "Packages",
+      "nav_key": "2",
+      "tabs": [
+        {
+          "id": "installed",
+          "name": "Installed",
+          "description": "Browse all installed packages with versions"
+        },
+        {
+          "id": "search",
+          "name": "Search",
+          "description": "Search the distro package index"
+        },
+        {
+          "id": "quick_install",
+          "name": "Quick Install",
+          "description": "Install common server packages with a single keypress"
+        },
+        {
+          "id": "queue",
+          "name": "Queue",
+          "description": "Batch queue package installs and run them together"
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "nav_key": "3",
+      "tabs": [
+        {
+          "id": "findings",
+          "name": "Findings",
+          "description": "Automated security checks with severity ratings and one-click fixes"
+        },
+        {
+          "id": "firewall",
+          "name": "Firewall",
+          "description": "View and manage firewall rules (ufw / firewalld / pf)"
+        },
+        {
+          "id": "ports",
+          "name": "Ports",
+          "description": "Check open ports and identify listening services"
+        },
+        {
+          "id": "ssh",
+          "name": "SSH",
+          "description": "Manage local SSH public keys and harden SSH configuration"
+        },
+        {
+          "id": "fail2ban",
+          "name": "Fail2Ban",
+          "description": "View Fail2Ban status, jails, and banned IPs"
+        }
+      ]
+    },
+    {
+      "id": "networking",
+      "name": "Networking",
+      "nav_key": "4",
+      "tabs": [
+        {
+          "id": "gateway",
+          "name": "Gateway",
+          "description": "Manage Caddy reverse proxy: install, configure, reload"
+        },
+        {
+          "id": "tunnel",
+          "name": "Tunnel",
+          "description": "Manage Cloudflare Tunnel: install, start/stop, view status"
+        }
+      ]
+    },
+    {
+      "id": "docker",
+      "name": "Docker",
+      "nav_key": "5",
+      "tabs": [
+        {
+          "id": "containers",
+          "name": "Containers",
+          "description": "List running and stopped containers; start, stop, remove"
+        },
+        {
+          "id": "images",
+          "name": "Images",
+          "description": "Browse local images with size and tag info"
+        },
+        {
+          "id": "compose",
+          "name": "Compose",
+          "description": "Manage Docker Compose stacks: up, down, pull"
+        },
+        {
+          "id": "workloads",
+          "name": "Workloads",
+          "description": "Higher-level workload view grouping related containers"
+        },
+        {
+          "id": "managed",
+          "name": "Managed",
+          "description": "Postlab-managed Docker deployments with lifecycle controls"
+        }
+      ]
+    },
+    {
+      "id": "wasmcloud",
+      "name": "wasmCloud",
+      "nav_key": "6",
+      "tabs": [
+        {
+          "id": "hosts",
+          "name": "Hosts",
+          "description": "View connected wasmCloud hosts and their status"
+        },
+        {
+          "id": "components",
+          "name": "Components",
+          "description": "Browse deployed Wasm components across hosts"
+        },
+        {
+          "id": "apps",
+          "name": "Apps",
+          "description": "Manage wasmCloud application manifests"
+        },
+        {
+          "id": "inspector",
+          "name": "Inspector",
+          "description": "Inspect component details, links, and capability providers"
+        }
+      ]
+    },
+    {
+      "id": "automation",
+      "name": "Automation",
+      "nav_key": "7",
+      "description": "ZeroClaw automation daemon management",
+      "tabs": [
+        {
+          "id": "overview",
+          "name": "Overview",
+          "description": "Install/uninstall ZeroClaw daemon; view running status and components"
+        },
+        {
+          "id": "channels",
+          "name": "Channels",
+          "description": "Configure NATS messaging channels for automation events"
+        },
+        {
+          "id": "cron",
+          "name": "Cron",
+          "description": "Create and manage cron-style scheduled automation jobs"
+        },
+        {
+          "id": "memory",
+          "name": "Memory",
+          "description": "View and edit automation agent memory state"
+        },
+        {
+          "id": "config",
+          "name": "Config",
+          "description": "Raw configuration editor for the ZeroClaw daemon"
+        },
+        {
+          "id": "easy_config",
+          "name": "Easy Config",
+          "description": "Guided configuration wizard for common automation setups"
+        },
+        {
+          "id": "permissions",
+          "name": "Permissions",
+          "description": "Manage automation agent tool permissions and access controls"
+        },
+        {
+          "id": "skills",
+          "name": "Skills",
+          "description": "Browse and enable automation skills"
+        },
+        {
+          "id": "auth",
+          "name": "Auth",
+          "description": "Manage authentication credentials for automation providers"
+        },
+        {
+          "id": "logs",
+          "name": "Logs",
+          "description": "Live log stream from the ZeroClaw automation daemon"
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "name": "System",
+      "nav_key": "8",
+      "tabs": [
+        {
+          "id": "ghosts",
+          "name": "Ghosts",
+          "description": "Find and kill orphaned/ghost processes reparented to PID 1"
+        },
+        {
+          "id": "janitor",
+          "name": "Janitor",
+          "description": "System maintenance: remove cached installer files and free disk space"
+        },
+        {
+          "id": "services",
+          "name": "Services",
+          "description": "Browse and manage systemd services; start, stop, enable, disable"
+        },
+        {
+          "id": "users",
+          "name": "Users",
+          "description": "Manage system users: list, add, remove, change passwords"
+        },
+        {
+          "id": "swap",
+          "name": "Swap",
+          "description": "View swap usage and manage swap files"
+        }
+      ]
+    }
+  ],
+  "deployments": {
+    "description": "Git-based deployment manager accessible from the automation screen",
+    "actions": ["add", "reload", "update", "teardown", "delete"]
+  }
+}

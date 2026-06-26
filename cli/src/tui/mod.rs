@@ -4,9 +4,10 @@ pub mod screens;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyEventKind},
+    event::{self, Event, KeyEventKind, MouseEventKind, MouseButton},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    event::{EnableMouseCapture, DisableMouseCapture},
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -25,7 +26,7 @@ use app::{App, ConfirmDialog, Screen};
 pub async fn run(platform: Platform, pool: SqlitePool) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -38,7 +39,11 @@ pub async fn run(platform: Platform, pool: SqlitePool) -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     if let Err(e) = result {
@@ -55,6 +60,7 @@ async fn run_loop(
     loop {
         terminal.draw(|f| {
             let area = f.area();
+            app.terminal_width = area.width;
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -86,12 +92,21 @@ async fn run_loop(
 
         // Poll for events
         if event::poll(tick)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    if events::handle_key(app, key).await {
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press && events::handle_key(app, key).await {
                         break;
                     }
                 }
+                Event::Mouse(mouse) => {
+                    if matches!(
+                        mouse.kind,
+                        MouseEventKind::Up(MouseButton::Left)
+                    ) {
+                        events::handle_click(app, mouse.column, mouse.row);
+                    }
+                }
+                _ => {}
             }
         }
 

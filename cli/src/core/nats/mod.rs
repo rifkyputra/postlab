@@ -103,6 +103,7 @@ impl NatsManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_bin(&self) -> String {
         if crate::core::packages::which("nats-server") {
             "nats-server".to_string()
@@ -111,6 +112,7 @@ impl NatsManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn setup_config(&self) -> Result<()> {
         let parent = self.config_path.parent().unwrap();
         fs::create_dir_all(parent)?;
@@ -145,6 +147,7 @@ websocket {{
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn start(&self) -> Result<()> {
         self.setup_config()?;
         let bin = self.get_bin();
@@ -286,6 +289,7 @@ websocket {{
         .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))
     }
 
+    #[allow(dead_code)]
     pub fn init_wasmcloud_buckets(&self) -> Result<()> {
         // Determine which CLI is available: prefer `wash`, fall back to `nats`.
         let wash_bin = crate::core::wasm_cloud::cli::find_wash();

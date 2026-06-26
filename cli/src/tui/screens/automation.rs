@@ -970,7 +970,7 @@ fn render_logs(f: &mut Frame, app: &App, area: Rect) {
 // ── Cron-add form popup ───────────────────────────────────────────────────
 
 fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
-    let w = area.width.min(60).max(40);
+    let w = area.width.clamp(40, 60);
     let h = 7u16;
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;

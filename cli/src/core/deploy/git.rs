@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tokio::process::Command;
 
+#[expect(dead_code)]
 pub async fn clone_repo(url: &str, target_dir: &Path) -> Result<()> {
     let status = Command::new("git")
         .args(["clone", url, target_dir.to_str().unwrap()])
@@ -15,6 +16,7 @@ pub async fn clone_repo(url: &str, target_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[expect(dead_code)]
 pub async fn pull_repo(target_dir: &Path) -> Result<()> {
     let status = Command::new("git")
         .current_dir(target_dir)

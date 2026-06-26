@@ -50,7 +50,7 @@ impl CaddyManager {
                     if inner.starts_with("reverse_proxy") {
                         let target = inner.replace("reverse_proxy", "").trim().to_string();
                         // target is like "localhost:3000" or ":3000"
-                        if let Some(p) = target.split(':').last() {
+                        if let Some(p) = target.split(':').next_back() {
                             port = p.parse().unwrap_or(0);
                         }
                     }

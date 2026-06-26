@@ -183,7 +183,7 @@ fn render_hosts(f: &mut Frame, app: &mut App, area: Rect) {
     )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Hosts "))
-    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol(">> ");
 
     f.render_stateful_widget(t, area, &mut app.wasm_cloud.hosts_state);
@@ -215,7 +215,7 @@ fn render_components(f: &mut Frame, app: &mut App, area: Rect) {
     )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Components "))
-    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol(">> ");
 
     f.render_stateful_widget(t, area, &mut app.wasm_cloud.components_state);
@@ -251,7 +251,7 @@ fn render_apps(f: &mut Frame, app: &mut App, area: Rect) {
             .borders(Borders::ALL)
             .title(" Applications (WADM) "),
     )
-    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol(">> ");
 
     f.render_stateful_widget(t, area, &mut app.wasm_cloud.apps_state);
