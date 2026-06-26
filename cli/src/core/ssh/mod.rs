@@ -18,7 +18,12 @@ pub struct DefaultSshKeyManager;
 
 impl DefaultSshKeyManager {
     fn get_ssh_dir() -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_default();
+        // When running as root via sudo, use the invoking user's home so we
+        // read/write their ~/.ssh, not /root/.ssh.
+        let home = std::env::var("SUDO_USER")
+            .ok()
+            .map(|u| format!("/home/{}", u))
+            .unwrap_or_else(|| std::env::var("HOME").unwrap_or_default());
         Path::new(&home).join(".ssh")
     }
 

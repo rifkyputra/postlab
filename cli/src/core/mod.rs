@@ -13,10 +13,12 @@ pub mod security;
 pub mod services;
 pub mod ssh;
 pub mod system;
+pub mod tailscale;
 pub mod tunnel;
 pub mod users;
 pub mod wasm_cloud;
 pub mod workloads;
 pub mod pi_agent;
+pub mod projects;
 
 pub use platform::Platform;

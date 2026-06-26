@@ -11,6 +11,7 @@ use crate::core::{
     services::{is_systemd_available, MacosServiceManager, ServiceManager, SystemdServiceManager},
     ssh::{DefaultSshKeyManager, SshKeyManager},
     system::{SysinfoManager, SystemInfo},
+    tailscale::TailscaleManager,
     tunnel::{CloudflareManager, TunnelManager},
     users::{UnixUserManager, UserManager},
     wasm_cloud::{WasmCloudCliManager, WasmCloudManager},
@@ -59,6 +60,7 @@ pub struct Platform {
     pub security: Arc<dyn SecurityAuditor>,
     pub fail2ban: Arc<dyn Fail2BanManager>,
     pub gateway: Arc<dyn GatewayManager>,
+    pub tailscale: Arc<TailscaleManager>,
     pub tunnel: Arc<dyn TunnelManager>,
     pub firewall: Arc<dyn FirewallManager>,
     pub docker: Arc<dyn DockerManager>,
@@ -77,6 +79,7 @@ pub fn detect() -> Result<Platform> {
     let security = Arc::new(DefaultSecurityAuditor::new(os));
     let fail2ban = Arc::new(DefaultFail2Ban) as Arc<dyn Fail2BanManager>;
     let gateway = Arc::new(CaddyManager);
+    let tailscale = Arc::new(TailscaleManager);
     let tunnel = Arc::new(CloudflareManager);
     let docker: Arc<dyn DockerManager> = Arc::new(DockerCliManager::detect());
     let wasm_cloud: Arc<dyn WasmCloudManager> = Arc::new(WasmCloudCliManager);
@@ -103,6 +106,7 @@ pub fn detect() -> Result<Platform> {
         security,
         fail2ban,
         gateway,
+        tailscale,
         tunnel,
         firewall,
         docker,
