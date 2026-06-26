@@ -1,0 +1,43 @@
+# postlab — Cursor agent rules
+
+## Project
+Rust TUI bare-metal server manager. Runs as root (enforced in main.rs). Stack: ratatui, crossterm, sqlx/SQLite, clap.
+
+## Build commands
+- Dev build:     `make build`
+- Check/lint:    `make check`   (cargo check + clippy, zero-warnings policy)
+- Tests:         `make test`
+- Run TUI:       `make run`     (requires root)
+- Release build: `make build-release`
+
+**Always run `make check && make test` before marking a task complete. Both must pass.**
+
+## Feature reference
+`feature_list.json` (repo root) is the source of truth for all screens, tabs, and CLI commands. Read it before adding, renaming, or describing any feature. If you add or rename a screen, tab, or CLI command, update `feature_list.json` before closing the task.
+
+## Architecture map
+- `cli/src/main.rs`        — entrypoint, root check, DB init, CLI routing
+- `cli/src/tui/app.rs`     — App state + screen dispatch
+- `cli/src/tui/events.rs`  — crossterm event loop
+- `cli/src/tui/screens/`   — one file per TUI screen
+- `cli/src/core/`          — platform-specific adapters (packages, docker, firewall, gateway, deploy, security, ssh, …)
+- `cli/src/db/`            — sqlx pool + audit + deployments
+- `migrations/`            — append-only SQL schema (CONFIRM before editing)
+
+## Hard constraints
+- Do NOT remove or weaken the root check in `main.rs`.
+- `migrations/*.sql` are irreversible — ask the user before creating or modifying any migration.
+- `.github/workflows/` affects CI for all targets — ask the user before modifying.
+- `install.sh` runs as root on user systems — ask the user before modifying.
+- `binaries/` contains pre-built artifacts — do not edit; use `make build-linux` or `make build-all`.
+- No new external dependencies (services, databases) without explicit discussion.
+
+## Code style
+- No comments unless the WHY is non-obvious.
+- No docstrings or multi-line comment blocks.
+- No premature abstractions — solve the task, no more.
+- No error handling for impossible scenarios.
+- Clippy warnings are build errors — zero tolerance.
+
+## TUI changes
+Cannot be verified headlessly. State explicitly if visual verification was skipped.

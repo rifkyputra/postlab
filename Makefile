@@ -98,7 +98,7 @@ test: ## Run unit tests
 
 install: release ## Install postlab binary to /usr/local/bin
 	@echo "Installing $(RELEASE_DIR)/postlab → /usr/local/bin/postlab"
-	install -m 0755 $(RELEASE_DIR)/postlab /usr/local/bin/postlab
+	sudo install -m 0755 $(RELEASE_DIR)/postlab /usr/local/bin/postlab
 	@echo "Done. Run: postlab"
 
 # ---------------------------------------------------------------------------

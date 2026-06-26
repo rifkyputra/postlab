@@ -33,9 +33,3 @@ whoami = "1.5"
 nix = { version = "0.29", features = ["user"] }
 itertools = "0.12"
 walkdir = "2.5.0"
-
-[profile.release]
-strip = true
-lto = true
-opt-level = "z"
-codegen-units = 1

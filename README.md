@@ -150,6 +150,8 @@ Implementation lives in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automa
 
 Postlab is built with a clean separation between the core logic and the TUI. The `core/` layer can be used independently (e.g., by an API or a future web interface).
 
+> 📖 **TUI layout & mouse capture** — see [`docs/tui.md`](docs/tui.md) for details on screen layout, tab bar positions, and how mouse clicks are dispatched.
+
 ```
 cli/src/
 ├── main.rs                  # clap entry: info | list | tui (default)
