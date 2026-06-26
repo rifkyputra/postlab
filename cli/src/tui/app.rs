@@ -28,8 +28,9 @@ pub enum Screen {
     Networking,
     Docker,
     WasmCloud,
-    Automation,
+    Agent,
     System,
+    Projects,
 }
 
 impl Screen {
@@ -41,8 +42,9 @@ impl Screen {
             Screen::Networking,
             Screen::Docker,
             Screen::WasmCloud,
-            Screen::Automation,
+            Screen::Agent,
             Screen::System,
+            Screen::Projects,
         ]
     }
 
@@ -54,8 +56,9 @@ impl Screen {
             Screen::Networking => "4. Networking",
             Screen::Docker => "5. Docker",
             Screen::WasmCloud => "6. wasmCloud",
-            Screen::Automation => "7. Automation",
+            Screen::Agent => "7. Agent",
             Screen::System => "8. System",
+            Screen::Projects => "9. Projects",
         }
     }
 
@@ -109,17 +112,19 @@ pub enum NetworkingTab {
     #[default]
     Gateway,
     Tunnel,
+    Tailscale,
 }
 
 impl NetworkingTab {
     pub fn all() -> &'static [NetworkingTab] {
-        &[NetworkingTab::Gateway, NetworkingTab::Tunnel]
+        &[NetworkingTab::Gateway, NetworkingTab::Tunnel, NetworkingTab::Tailscale]
     }
 
     pub fn title(&self) -> &'static str {
         match self {
             NetworkingTab::Gateway => "Gateway",
             NetworkingTab::Tunnel => "Tunnel",
+            NetworkingTab::Tailscale => "Tailscale",
         }
     }
 
@@ -197,45 +202,105 @@ impl DashboardTab {
     }
 }
 
-// ── Pi Agent / Automation tabs ────────────────────────────────────────────
+// ── Agent tabs ───────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum PiAgentTab {
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum AgentTab {
+    #[default]
+    Chat,
+    Tools,
+    Tasks,
     Status,
     Sessions,
     Config,
     Auth,
     Skills,
+    Library,
     Logs,
 }
 
-impl PiAgentTab {
-    pub fn all() -> &'static [PiAgentTab] {
+impl AgentTab {
+    pub fn all() -> &'static [AgentTab] {
         &[
-            PiAgentTab::Status,
-            PiAgentTab::Sessions,
-            PiAgentTab::Config,
-            PiAgentTab::Auth,
-            PiAgentTab::Skills,
-            PiAgentTab::Logs,
+            AgentTab::Chat,
+            AgentTab::Tools,
+            AgentTab::Tasks,
+            AgentTab::Status,
+            AgentTab::Sessions,
+            AgentTab::Config,
+            AgentTab::Auth,
+            AgentTab::Skills,
+            AgentTab::Library,
+            AgentTab::Logs,
         ]
     }
     pub fn title(&self) -> &'static str {
         match self {
-            PiAgentTab::Status => "Status",
-            PiAgentTab::Sessions => "Sessions",
-            PiAgentTab::Config => "Config",
-            PiAgentTab::Auth => "Auth",
-            PiAgentTab::Skills => "Skills",
-            PiAgentTab::Logs => "Logs",
+            AgentTab::Chat => "Chat",
+            AgentTab::Tools => "Tools",
+            AgentTab::Tasks => "Tasks",
+            AgentTab::Status => "Status",
+            AgentTab::Sessions => "Sessions",
+            AgentTab::Config => "Config",
+            AgentTab::Auth => "Auth",
+            AgentTab::Skills => "Skills",
+            AgentTab::Library => "Library",
+            AgentTab::Logs => "Logs",
         }
     }
     pub fn index(&self) -> usize {
-        PiAgentTab::all()
-            .iter()
-            .position(|t| t == self)
-            .unwrap_or(0)
+        AgentTab::all().iter().position(|t| t == self).unwrap_or(0)
     }
+}
+
+// ── Projects tabs ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ProjectsTab {
+    #[default]
+    Projects,
+    New,
+    Clone,
+    Settings,
+}
+
+impl ProjectsTab {
+    pub fn all() -> &'static [ProjectsTab] {
+        &[
+            ProjectsTab::Projects,
+            ProjectsTab::New,
+            ProjectsTab::Clone,
+            ProjectsTab::Settings,
+        ]
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            ProjectsTab::Projects => "Projects",
+            ProjectsTab::New => "New",
+            ProjectsTab::Clone => "Clone",
+            ProjectsTab::Settings => "Settings",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::all().iter().position(|t| t == self).unwrap_or(0)
+    }
+}
+
+// ── Agent message types ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AgentRole {
+    User,
+    Assistant,
+    Tool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentMessage {
+    pub role: AgentRole,
+    pub content: String,
 }
 
 // ── Background task results ───────────────────────────────────────────────
@@ -277,6 +342,14 @@ pub enum TaskResult {
     GatewayStatus {
         installed: bool,
         version: Option<String>,
+    },
+    TailscaleStatus {
+        installed: bool,
+        version: Option<String>,
+        backend_state: String,
+        self_ip: Option<String>,
+        self_name: Option<String>,
+        peers: Vec<crate::core::tailscale::TailscalePeer>,
     },
     TunnelStatus {
         installed: bool,
@@ -358,14 +431,33 @@ pub enum TaskResult {
     PiAgentAuth(Vec<crate::core::pi_agent::PiAuthEntry>),
     PiAgentSkills(Vec<crate::core::pi_agent::PiSkill>),
     PiAgentSkillRemoved { name: String, success: bool },
+    PiAgentLibrarySkills(Vec<crate::core::pi_agent::LibrarySkill>),
+    PiAgentLibraryInstall { name: String, success: bool },
     PiAgentLogs(Vec<String>),
     PiAgentActionDone {
         action: String,
         output: String,
         success: bool,
     },
+    PiAgentTasks(Vec<crate::db::agent_tasks::AgentTask>),
+    PiAgentTaskCreated,
+    PiAgentTaskDeleted,
+    PiAgentTaskToggled,
+    PiAgentRpcConnected(crate::core::pi_agent::rpc::RpcHandle),
+    PiAgentRpcStarted,
+    PiAgentRpcStopped,
+    PiAgentTextDelta(String),
+    PiAgentAgentEnd,
+    PiAgentToolStart(String),
+    PiAgentToolEnd { name: String, is_error: bool },
+    PiAgentRpcStderr(String),
+    PiAgentRpcError(String),
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
+    ProjectsList(Vec<crate::core::projects::ProjectEntry>),
+    ProjectsOpProgress { op: String, line: String },
+    ProjectsOpDone { op: String, name: String, success: bool },
+    ProjectsDirLoaded(String),
     Status(String),
     Error(String),
 }
@@ -835,6 +927,20 @@ impl Default for TunnelState {
     }
 }
 
+// ── Tailscale state ───────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct TailscaleState {
+    pub installed: bool,
+    pub version: Option<String>,
+    pub backend_state: String,
+    pub self_ip: Option<String>,
+    pub self_name: Option<String>,
+    pub peers: Vec<crate::core::tailscale::TailscalePeer>,
+    pub peers_state: ListState,
+    pub loading: bool,
+}
+
 // ── Docker state ─────────────────────────────────────────────────────────
 
 pub struct DockerState {
@@ -876,63 +982,6 @@ impl Default for DockerState {
             managed_services: Vec::new(),
             managed_state: TableState::default(),
             loading: false,
-        }
-    }
-}
-
-// ── Automation / Pi Agent state ───────────────────────────────────────────
-
-pub struct AutomationState {
-    pub active_tab: PiAgentTab,
-    pub info: crate::core::pi_agent::PiAgentInfo,
-    pub sessions: Vec<crate::core::pi_agent::PiSession>,
-    pub sessions_state: TableState,
-    pub config_text: String,
-    pub config_scroll: u16,
-    pub config_search: String,
-    pub config_search_mode: InputMode,
-    pub auth_entries: Vec<crate::core::pi_agent::PiAuthEntry>,
-    pub auth_state: TableState,
-    pub skills: Vec<crate::core::pi_agent::PiSkill>,
-    pub skills_state: TableState,
-    pub skills_status: Option<String>,
-    pub logs: Vec<String>,
-    pub logs_scroll: u16,
-    pub logs_follow: bool,
-    pub loading: bool,
-    pub installing: bool,
-    pub install_log: Vec<String>,
-    pub action_output: Option<String>,
-    pub poll_counter: u32,
-}
-
-impl Default for AutomationState {
-    fn default() -> Self {
-        Self {
-            active_tab: PiAgentTab::Status,
-            info: crate::core::pi_agent::PiAgentInfo {
-                installed: false,
-                version: None,
-            },
-            sessions: Vec::new(),
-            sessions_state: TableState::default(),
-            config_text: String::new(),
-            config_scroll: 0,
-            config_search: String::new(),
-            config_search_mode: InputMode::Normal,
-            auth_entries: Vec::new(),
-            auth_state: TableState::default(),
-            skills: Vec::new(),
-            skills_state: TableState::default(),
-            skills_status: None,
-            logs: Vec::new(),
-            logs_scroll: 0,
-            logs_follow: true,
-            loading: false,
-            installing: false,
-            install_log: Vec::new(),
-            action_output: None,
-            poll_counter: 0,
         }
     }
 }
@@ -1193,6 +1242,164 @@ pub struct MaintenanceState {
     pub last_output: String,
 }
 
+// ── Agent screen state ────────────────────────────────────────────────────
+
+pub struct AgentState {
+    pub active_tab: AgentTab,
+    // Chat
+    pub messages: Vec<AgentMessage>,
+    pub input: String,
+    pub input_mode: InputMode,
+    pub streaming: bool,
+    pub rpc_active: bool,
+    pub tool_log: Vec<String>,
+    pub status: String,
+    pub rpc_handle: Option<crate::core::pi_agent::rpc::RpcHandle>,
+    pub pending_prompt: Option<String>,
+    // Tasks
+    pub tasks: Vec<crate::db::agent_tasks::AgentTask>,
+    pub tasks_state: TableState,
+    pub tasks_loading: bool,
+    pub task_form_open: bool,
+    pub task_form_name: String,
+    pub task_form_prompt: String,
+    pub task_form_schedule_idx: usize,
+    pub task_form_focus: usize,
+    pub task_form_mode: InputMode,
+    // Status / management
+    pub info: crate::core::pi_agent::PiAgentInfo,
+    pub sessions: Vec<crate::core::pi_agent::PiSession>,
+    pub sessions_state: TableState,
+    pub config_text: String,
+    pub config_scroll: u16,
+    pub config_search: String,
+    pub config_search_mode: InputMode,
+    pub auth_entries: Vec<crate::core::pi_agent::PiAuthEntry>,
+    pub auth_state: TableState,
+    pub skills: Vec<crate::core::pi_agent::PiSkill>,
+    pub skills_state: TableState,
+    pub skills_status: Option<String>,
+    pub library_skills: Vec<crate::core::pi_agent::LibrarySkill>,
+    pub library_state: TableState,
+    pub library_status: Option<String>,
+    pub logs: Vec<String>,
+    pub logs_scroll: u16,
+    pub logs_follow: bool,
+    pub loading: bool,
+    pub installing: bool,
+    pub install_log: Vec<String>,
+    pub action_output: Option<String>,
+    pub poll_counter: u32,
+}
+
+impl Default for AgentState {
+    fn default() -> Self {
+        Self {
+            active_tab: AgentTab::Chat,
+            messages: Vec::new(),
+            input: String::new(),
+            input_mode: InputMode::Normal,
+            streaming: false,
+            rpc_active: false,
+            tool_log: Vec::new(),
+            status: "Disconnected".to_string(),
+            rpc_handle: None,
+            pending_prompt: None,
+            tasks: Vec::new(),
+            tasks_state: TableState::default(),
+            tasks_loading: false,
+            task_form_open: false,
+            task_form_name: String::new(),
+            task_form_prompt: String::new(),
+            task_form_schedule_idx: 1,
+            task_form_focus: 0,
+            task_form_mode: InputMode::Normal,
+            info: crate::core::pi_agent::PiAgentInfo {
+                installed: false,
+                version: None,
+            },
+            sessions: Vec::new(),
+            sessions_state: TableState::default(),
+            config_text: String::new(),
+            config_scroll: 0,
+            config_search: String::new(),
+            config_search_mode: InputMode::Normal,
+            auth_entries: Vec::new(),
+            auth_state: TableState::default(),
+            skills: Vec::new(),
+            skills_state: TableState::default(),
+            skills_status: None,
+            library_skills: Vec::new(),
+            library_state: TableState::default(),
+            library_status: None,
+            logs: Vec::new(),
+            logs_scroll: 0,
+            logs_follow: true,
+            loading: false,
+            installing: false,
+            install_log: Vec::new(),
+            action_output: None,
+            poll_counter: 0,
+        }
+    }
+}
+
+// ── Projects state ────────────────────────────────────────────────────────
+
+pub struct ProjectsState {
+    pub active_tab: ProjectsTab,
+    // Projects list tab
+    pub list: Vec<crate::core::projects::ProjectEntry>,
+    pub list_state: ListState,
+    pub loading: bool,
+    // New tab
+    pub new_name: String,
+    pub new_output: Vec<String>,
+    pub new_running: bool,
+    pub new_input_mode: InputMode,
+    // Clone tab
+    pub clone_url: String,
+    pub clone_output: Vec<String>,
+    pub clone_running: bool,
+    pub clone_input_mode: InputMode,
+    // Settings tab
+    pub dir: String,
+    pub dir_input: String,
+    pub dir_input_mode: InputMode,
+}
+
+impl Default for ProjectsState {
+    fn default() -> Self {
+        Self {
+            active_tab: ProjectsTab::Projects,
+            list: Vec::new(),
+            list_state: ListState::default(),
+            loading: false,
+            new_name: String::new(),
+            new_output: Vec::new(),
+            new_running: false,
+            new_input_mode: InputMode::Normal,
+            clone_url: String::new(),
+            clone_output: Vec::new(),
+            clone_running: false,
+            clone_input_mode: InputMode::Normal,
+            dir: String::new(),
+            dir_input: String::new(),
+            dir_input_mode: InputMode::Normal,
+        }
+    }
+}
+
+// ── Agent overlay state ───────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct AgentOverlayState {
+    pub open: bool,
+    pub context_label: String,
+    pub context_body: String,
+    pub question: String,
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────
 
 pub struct App {
@@ -1211,6 +1418,7 @@ pub struct App {
     pub security: SecurityState,
     pub resources: ResourcesState,
     pub gateway: GatewayState,
+    pub tailscale: TailscaleState,
     pub tunnel: TunnelState,
     pub docker: DockerState,
     pub firewall: FirewallState,
@@ -1221,15 +1429,18 @@ pub struct App {
     pub users: UsersState,
     pub services: ServicesState,
     pub maintenance: MaintenanceState,
-    pub automation: AutomationState,
+    pub agent: AgentState,
     pub swap: SwapState,
+    pub projects: ProjectsState,
 
     pub terminal_width: u16,
+    pub scheduler_tick: u32,
 
     // Background task channel
     pub task_tx: mpsc::UnboundedSender<TaskResult>,
     pub task_rx: mpsc::UnboundedReceiver<TaskResult>,
 
+    pub overlay: AgentOverlayState,
     pub confirm: Option<ConfirmDialog>,
     pub status_msg: Option<String>,
     pub last_tick: Instant,
@@ -1252,6 +1463,7 @@ impl App {
             security: SecurityState::default(),
             resources: ResourcesState::default(),
             gateway: GatewayState::default(),
+            tailscale: TailscaleState::default(),
             tunnel: TunnelState::default(),
             docker: DockerState::default(),
             firewall: FirewallState::default(),
@@ -1262,10 +1474,13 @@ impl App {
             users: UsersState::default(),
             services: ServicesState::default(),
             maintenance: MaintenanceState::default(),
-            automation: AutomationState::default(),
+            agent: AgentState::default(),
             swap: SwapState::default(),
+            projects: ProjectsState::default(),
             task_tx,
             task_rx,
+            scheduler_tick: 0,
+            overlay: AgentOverlayState::default(),
             confirm: None,
             status_msg: None,
             last_tick: Instant::now(),
@@ -1298,6 +1513,7 @@ impl App {
                 self.spawn_load_tunnels();
                 let id = self.tunnel.active_tunnel_id.clone();
                 self.spawn_tunnel_extras(id);
+                self.spawn_load_tailscale();
             }
             Screen::Docker => {
                 self.spawn_load_docker();
@@ -1307,11 +1523,19 @@ impl App {
                 self.spawn_load_wasm_cloud();
                 self.spawn_poll_nats_status();
             }
-            Screen::Automation => {
+            Screen::Agent => {
                 self.spawn_load_pi_agent_status();
+                self.spawn_load_agent_tasks();
             }
             Screen::System => {
                 self.spawn_load_system_tab(self.system_tab.clone());
+            }
+            Screen::Projects => {
+                if self.projects.dir.is_empty() {
+                    self.spawn_projects_load_dir();
+                } else {
+                    self.spawn_load_projects();
+                }
             }
         }
     }
@@ -1656,6 +1880,121 @@ impl App {
                     Err(e) => {
                         let _ = tx.send(TaskResult::Error(e.to_string()));
                     }
+                }
+            }
+        });
+    }
+
+    pub fn spawn_load_tailscale(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.tailscale.loading = true;
+        tokio::spawn(async move {
+            let installed = platform.tailscale.is_installed().await;
+            let version = platform.tailscale.version().await;
+            let (backend_state, self_ip, self_name, peers) = if installed {
+                match platform.tailscale.status().await {
+                    Ok(s) => (s.backend_state, s.self_ip, s.self_name, s.peers),
+                    Err(_) => (String::new(), None, None, Vec::new()),
+                }
+            } else {
+                (String::new(), None, None, Vec::new())
+            };
+            let _ = tx.send(TaskResult::TailscaleStatus {
+                installed,
+                version,
+                backend_state,
+                self_ip,
+                self_name,
+                peers,
+            });
+        });
+    }
+
+    pub fn spawn_install_tailscale(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.status_msg = Some("Installing Tailscale…".to_string());
+        tokio::spawn(async move {
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::InstallProgress {
+                        target: "tailscale".to_string(),
+                        line,
+                    });
+                }
+            });
+            let result = platform.tailscale.install(ptx).await;
+            let _ = fwd.await;
+            let success = result.is_ok();
+            let installed = platform.tailscale.is_installed().await;
+            let version = platform.tailscale.version().await;
+            let _ = tx.send(TaskResult::TailscaleStatus {
+                installed,
+                version,
+                backend_state: String::new(),
+                self_ip: None,
+                self_name: None,
+                peers: Vec::new(),
+            });
+            let _ = tx.send(TaskResult::InstallDone {
+                target: "tailscale".to_string(),
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_tailscale_up(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.status_msg = Some("Running tailscale up…".to_string());
+        tokio::spawn(async move {
+            match platform.tailscale.up().await {
+                Ok(()) => {
+                    if let Ok(s) = platform.tailscale.status().await {
+                        let installed = true;
+                        let version = platform.tailscale.version().await;
+                        let _ = tx.send(TaskResult::TailscaleStatus {
+                            installed,
+                            version,
+                            backend_state: s.backend_state,
+                            self_ip: s.self_ip,
+                            self_name: s.self_name,
+                            peers: s.peers,
+                        });
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_tailscale_down(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.status_msg = Some("Running tailscale down…".to_string());
+        tokio::spawn(async move {
+            match platform.tailscale.down().await {
+                Ok(()) => {
+                    if let Ok(s) = platform.tailscale.status().await {
+                        let installed = true;
+                        let version = platform.tailscale.version().await;
+                        let _ = tx.send(TaskResult::TailscaleStatus {
+                            installed,
+                            version,
+                            backend_state: s.backend_state,
+                            self_ip: s.self_ip,
+                            self_name: s.self_name,
+                            peers: s.peers,
+                        });
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
                 }
             }
         });
@@ -2803,6 +3142,129 @@ impl App {
         });
     }
 
+    // ── Projects spawn methods ────────────────────────────────────────────
+
+    pub fn spawn_projects_load_dir(&mut self) {
+        let tx = self.task_tx.clone();
+        let pool = self.pool.clone();
+        tokio::spawn(async move {
+            let row = sqlx::query_as::<_, (String,)>(
+                "SELECT value FROM projects_config WHERE key = 'projects_dir'",
+            )
+            .fetch_optional(&pool)
+            .await;
+            let dir = match row {
+                Ok(Some((v,))) => v,
+                _ => "~/projects".to_string(),
+            };
+            let _ = tx.send(TaskResult::ProjectsDirLoaded(dir));
+        });
+    }
+
+    pub fn spawn_projects_save_dir(&mut self, dir: String) {
+        let tx = self.task_tx.clone();
+        let pool = self.pool.clone();
+        self.projects.dir = dir.clone();
+        self.projects.dir_input = dir.clone();
+        tokio::spawn(async move {
+            let _ = sqlx::query(
+                "INSERT OR REPLACE INTO projects_config (key, value) VALUES ('projects_dir', ?)",
+            )
+            .bind(&dir)
+            .execute(&pool)
+            .await;
+            let _ = tx.send(TaskResult::Status("Projects directory saved".to_string()));
+        });
+    }
+
+    pub fn spawn_load_projects(&mut self) {
+        let tx = self.task_tx.clone();
+        let dir = self.projects.dir.clone();
+        self.projects.loading = true;
+        tokio::spawn(async move {
+            let mgr = crate::core::projects::ProjectsManager;
+            match mgr.list(&dir).await {
+                Ok(list) => {
+                    let _ = tx.send(TaskResult::ProjectsList(list));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_projects_scaffold(&mut self, name: String) {
+        let tx = self.task_tx.clone();
+        let dir = self.projects.dir.clone();
+        self.projects.new_running = true;
+        self.projects.new_output.clear();
+        tokio::spawn(async move {
+            let mgr = crate::core::projects::ProjectsManager;
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::ProjectsOpProgress {
+                        op: "new".to_string(),
+                        line,
+                    });
+                }
+            });
+            let result = mgr.scaffold_new(&name, &dir, ptx).await;
+            let _ = fwd.await;
+            let success = result.is_ok();
+            if let Err(ref e) = result {
+                let _ = tx.send(TaskResult::ProjectsOpProgress {
+                    op: "new".to_string(),
+                    line: format!("Error: {}", e),
+                });
+            }
+            let _ = tx.send(TaskResult::ProjectsOpDone {
+                op: "new".to_string(),
+                name,
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_projects_clone(&mut self, url: String) {
+        let tx = self.task_tx.clone();
+        let dir = self.projects.dir.clone();
+        self.projects.clone_running = true;
+        self.projects.clone_output.clear();
+        tokio::spawn(async move {
+            let mgr = crate::core::projects::ProjectsManager;
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::ProjectsOpProgress {
+                        op: "clone".to_string(),
+                        line,
+                    });
+                }
+            });
+            let result = mgr.clone_repo(&url, &dir, ptx).await;
+            let _ = fwd.await;
+            let (name, success) = match result {
+                Ok(n) => (n, true),
+                Err(e) => {
+                    let _ = tx.send(TaskResult::ProjectsOpProgress {
+                        op: "clone".to_string(),
+                        line: format!("Error: {}", e),
+                    });
+                    (String::new(), false)
+                }
+            };
+            let _ = tx.send(TaskResult::ProjectsOpDone {
+                op: "clone".to_string(),
+                name,
+                success,
+            });
+        });
+    }
+
     pub fn spawn_service_action(&mut self, name: String, op: String) {
         let platform = Arc::clone(&self.platform);
         let tx = self.task_tx.clone();
@@ -2858,7 +3320,7 @@ impl App {
 
     pub fn spawn_load_pi_agent_status(&mut self) {
         let tx = self.task_tx.clone();
-        self.automation.loading = true;
+        self.agent.loading = true;
         tokio::spawn(async move {
             let info = crate::core::pi_agent::get_info().await;
             let _ = tx.send(TaskResult::PiAgentInfo(info));
@@ -2905,6 +3367,22 @@ impl App {
         });
     }
 
+    pub fn spawn_load_pi_agent_library(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let skills = crate::core::pi_agent::list_library_skills().await;
+            let _ = tx.send(TaskResult::PiAgentLibrarySkills(skills));
+        });
+    }
+
+    pub fn spawn_pi_agent_install_skill(&mut self, name: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let success = crate::core::pi_agent::install_library_skill(&name).await.is_ok();
+            let _ = tx.send(TaskResult::PiAgentLibraryInstall { name, success });
+        });
+    }
+
     pub fn spawn_load_pi_agent_logs(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
@@ -2939,8 +3417,8 @@ impl App {
 
     pub fn spawn_pi_agent_install(&mut self) {
         let tx = self.task_tx.clone();
-        self.automation.installing = true;
-        self.automation.install_log.clear();
+        self.agent.installing = true;
+        self.agent.install_log.clear();
         tokio::spawn(async move {
             let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
             let tx_fwd = tx.clone();
@@ -2957,6 +3435,379 @@ impl App {
             };
             let _ = tx.send(TaskResult::PiAgentInstallDone { output, success });
         });
+    }
+
+    // ── Agent RPC methods ─────────────────────────────────────────────────
+
+    pub fn spawn_start_agent_rpc(&mut self) {
+        if self.agent.rpc_active {
+            return;
+        }
+        self.agent.status = "Connecting…".to_string();
+        let task_tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let (event_tx, mut event_rx) =
+                tokio::sync::mpsc::unbounded_channel::<crate::core::pi_agent::rpc::PiRpcEvent>();
+
+            // Bridge: PiRpcEvent → TaskResult
+            let task_tx2 = task_tx.clone();
+            tokio::spawn(async move {
+                use crate::core::pi_agent::rpc::PiRpcEvent;
+                while let Some(ev) = event_rx.recv().await {
+                    let r = match ev {
+                        PiRpcEvent::AgentStart => TaskResult::PiAgentRpcStarted,
+                        PiRpcEvent::TextDelta(d) => TaskResult::PiAgentTextDelta(d),
+                        PiRpcEvent::AgentEnd => TaskResult::PiAgentAgentEnd,
+                        PiRpcEvent::ToolStart(n) => TaskResult::PiAgentToolStart(n),
+                        PiRpcEvent::ToolEnd { name, is_error } => {
+                            TaskResult::PiAgentToolEnd { name, is_error }
+                        }
+                        PiRpcEvent::Error(e) => TaskResult::PiAgentRpcError(e),
+                        PiRpcEvent::Stderr(line) => TaskResult::PiAgentRpcStderr(line),
+                        PiRpcEvent::Stopped => {
+                            let _ = task_tx2.send(TaskResult::PiAgentRpcStopped);
+                            break;
+                        }
+                    };
+                    if task_tx2.send(r).is_err() {
+                        break;
+                    }
+                }
+            });
+
+            let (provider, model) = crate::core::pi_agent::default_provider_model().await;
+            match crate::core::pi_agent::rpc::spawn_rpc(&provider, &model, event_tx).await {
+                Ok(handle) => {
+                    let _ = task_tx.send(TaskResult::PiAgentRpcConnected(handle));
+                }
+                Err(e) => {
+                    let _ = task_tx.send(TaskResult::PiAgentRpcError(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn send_agent_prompt(&mut self, text: String) {
+        self.agent.messages.push(AgentMessage {
+            role: AgentRole::User,
+            content: text.clone(),
+        });
+        if let Some(ref handle) = self.agent.rpc_handle {
+            let cmd = serde_json::json!({"type": "prompt", "message": text});
+            let _ = handle.cmd_tx.send(cmd);
+            self.agent.streaming = true;
+            self.agent.status = "Streaming…".to_string();
+        } else {
+            self.agent.messages.push(AgentMessage {
+                role: AgentRole::Tool,
+                content: "Not connected — press [s] to start a session".to_string(),
+            });
+        }
+    }
+
+    pub fn stop_agent_rpc(&mut self) {
+        self.agent.rpc_handle = None;
+        self.agent.rpc_active = false;
+        self.agent.streaming = false;
+        self.agent.status = "Disconnected".to_string();
+    }
+
+    // ── Agent task CRUD ───────────────────────────────────────────────────
+
+    pub fn spawn_load_agent_tasks(&mut self) {
+        if self.agent.tasks_loading {
+            return;
+        }
+        self.agent.tasks_loading = true;
+        let pool = self.pool.clone();
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let tasks = crate::db::agent_tasks::list_tasks(&pool)
+                .await
+                .unwrap_or_default();
+            let _ = tx.send(TaskResult::PiAgentTasks(tasks));
+        });
+    }
+
+    pub fn spawn_create_agent_task(&mut self, name: String, prompt: String, schedule: String) {
+        let pool = self.pool.clone();
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let _ = crate::db::agent_tasks::create_task(&pool, &name, &prompt, &schedule).await;
+            let tasks = crate::db::agent_tasks::list_tasks(&pool)
+                .await
+                .unwrap_or_default();
+            let _ = tx.send(TaskResult::PiAgentTaskCreated);
+            let _ = tx.send(TaskResult::PiAgentTasks(tasks));
+        });
+    }
+
+    pub fn spawn_delete_agent_task(&mut self, id: i64) {
+        let pool = self.pool.clone();
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let _ = crate::db::agent_tasks::delete_task(&pool, id).await;
+            let tasks = crate::db::agent_tasks::list_tasks(&pool)
+                .await
+                .unwrap_or_default();
+            let _ = tx.send(TaskResult::PiAgentTaskDeleted);
+            let _ = tx.send(TaskResult::PiAgentTasks(tasks));
+        });
+    }
+
+    pub fn spawn_toggle_agent_task(&mut self, id: i64, enabled: bool) {
+        let pool = self.pool.clone();
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let _ = crate::db::agent_tasks::toggle_task(&pool, id, enabled).await;
+            let tasks = crate::db::agent_tasks::list_tasks(&pool)
+                .await
+                .unwrap_or_default();
+            let _ = tx.send(TaskResult::PiAgentTaskToggled);
+            let _ = tx.send(TaskResult::PiAgentTasks(tasks));
+        });
+    }
+
+    // ── Scheduler ─────────────────────────────────────────────────────────
+
+    pub async fn check_scheduled_tasks(&mut self) {
+        if !self.agent.rpc_active || self.agent.streaming || self.agent.tasks.is_empty() {
+            return;
+        }
+        let now = chrono::Utc::now().timestamp();
+
+        let due = self
+            .agent
+            .tasks
+            .iter()
+            .find(|t| {
+                if !t.enabled {
+                    return false;
+                }
+                let interval = crate::db::agent_tasks::schedule_secs(&t.schedule);
+                match t.last_run_at {
+                    None => true,
+                    Some(last) => now - last >= interval,
+                }
+            })
+            .map(|t| (t.id, t.name.clone(), t.prompt.clone()));
+
+        if let Some((id, name, prompt)) = due {
+            let full_prompt = format!("[Scheduled: {}]\n{}", name, prompt);
+            self.send_agent_prompt(full_prompt);
+
+            // Optimistic in-memory update
+            if let Some(t) = self.agent.tasks.iter_mut().find(|t| t.id == id) {
+                t.last_run_at = Some(now);
+            }
+
+            let pool = self.pool.clone();
+            let tx = self.task_tx.clone();
+            tokio::spawn(async move {
+                let _ = crate::db::agent_tasks::mark_run(&pool, id, "sent", true).await;
+                let tasks = crate::db::agent_tasks::list_tasks(&pool)
+                    .await
+                    .unwrap_or_default();
+                let _ = tx.send(TaskResult::PiAgentTasks(tasks));
+            });
+        }
+    }
+
+    // ── Context overlay ───────────────────────────────────────────────────
+
+    pub fn open_agent_overlay(&mut self) {
+        let (label, context, question) = self.build_overlay_context();
+        self.overlay.open = true;
+        self.overlay.context_label = label;
+        self.overlay.context_body = context;
+        self.overlay.question = question;
+    }
+
+    pub fn close_agent_overlay(&mut self) {
+        self.overlay.open = false;
+        self.overlay.question.clear();
+        self.overlay.context_body.clear();
+        self.overlay.context_label.clear();
+    }
+
+    pub fn send_overlay_prompt(&mut self) {
+        let prompt = if self.overlay.context_body.is_empty() {
+            self.overlay.question.trim().to_string()
+        } else {
+            format!(
+                "Context ({}):\n{}\n\nQuestion: {}",
+                self.overlay.context_label,
+                self.overlay.context_body,
+                self.overlay.question.trim()
+            )
+        };
+        self.close_agent_overlay();
+        if self.agent.rpc_active {
+            self.send_agent_prompt(prompt);
+        } else {
+            self.agent.pending_prompt = Some(prompt);
+            self.spawn_start_agent_rpc();
+        }
+        self.set_screen(Screen::Agent);
+    }
+
+    fn build_overlay_context(&self) -> (String, String, String) {
+        match &self.screen {
+            Screen::Dashboard => {
+                let mut lines = Vec::new();
+                if let Some(info) = &self.dashboard.os_info {
+                    let h = info.uptime_secs / 3600;
+                    let m = (info.uptime_secs % 3600) / 60;
+                    lines.push(format!("Host: {}  OS: {}", info.hostname, info.distro));
+                    lines.push(format!("Uptime: {}h {}m  CPUs: {}", h, m, info.cpu_count));
+                }
+                if !self.dashboard.cpu_pct.is_empty() {
+                    let avg = self.dashboard.cpu_pct.iter().sum::<f32>()
+                        / self.dashboard.cpu_pct.len() as f32;
+                    lines.push(format!("CPU: {:.1}%", avg));
+                }
+                if let Some(mem) = &self.dashboard.mem {
+                    let pct = (mem.used * 100).checked_div(mem.total).unwrap_or(0);
+                    lines.push(format!(
+                        "Memory: {}% ({:.1}/{:.1} GB)",
+                        pct,
+                        mem.used as f64 / 1_073_741_824.0,
+                        mem.total as f64 / 1_073_741_824.0
+                    ));
+                }
+                for disk in &self.dashboard.disks {
+                    let pct = (disk.used * 100).checked_div(disk.total).unwrap_or(0);
+                    lines.push(format!(
+                        "Disk {}: {}% ({:.1}/{:.1} GB)",
+                        disk.mount,
+                        pct,
+                        disk.used as f64 / 1_073_741_824.0,
+                        disk.total as f64 / 1_073_741_824.0
+                    ));
+                }
+                let ctx = if lines.is_empty() {
+                    "System data loading…".to_string()
+                } else {
+                    lines.join("\n")
+                };
+                (
+                    "Dashboard".to_string(),
+                    ctx,
+                    "Analyze my system health and flag anything concerning.".to_string(),
+                )
+            }
+            Screen::Security => {
+                let mut lines = Vec::new();
+                lines.push(format!(
+                    "Findings: {} total",
+                    self.security.findings.len()
+                ));
+                for f in self.security.findings.iter().take(6) {
+                    lines.push(format!("  [{}] {}", f.severity.label(), f.title));
+                }
+                if self.security.findings.len() > 6 {
+                    lines.push(format!(
+                        "  … and {} more",
+                        self.security.findings.len() - 6
+                    ));
+                }
+                if let Some(fw) = self.firewall.enabled {
+                    lines.push(format!(
+                        "Firewall: {} ({})",
+                        if fw { "enabled" } else { "disabled" },
+                        self.firewall.backend
+                    ));
+                }
+                let ctx = lines.join("\n");
+                (
+                    "Security".to_string(),
+                    ctx,
+                    "Review my security posture and recommend fixes for the most critical issues."
+                        .to_string(),
+                )
+            }
+            Screen::Docker => {
+                let mut lines = Vec::new();
+                let running = self
+                    .docker
+                    .containers
+                    .iter()
+                    .filter(|c| c.status.contains("Up"))
+                    .count();
+                lines.push(format!(
+                    "Containers: {} running / {} total",
+                    running,
+                    self.docker.containers.len()
+                ));
+                for c in self.docker.containers.iter().take(6) {
+                    lines.push(format!("  {} — {} ({})", c.name, c.status, c.image));
+                }
+                if self.docker.containers.len() > 6 {
+                    lines.push(format!("  … and {} more", self.docker.containers.len() - 6));
+                }
+                let ctx = if lines.is_empty() {
+                    "No containers loaded yet.".to_string()
+                } else {
+                    lines.join("\n")
+                };
+                (
+                    "Docker".to_string(),
+                    ctx,
+                    "Review my container setup and flag any issues or suggest improvements."
+                        .to_string(),
+                )
+            }
+            Screen::Networking => {
+                let mut lines = Vec::new();
+                let gw = if self.gateway.installed {
+                    self.gateway.version.as_deref().unwrap_or("installed")
+                } else {
+                    "not installed"
+                };
+                lines.push(format!("Caddy: {} ({} routes)", gw, self.gateway.routes.len()));
+                for r in self.gateway.routes.iter().take(5) {
+                    lines.push(format!("  {} → :{}", r.domain, r.port));
+                }
+                lines.push(format!("Tunnels: {}", self.tunnel.tunnels.len()));
+                (
+                    "Networking".to_string(),
+                    lines.join("\n"),
+                    "Review my network config and suggest improvements.".to_string(),
+                )
+            }
+            Screen::System => {
+                let failed: Vec<_> = self
+                    .services
+                    .list
+                    .iter()
+                    .filter(|s| s.sub_state == "failed")
+                    .collect();
+                let mut lines = vec![format!(
+                    "Services: {} total ({} failed)",
+                    self.services.list.len(),
+                    failed.len()
+                )];
+                for s in failed.iter().take(4) {
+                    lines.push(format!("  ✗ {}", s.name));
+                }
+                lines.push(format!("Users: {}", self.users.users.len()));
+                (
+                    "System".to_string(),
+                    lines.join("\n"),
+                    "Review my services and flag any failures or concerns.".to_string(),
+                )
+            }
+            Screen::Packages => (
+                "Packages".to_string(),
+                format!("Installed packages: {}", self.packages.installed.len()),
+                "What packages should I check or update for security?".to_string(),
+            ),
+            _ => (
+                self.screen.title().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.').trim().to_string(),
+                String::new(),
+                "What can you help me with on this server?".to_string(),
+            ),
+        }
     }
 
     pub fn drain_task_results(&mut self) {
@@ -3162,6 +4013,27 @@ impl App {
             TaskResult::TunnelServiceStatus { active, enabled } => {
                 self.tunnel.service_active = Some(active);
                 self.tunnel.service_enabled = Some(enabled);
+            }
+            TaskResult::TailscaleStatus {
+                installed,
+                version,
+                backend_state,
+                self_ip,
+                self_name,
+                peers,
+            } => {
+                self.tailscale.installed = installed;
+                self.tailscale.version = version;
+                self.tailscale.backend_state = backend_state;
+                self.tailscale.self_ip = self_ip;
+                self.tailscale.self_name = self_name;
+                self.tailscale.peers = peers;
+                self.tailscale.loading = false;
+                if self.tailscale.peers_state.selected().is_none()
+                    && !self.tailscale.peers.is_empty()
+                {
+                    self.tailscale.peers_state.select(Some(0));
+                }
             }
             TaskResult::TunnelStatus { installed, version } => {
                 self.tunnel.installed = installed;
@@ -3379,11 +4251,11 @@ impl App {
                 ));
             }
             TaskResult::PiAgentInstallProgress(line) => {
-                self.automation.install_log.push(line);
+                self.agent.install_log.push(line);
             }
             TaskResult::PiAgentInstallDone { output, success } => {
-                self.automation.installing = false;
-                self.automation.install_log.push(output.clone());
+                self.agent.installing = false;
+                self.agent.install_log.push(output.clone());
                 self.status_msg = Some(if success {
                     "pi installed — press [r] to refresh".to_string()
                 } else {
@@ -3394,50 +4266,66 @@ impl App {
                 }
             }
             TaskResult::PiAgentInfo(info) => {
-                self.automation.loading = false;
-                self.automation.info = info;
+                self.agent.loading = false;
+                self.agent.info = info;
             }
             TaskResult::PiAgentSessions(sessions) => {
-                self.automation.sessions = sessions;
-                if self.automation.sessions_state.selected().is_none()
-                    && !self.automation.sessions.is_empty()
+                self.agent.sessions = sessions;
+                if self.agent.sessions_state.selected().is_none()
+                    && !self.agent.sessions.is_empty()
                 {
-                    self.automation.sessions_state.select(Some(0));
+                    self.agent.sessions_state.select(Some(0));
                 }
             }
             TaskResult::PiAgentConfig(text) => {
-                self.automation.config_text = text;
-                self.automation.config_scroll = 0;
+                self.agent.config_text = text;
+                self.agent.config_scroll = 0;
             }
             TaskResult::PiAgentAuth(entries) => {
-                self.automation.auth_entries = entries;
-                if self.automation.auth_state.selected().is_none()
-                    && !self.automation.auth_entries.is_empty()
+                self.agent.auth_entries = entries;
+                if self.agent.auth_state.selected().is_none()
+                    && !self.agent.auth_entries.is_empty()
                 {
-                    self.automation.auth_state.select(Some(0));
+                    self.agent.auth_state.select(Some(0));
                 }
             }
             TaskResult::PiAgentSkills(skills) => {
-                self.automation.skills = skills;
-                if self.automation.skills_state.selected().is_none()
-                    && !self.automation.skills.is_empty()
+                self.agent.skills = skills;
+                if self.agent.skills_state.selected().is_none()
+                    && !self.agent.skills.is_empty()
                 {
-                    self.automation.skills_state.select(Some(0));
+                    self.agent.skills_state.select(Some(0));
                 }
             }
             TaskResult::PiAgentSkillRemoved { name, success } => {
-                self.automation.skills_status = Some(if success {
+                self.agent.skills_status = Some(if success {
                     format!("Removed skill '{}'", name)
                 } else {
                     format!("Failed to remove '{}'", name)
                 });
                 self.spawn_load_pi_agent_skills();
             }
+            TaskResult::PiAgentLibrarySkills(skills) => {
+                self.agent.library_skills = skills;
+                if self.agent.library_state.selected().is_none()
+                    && !self.agent.library_skills.is_empty()
+                {
+                    self.agent.library_state.select(Some(0));
+                }
+            }
+            TaskResult::PiAgentLibraryInstall { name, success } => {
+                self.agent.library_status = Some(if success {
+                    format!("Installed '{}'", name)
+                } else {
+                    format!("Failed to install '{}'", name)
+                });
+                self.spawn_load_pi_agent_library();
+            }
             TaskResult::PiAgentLogs(lines) => {
-                self.automation.logs = lines;
-                if self.automation.logs_follow {
-                    self.automation.logs_scroll =
-                        (self.automation.logs.len() as u16).saturating_sub(20);
+                self.agent.logs = lines;
+                if self.agent.logs_follow {
+                    self.agent.logs_scroll =
+                        (self.agent.logs.len() as u16).saturating_sub(20);
                 }
             }
             TaskResult::PiAgentActionDone {
@@ -3445,7 +4333,7 @@ impl App {
                 output,
                 success,
             } => {
-                self.automation.action_output = Some(output.clone());
+                self.agent.action_output = Some(output.clone());
                 self.status_msg = Some(if success {
                     format!("pi {} — done", action)
                 } else {
@@ -3459,6 +4347,78 @@ impl App {
                     "update_check" | "update_apply" => self.spawn_load_pi_agent_status(),
                     _ => {}
                 }
+            }
+            TaskResult::PiAgentTasks(tasks) => {
+                self.agent.tasks = tasks;
+                self.agent.tasks_loading = false;
+                if self.agent.tasks_state.selected().is_none() && !self.agent.tasks.is_empty() {
+                    self.agent.tasks_state.select(Some(0));
+                }
+            }
+            TaskResult::PiAgentTaskCreated => {
+                self.status_msg = Some("Task created".to_string());
+            }
+            TaskResult::PiAgentTaskDeleted => {
+                self.status_msg = Some("Task deleted".to_string());
+            }
+            TaskResult::PiAgentTaskToggled => {}
+            TaskResult::PiAgentRpcConnected(handle) => {
+                self.agent.rpc_handle = Some(handle);
+                self.agent.rpc_active = true;
+                self.agent.status = "Idle".to_string();
+                self.status_msg = Some("Agent connected — press [i] or Enter to chat".to_string());
+                if let Some(prompt) = self.agent.pending_prompt.take() {
+                    self.send_agent_prompt(prompt);
+                }
+            }
+            TaskResult::PiAgentRpcStarted => {
+                self.agent.status = "Streaming…".to_string();
+            }
+            TaskResult::PiAgentRpcStopped => {
+                self.agent.rpc_handle = None;
+                self.agent.rpc_active = false;
+                self.agent.streaming = false;
+                self.agent.status = "Disconnected".to_string();
+            }
+            TaskResult::PiAgentTextDelta(delta) => {
+                self.agent.streaming = true;
+                match self.agent.messages.last_mut() {
+                    Some(msg) if msg.role == AgentRole::Assistant => {
+                        msg.content.push_str(&delta);
+                    }
+                    _ => {
+                        self.agent.messages.push(AgentMessage {
+                            role: AgentRole::Assistant,
+                            content: delta,
+                        });
+                    }
+                }
+            }
+            TaskResult::PiAgentAgentEnd => {
+                self.agent.streaming = false;
+                self.agent.status = "Idle".to_string();
+            }
+            TaskResult::PiAgentToolStart(name) => {
+                self.agent.tool_log.push(format!("→ {}", name));
+                self.agent.messages.push(AgentMessage {
+                    role: AgentRole::Tool,
+                    content: format!("→ {}", name),
+                });
+            }
+            TaskResult::PiAgentToolEnd { name, is_error } => {
+                let symbol = if is_error { "✗" } else { "✓" };
+                self.agent.tool_log.push(format!("{} {}", symbol, name));
+            }
+            TaskResult::PiAgentRpcError(e) => {
+                self.agent.streaming = false;
+                self.agent.status = format!("Error: {}", e);
+                self.status_msg = Some(format!("Agent error: {}", e));
+            }
+            TaskResult::PiAgentRpcStderr(line) => {
+                self.agent.messages.push(AgentMessage {
+                    role: AgentRole::Tool,
+                    content: format!("[stderr] {}", line),
+                });
             }
             TaskResult::SwapLoaded(status) => {
                 if self.swap.table_state.selected().is_none() && !status.entries.is_empty() {
@@ -3475,11 +4435,62 @@ impl App {
                 });
                 self.spawn_load_swap();
             }
+            TaskResult::ProjectsList(list) => {
+                self.projects.list = list;
+                self.projects.loading = false;
+                if self.projects.list_state.selected().is_none() && !self.projects.list.is_empty() {
+                    self.projects.list_state.select(Some(0));
+                }
+            }
+            TaskResult::ProjectsOpProgress { op, line } => match op.as_str() {
+                "new" => self.projects.new_output.push(line),
+                "clone" => self.projects.clone_output.push(line),
+                _ => {}
+            },
+            TaskResult::ProjectsOpDone { op, name, success } => {
+                match op.as_str() {
+                    "new" => {
+                        self.projects.new_running = false;
+                        self.status_msg = Some(if success {
+                            format!("Created project '{}'", name)
+                        } else {
+                            "Scaffold failed — see output".to_string()
+                        });
+                        if success {
+                            self.spawn_load_projects();
+                        }
+                    }
+                    "clone" => {
+                        self.projects.clone_running = false;
+                        self.status_msg = Some(if success {
+                            format!("Cloned '{}' into {}", name, self.projects.dir)
+                        } else {
+                            "Clone failed — see output".to_string()
+                        });
+                        if success {
+                            self.spawn_load_projects();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            TaskResult::ProjectsDirLoaded(dir) => {
+                self.projects.dir = dir.clone();
+                self.projects.dir_input = dir;
+                if self.screen == Screen::Projects
+                    && self.projects.active_tab == ProjectsTab::Projects
+                {
+                    self.spawn_load_projects();
+                }
+            }
             TaskResult::Error(e) => {
                 self.portchecker.ip_loading = false;
                 self.portchecker.checking = false;
                 self.ghost.scanning = false;
                 self.swap.loading = false;
+                self.projects.loading = false;
+                self.projects.new_running = false;
+                self.projects.clone_running = false;
                 self.status_msg = Some(format!("Error: {}", e));
             }
         }
@@ -3557,14 +4568,19 @@ impl App {
                     self.spawn_poll_nats_status();
                 }
             }
-            Screen::Automation => {
-                // Refresh pi agent status every 40 ticks (~10 s)
-                self.automation.poll_counter = self.automation.poll_counter.wrapping_add(1);
-                if self.automation.poll_counter.is_multiple_of(40) {
+            Screen::Agent => {
+                self.agent.poll_counter = self.agent.poll_counter.wrapping_add(1);
+                if self.agent.poll_counter.is_multiple_of(40) {
                     self.spawn_load_pi_agent_status();
                 }
             }
             _ => {}
+        }
+
+        // Scheduler: check due tasks every ~1 s (4 ticks × 250 ms)
+        self.scheduler_tick = self.scheduler_tick.wrapping_add(1);
+        if self.scheduler_tick.is_multiple_of(4) {
+            self.check_scheduled_tasks().await;
         }
 
         self.last_tick = Instant::now();

@@ -3,9 +3,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::core::models::{Route, TunnelRoute};
 
 use super::app::{
-    App, ConfirmAction, ConfirmDialog, DashboardTab, DockerTab, InputMode, NetworkingTab,
-    PackageTab, ProcessSort, Screen, SecurityTab, SystemTab, TunnelPanel, WasmCloudTab,
-    PiAgentTab, ACTIONS, PROTOS,
+    App, AgentTab, ConfirmAction, ConfirmDialog, DashboardTab, DockerTab, InputMode, NetworkingTab,
+    PackageTab, ProcessSort, ProjectsTab, Screen, SecurityTab, SystemTab, TunnelPanel, WasmCloudTab,
+    ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -13,6 +13,12 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     // 1. Confirm dialog takes priority over everything
     if app.confirm.is_some() {
         return handle_confirm(app, key);
+    }
+
+    // 1b. Agent overlay takes priority when open
+    if app.overlay.open {
+        handle_overlay_input(app, key);
+        return false;
     }
 
     // 2. Text-entry (input mode) consumes all keys — global shortcuts are blocked
@@ -69,9 +75,9 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_services_key(app, key);
         return false;
     }
-    if app.screen == Screen::Automation
-        && app.automation.active_tab == PiAgentTab::Config
-        && app.automation.config_search_mode == InputMode::Editing
+    if app.screen == Screen::Agent
+        && app.agent.active_tab == AgentTab::Config
+        && app.agent.config_search_mode == InputMode::Editing
     {
         handle_pi_agent_config_search_input(app, key);
         return false;
@@ -81,6 +87,17 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         && app.swap.input_mode == InputMode::Editing
     {
         handle_swap_key(app, key);
+        return false;
+    }
+    if app.screen == Screen::Agent && app.agent.input_mode == InputMode::Editing {
+        handle_agent_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Agent
+        && app.agent.active_tab == AgentTab::Tasks
+        && app.agent.task_form_open
+    {
+        handle_task_form_input(app, key);
         return false;
     }
     if app.screen == Screen::Security {
@@ -95,6 +112,23 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             }
             SecurityTab::Ssh if app.ssh.input_mode == InputMode::Editing => {
                 handle_ssh_input(app, key);
+                return false;
+            }
+            _ => {}
+        }
+    }
+    if app.screen == Screen::Projects {
+        match app.projects.active_tab {
+            ProjectsTab::New if app.projects.new_input_mode == InputMode::Editing => {
+                handle_projects_new_input(app, key);
+                return false;
+            }
+            ProjectsTab::Clone if app.projects.clone_input_mode == InputMode::Editing => {
+                handle_projects_clone_input(app, key);
+                return false;
+            }
+            ProjectsTab::Settings if app.projects.dir_input_mode == InputMode::Editing => {
+                handle_projects_settings_input(app, key);
                 return false;
             }
             _ => {}
@@ -136,11 +170,17 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(7);
             return false;
         }
-        KeyCode::Char('a') | KeyCode::Char('A') if app.screen != Screen::Automation => {
-            app.set_screen_by_index(6);
+        KeyCode::Char('9') => {
+            app.set_screen_by_index(8);
             return false;
         }
-        KeyCode::Char('s') | KeyCode::Char('S') if app.screen != Screen::Automation => {
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            app.open_agent_overlay();
+            return false;
+        }
+        KeyCode::Char('s') | KeyCode::Char('S')
+            if app.screen != Screen::Agent =>
+        {
             app.set_screen_by_index(7);
             return false;
         }
@@ -165,8 +205,9 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         Screen::Networking => handle_networking_key(app, key),
         Screen::Docker => handle_docker_key(app, key),
         Screen::WasmCloud => handle_wasm_cloud_key(app, key),
-        Screen::Automation => handle_automation_key(app, key),
         Screen::System => handle_system_key(app, key),
+        Screen::Agent => handle_agent_key(app, key),
+        Screen::Projects => handle_projects_key(app, key),
     }
     false
 }
@@ -825,15 +866,41 @@ fn handle_fail2ban_key(app: &mut App, key: KeyEvent) {
 fn handle_networking_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Left => {
-            app.networking_tab = NetworkingTab::Gateway;
+            let idx = app.networking_tab.index();
+            let all = NetworkingTab::all();
+            app.networking_tab = all[(idx + all.len() - 1) % all.len()].clone();
         }
         KeyCode::Right => {
-            app.networking_tab = NetworkingTab::Tunnel;
+            let idx = app.networking_tab.index();
+            let all = NetworkingTab::all();
+            app.networking_tab = all[(idx + 1) % all.len()].clone();
         }
         _ => match app.networking_tab {
             NetworkingTab::Gateway => handle_gateway_key(app, key),
             NetworkingTab::Tunnel => handle_tunnel_key(app, key),
+            NetworkingTab::Tailscale => handle_tailscale_key(app, key),
         },
+    }
+}
+
+fn handle_tailscale_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('r') => app.spawn_load_tailscale(),
+        KeyCode::Char('i') => app.spawn_install_tailscale(),
+        KeyCode::Char('u') => app.spawn_tailscale_up(),
+        KeyCode::Char('d') => app.spawn_tailscale_down(),
+        KeyCode::Down => {
+            let len = app.tailscale.peers.len();
+            if len > 0 {
+                let next = app.tailscale.peers_state.selected().map(|i| (i + 1).min(len - 1)).unwrap_or(0);
+                app.tailscale.peers_state.select(Some(next));
+            }
+        }
+        KeyCode::Up => {
+            let next = app.tailscale.peers_state.selected().and_then(|i| i.checked_sub(1));
+            app.tailscale.peers_state.select(next);
+        }
+        _ => {}
     }
 }
 
@@ -1596,22 +1663,28 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
                 }
             }
         }
-        Screen::Automation => {
-            // Automation: header (h=3) + height 3 tab bar, default divider (w=1)
-            // Header rows 3,4,5; tab bar rows 6,7,8 → text at row 7
-            if row == 7 {
-                let titles: Vec<&str> = PiAgentTab::all().iter().map(|t| t.title()).collect();
-                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
-                    app.automation.active_tab = PiAgentTab::all()[idx].clone();
-                }
-            }
-        }
         Screen::WasmCloud => {
-            // WasmCloud: height 3 tab bar, default divider (w=1)
             if row == 4 {
                 let titles: Vec<&str> = WasmCloudTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
                     app.wasm_cloud.active_tab = WasmCloudTab::all()[idx].clone();
+                }
+            }
+        }
+        Screen::Agent => {
+            if row == 4 {
+                let titles: Vec<&str> = AgentTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    let new_tab = AgentTab::all()[idx].clone();
+                    switch_agent_tab(app, new_tab);
+                }
+            }
+        }
+        Screen::Projects => {
+            if row == 4 {
+                let titles: Vec<&str> = ProjectsTab::all().iter().map(|t| t.title()).collect();
+                if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
+                    app.projects.active_tab = ProjectsTab::all()[idx].clone();
                 }
             }
         }
@@ -2619,55 +2692,26 @@ fn handle_wasm_cloud_inspector_input(app: &mut App, key: KeyEvent) {
 
 // ── Automation / Pi Agent ─────────────────────────────────────────────────
 
-fn handle_automation_key(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Right | KeyCode::Char('L') => {
-            let idx = (app.automation.active_tab.index() + 1) % PiAgentTab::all().len();
-            let new_tab = PiAgentTab::all()[idx].clone();
-            switch_pi_agent_tab(app, new_tab);
-            return;
-        }
-        KeyCode::Left | KeyCode::Char('H') => {
-            let idx = app.automation.active_tab.index();
-            let prev = if idx == 0 {
-                PiAgentTab::all().len() - 1
-            } else {
-                idx - 1
-            };
-            let new_tab = PiAgentTab::all()[prev].clone();
-            switch_pi_agent_tab(app, new_tab);
-            return;
-        }
-        _ => {}
-    }
-
-    match app.automation.active_tab.clone() {
-        PiAgentTab::Status => handle_pi_agent_status_key(app, key),
-        PiAgentTab::Sessions => handle_pi_agent_sessions_key(app, key),
-        PiAgentTab::Config => handle_pi_agent_config_key(app, key),
-        PiAgentTab::Auth => handle_pi_agent_auth_key(app, key),
-        PiAgentTab::Skills => handle_pi_agent_skills_key(app, key),
-        PiAgentTab::Logs => handle_pi_agent_logs_key(app, key),
-    }
-}
-
-fn switch_pi_agent_tab(app: &mut App, tab: PiAgentTab) {
-    app.automation.active_tab = tab.clone();
+fn switch_agent_tab(app: &mut App, tab: AgentTab) {
+    app.agent.active_tab = tab.clone();
     match tab {
-        PiAgentTab::Status => app.spawn_load_pi_agent_status(),
-        PiAgentTab::Sessions => app.spawn_load_pi_agent_sessions(),
-        PiAgentTab::Config => app.spawn_load_pi_agent_config(),
-        PiAgentTab::Auth => app.spawn_load_pi_agent_auth(),
-        PiAgentTab::Skills => app.spawn_load_pi_agent_skills(),
-        PiAgentTab::Logs => app.spawn_load_pi_agent_logs(),
+        AgentTab::Tasks => app.spawn_load_agent_tasks(),
+        AgentTab::Status => app.spawn_load_pi_agent_status(),
+        AgentTab::Sessions => app.spawn_load_pi_agent_sessions(),
+        AgentTab::Config => app.spawn_load_pi_agent_config(),
+        AgentTab::Auth => app.spawn_load_pi_agent_auth(),
+        AgentTab::Skills => app.spawn_load_pi_agent_skills(),
+        AgentTab::Library => app.spawn_load_pi_agent_library(),
+        AgentTab::Logs => app.spawn_load_pi_agent_logs(),
+        _ => {}
     }
 }
 
 fn handle_pi_agent_status_key(app: &mut App, key: KeyEvent) {
-    if !app.automation.info.installed {
+    if !app.agent.info.installed {
         match key.code {
             KeyCode::Char('I') => {
-                if !app.automation.installing {
+                if !app.agent.installing {
                     app.spawn_pi_agent_install();
                 }
             }
@@ -2694,15 +2738,15 @@ fn handle_pi_agent_status_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_pi_agent_sessions_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.sessions.len();
+    let len = app.agent.sessions.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.sessions_state.selected().unwrap_or(0);
-            app.automation.sessions_state.select(Some((i + 1) % len));
+            let i = app.agent.sessions_state.selected().unwrap_or(0);
+            app.agent.sessions_state.select(Some((i + 1) % len));
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.sessions_state.selected().unwrap_or(0);
-            app.automation
+            let i = app.agent.sessions_state.selected().unwrap_or(0);
+            app.agent
                 .sessions_state
                 .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
@@ -2716,25 +2760,25 @@ fn handle_pi_agent_sessions_key(app: &mut App, key: KeyEvent) {
 fn handle_pi_agent_config_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.config_scroll = app.automation.config_scroll.saturating_add(1);
+            app.agent.config_scroll = app.agent.config_scroll.saturating_add(1);
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            app.automation.config_scroll = app.automation.config_scroll.saturating_sub(1);
+            app.agent.config_scroll = app.agent.config_scroll.saturating_sub(1);
         }
         KeyCode::Char('r') => {
             app.spawn_load_pi_agent_config();
         }
         KeyCode::Char('/') => {
-            app.automation.config_search_mode = InputMode::Editing;
+            app.agent.config_search_mode = InputMode::Editing;
         }
         KeyCode::Esc => {
-            app.automation.config_search.clear();
-            app.automation.config_search_mode = InputMode::Normal;
+            app.agent.config_search.clear();
+            app.agent.config_search_mode = InputMode::Normal;
         }
-        KeyCode::Char('n') if !app.automation.config_search.is_empty() => {
+        KeyCode::Char('n') if !app.agent.config_search.is_empty() => {
             config_search_jump(app, true);
         }
-        KeyCode::Char('N') if !app.automation.config_search.is_empty() => {
+        KeyCode::Char('N') if !app.agent.config_search.is_empty() => {
             config_search_jump(app, false);
         }
         _ => {}
@@ -2744,30 +2788,30 @@ fn handle_pi_agent_config_key(app: &mut App, key: KeyEvent) {
 fn handle_pi_agent_config_search_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
-            app.automation.config_search.clear();
-            app.automation.config_search_mode = InputMode::Normal;
+            app.agent.config_search.clear();
+            app.agent.config_search_mode = InputMode::Normal;
         }
         KeyCode::Enter => {
-            app.automation.config_search_mode = InputMode::Normal;
+            app.agent.config_search_mode = InputMode::Normal;
             config_search_jump(app, true);
         }
         KeyCode::Backspace => {
-            app.automation.config_search.pop();
+            app.agent.config_search.pop();
         }
         KeyCode::Char(c) => {
-            app.automation.config_search.push(c);
+            app.agent.config_search.push(c);
         }
         _ => {}
     }
 }
 
 fn config_search_jump(app: &mut App, forward: bool) {
-    let query = app.automation.config_search.to_lowercase();
+    let query = app.agent.config_search.to_lowercase();
     if query.is_empty() {
         return;
     }
     let matches: Vec<u16> = app
-        .automation
+        .agent
         .config_text
         .lines()
         .enumerate()
@@ -2777,14 +2821,14 @@ fn config_search_jump(app: &mut App, forward: bool) {
     if matches.is_empty() {
         return;
     }
-    let current = app.automation.config_scroll;
+    let current = app.agent.config_scroll;
     if forward {
         let next = matches
             .iter()
             .find(|&&m| m > current)
             .copied()
             .unwrap_or(matches[0]);
-        app.automation.config_scroll = next;
+        app.agent.config_scroll = next;
     } else {
         let prev = matches
             .iter()
@@ -2792,20 +2836,20 @@ fn config_search_jump(app: &mut App, forward: bool) {
             .find(|&&m| m < current)
             .copied()
             .unwrap_or(*matches.last().unwrap());
-        app.automation.config_scroll = prev;
+        app.agent.config_scroll = prev;
     }
 }
 
 fn handle_pi_agent_auth_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.auth_entries.len();
+    let len = app.agent.auth_entries.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.auth_state.selected().unwrap_or(0);
-            app.automation.auth_state.select(Some((i + 1) % len));
+            let i = app.agent.auth_state.selected().unwrap_or(0);
+            app.agent.auth_state.select(Some((i + 1) % len));
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.auth_state.selected().unwrap_or(0);
-            app.automation
+            let i = app.agent.auth_state.selected().unwrap_or(0);
+            app.agent
                 .auth_state
                 .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
@@ -2817,29 +2861,60 @@ fn handle_pi_agent_auth_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_pi_agent_skills_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.skills.len();
+    let len = app.agent.skills.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.skills_state.selected().unwrap_or(0);
-            app.automation.skills_state.select(Some((i + 1) % len));
+            let i = app.agent.skills_state.selected().unwrap_or(0);
+            app.agent.skills_state.select(Some((i + 1) % len));
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.skills_state.selected().unwrap_or(0);
-            app.automation
+            let i = app.agent.skills_state.selected().unwrap_or(0);
+            app.agent
                 .skills_state
                 .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
         KeyCode::Char('d') => {
-            if let Some(idx) = app.automation.skills_state.selected() {
-                if let Some(skill) = app.automation.skills.get(idx) {
+            if let Some(idx) = app.agent.skills_state.selected() {
+                if let Some(skill) = app.agent.skills.get(idx) {
                     let name = skill.name.clone();
                     app.spawn_pi_agent_remove_skill(name);
                 }
             }
         }
         KeyCode::Char('r') => {
-            app.automation.skills_status = None;
+            app.agent.skills_status = None;
             app.spawn_load_pi_agent_skills();
+        }
+        _ => {}
+    }
+}
+
+fn handle_pi_agent_library_key(app: &mut App, key: KeyEvent) {
+    let len = app.agent.library_skills.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.agent.library_state.selected().unwrap_or(0);
+            app.agent.library_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.agent.library_state.selected().unwrap_or(0);
+            app.agent
+                .library_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Enter | KeyCode::Char('i') => {
+            if let Some(idx) = app.agent.library_state.selected() {
+                if let Some(skill) = app.agent.library_skills.get(idx) {
+                    if !skill.installed {
+                        let name = skill.name.clone();
+                        app.spawn_pi_agent_install_skill(name);
+                    }
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            app.agent.library_status = None;
+            app.spawn_load_pi_agent_library();
         }
         _ => {}
     }
@@ -2848,18 +2923,18 @@ fn handle_pi_agent_skills_key(app: &mut App, key: KeyEvent) {
 fn handle_pi_agent_logs_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.logs_follow = false;
-            app.automation.logs_scroll = app.automation.logs_scroll.saturating_add(1);
+            app.agent.logs_follow = false;
+            app.agent.logs_scroll = app.agent.logs_scroll.saturating_add(1);
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            app.automation.logs_follow = false;
-            app.automation.logs_scroll = app.automation.logs_scroll.saturating_sub(1);
+            app.agent.logs_follow = false;
+            app.agent.logs_scroll = app.agent.logs_scroll.saturating_sub(1);
         }
         KeyCode::Char('f') => {
-            app.automation.logs_follow = !app.automation.logs_follow;
-            if app.automation.logs_follow {
-                app.automation.logs_scroll =
-                    (app.automation.logs.len() as u16).saturating_sub(20);
+            app.agent.logs_follow = !app.agent.logs_follow;
+            if app.agent.logs_follow {
+                app.agent.logs_scroll =
+                    (app.agent.logs.len() as u16).saturating_sub(20);
             }
         }
         KeyCode::Char('R') | KeyCode::Char('r') => {
@@ -2984,6 +3059,328 @@ fn handle_swap_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('R') => {
             app.spawn_load_swap();
+        }
+        _ => {}
+    }
+}
+
+// ── Agent overlay ─────────────────────────────────────────────────────────
+
+fn handle_overlay_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => app.close_agent_overlay(),
+        KeyCode::Enter => {
+            if !app.overlay.question.trim().is_empty() {
+                app.send_overlay_prompt();
+            }
+        }
+        KeyCode::Char(c) => app.overlay.question.push(c),
+        KeyCode::Backspace => {
+            app.overlay.question.pop();
+        }
+        _ => {}
+    }
+}
+
+// ── Agent ─────────────────────────────────────────────────────────────────
+
+fn handle_agent_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Right | KeyCode::Tab => {
+            let idx = (app.agent.active_tab.index() + 1) % AgentTab::all().len();
+            let new_tab = AgentTab::all()[idx].clone();
+            switch_agent_tab(app, new_tab);
+            return;
+        }
+        KeyCode::Left | KeyCode::BackTab => {
+            let idx = app.agent.active_tab.index();
+            let prev = if idx == 0 {
+                AgentTab::all().len() - 1
+            } else {
+                idx - 1
+            };
+            let new_tab = AgentTab::all()[prev].clone();
+            switch_agent_tab(app, new_tab);
+            return;
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') if !app.agent.rpc_active => {
+            app.spawn_start_agent_rpc();
+        }
+        KeyCode::Char('x') | KeyCode::Char('X') => {
+            app.stop_agent_rpc();
+        }
+        KeyCode::Char('i') | KeyCode::Enter if app.agent.active_tab == AgentTab::Chat => {
+            app.agent.input_mode = InputMode::Editing;
+        }
+        _ => {}
+    }
+
+    match app.agent.active_tab.clone() {
+        AgentTab::Status => handle_pi_agent_status_key(app, key),
+        AgentTab::Sessions => handle_pi_agent_sessions_key(app, key),
+        AgentTab::Config => handle_pi_agent_config_key(app, key),
+        AgentTab::Auth => handle_pi_agent_auth_key(app, key),
+        AgentTab::Skills => handle_pi_agent_skills_key(app, key),
+        AgentTab::Library => handle_pi_agent_library_key(app, key),
+        AgentTab::Logs => handle_pi_agent_logs_key(app, key),
+        AgentTab::Tasks => handle_agent_tasks_key(app, key),
+        _ => {}
+    }
+}
+
+fn handle_agent_tasks_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('n') | KeyCode::Char('N') => {
+            app.agent.task_form_open = true;
+            app.agent.task_form_name.clear();
+            app.agent.task_form_prompt.clear();
+            app.agent.task_form_schedule_idx = 0;
+            app.agent.task_form_focus = 0;
+            app.agent.task_form_mode = InputMode::Editing;
+        }
+        KeyCode::Char('d') | KeyCode::Char('D') => {
+            if let Some(idx) = app.agent.tasks_state.selected() {
+                if let Some(task) = app.agent.tasks.get(idx) {
+                    let id = task.id;
+                    app.spawn_delete_agent_task(id);
+                }
+            }
+        }
+        KeyCode::Char('t') | KeyCode::Char('T') => {
+            if let Some(idx) = app.agent.tasks_state.selected() {
+                if let Some(task) = app.agent.tasks.get(idx) {
+                    let id = task.id;
+                    let enabled = !task.enabled;
+                    app.spawn_toggle_agent_task(id, enabled);
+                }
+            }
+        }
+        KeyCode::Enter => {
+            if let Some(idx) = app.agent.tasks_state.selected() {
+                if let Some(task) = app.agent.tasks.get(idx) {
+                    let prompt = task.prompt.clone();
+                    app.send_agent_prompt(prompt);
+                }
+            }
+        }
+        KeyCode::Down => table_next(&mut app.agent.tasks_state, app.agent.tasks.len()),
+        KeyCode::Up => table_prev(&mut app.agent.tasks_state),
+        _ => {}
+    }
+}
+
+fn handle_task_form_input(app: &mut App, key: KeyEvent) {
+    let schedules = crate::db::agent_tasks::SCHEDULE_OPTIONS;
+    match key.code {
+        KeyCode::Esc => {
+            app.agent.task_form_open = false;
+            app.agent.task_form_mode = InputMode::Normal;
+        }
+        KeyCode::Tab => {
+            if app.agent.task_form_focus == 2 {
+                app.agent.task_form_schedule_idx =
+                    (app.agent.task_form_schedule_idx + 1) % schedules.len();
+            } else {
+                app.agent.task_form_focus = (app.agent.task_form_focus + 1) % 3;
+            }
+        }
+        KeyCode::Enter => {
+            if app.agent.task_form_focus == 2 {
+                let name = app.agent.task_form_name.trim().to_string();
+                let prompt = app.agent.task_form_prompt.trim().to_string();
+                let idx = app.agent.task_form_schedule_idx.min(schedules.len() - 1);
+                let schedule = schedules[idx].to_string();
+                if !name.is_empty() && !prompt.is_empty() {
+                    app.spawn_create_agent_task(name, prompt, schedule);
+                    app.agent.task_form_open = false;
+                    app.agent.task_form_mode = InputMode::Normal;
+                } else {
+                    app.agent.task_form_focus = if name.is_empty() { 0 } else { 1 };
+                }
+            } else {
+                app.agent.task_form_focus = (app.agent.task_form_focus + 1) % 3;
+            }
+        }
+        KeyCode::Backspace => match app.agent.task_form_focus {
+            0 => {
+                app.agent.task_form_name.pop();
+            }
+            1 => {
+                app.agent.task_form_prompt.pop();
+            }
+            _ => {}
+        },
+        KeyCode::Char(c) => match app.agent.task_form_focus {
+            0 => app.agent.task_form_name.push(c),
+            1 => app.agent.task_form_prompt.push(c),
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
+fn handle_agent_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.agent.input_mode = InputMode::Normal;
+        }
+        KeyCode::Enter => {
+            let text = std::mem::take(&mut app.agent.input);
+            if !text.is_empty() {
+                app.agent.input_mode = InputMode::Normal;
+                app.send_agent_prompt(text);
+            }
+        }
+        KeyCode::Char(c) => {
+            app.agent.input.push(c);
+        }
+        KeyCode::Backspace => {
+            app.agent.input.pop();
+        }
+        _ => {}
+    }
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────
+
+fn handle_projects_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Right | KeyCode::Char('L') => {
+            let idx = (app.projects.active_tab.index() + 1) % ProjectsTab::all().len();
+            app.projects.active_tab = ProjectsTab::all()[idx].clone();
+            if app.projects.active_tab == ProjectsTab::Projects {
+                app.spawn_load_projects();
+            }
+            return;
+        }
+        KeyCode::Left | KeyCode::Char('H') => {
+            let idx = app.projects.active_tab.index();
+            let prev = if idx == 0 { ProjectsTab::all().len() - 1 } else { idx - 1 };
+            app.projects.active_tab = ProjectsTab::all()[prev].clone();
+            if app.projects.active_tab == ProjectsTab::Projects {
+                app.spawn_load_projects();
+            }
+            return;
+        }
+        _ => {}
+    }
+
+    match app.projects.active_tab.clone() {
+        ProjectsTab::Projects => handle_projects_list_key(app, key),
+        ProjectsTab::New => handle_projects_new_key(app, key),
+        ProjectsTab::Clone => handle_projects_clone_key(app, key),
+        ProjectsTab::Settings => handle_projects_settings_key(app, key),
+    }
+}
+
+fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down => list_next(&mut app.projects.list_state, app.projects.list.len()),
+        KeyCode::Up => list_prev(&mut app.projects.list_state),
+        KeyCode::Char('r') => app.spawn_load_projects(),
+        KeyCode::Enter => {
+            if let Some(idx) = app.projects.list_state.selected() {
+                if let Some(p) = app.projects.list.get(idx) {
+                    app.status_msg = Some(format!("Path: {}", p.path));
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('i') => {
+            app.projects.new_input_mode = InputMode::Editing;
+        }
+        KeyCode::Enter
+            if !app.projects.new_running && !app.projects.new_name.is_empty() =>
+        {
+            let name = app.projects.new_name.clone();
+            app.spawn_projects_scaffold(name);
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_clone_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('i') => {
+            app.projects.clone_input_mode = InputMode::Editing;
+        }
+        KeyCode::Enter
+            if !app.projects.clone_running && !app.projects.clone_url.is_empty() =>
+        {
+            let url = app.projects.clone_url.clone();
+            app.spawn_projects_clone(url);
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_settings_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('i') => {
+            app.projects.dir_input_mode = InputMode::Editing;
+        }
+        KeyCode::Enter if !app.projects.dir_input.is_empty() => {
+            let dir = app.projects.dir_input.clone();
+            app.spawn_projects_save_dir(dir);
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_new_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => app.projects.new_input_mode = InputMode::Normal,
+        KeyCode::Enter => {
+            app.projects.new_input_mode = InputMode::Normal;
+            if !app.projects.new_running && !app.projects.new_name.is_empty() {
+                let name = app.projects.new_name.clone();
+                app.spawn_projects_scaffold(name);
+            }
+        }
+        KeyCode::Char(c) => app.projects.new_name.push(c),
+        KeyCode::Backspace => {
+            app.projects.new_name.pop();
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_clone_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => app.projects.clone_input_mode = InputMode::Normal,
+        KeyCode::Enter => {
+            app.projects.clone_input_mode = InputMode::Normal;
+            if !app.projects.clone_running && !app.projects.clone_url.is_empty() {
+                let url = app.projects.clone_url.clone();
+                app.spawn_projects_clone(url);
+            }
+        }
+        KeyCode::Char(c) => app.projects.clone_url.push(c),
+        KeyCode::Backspace => {
+            app.projects.clone_url.pop();
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_settings_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => app.projects.dir_input_mode = InputMode::Normal,
+        KeyCode::Enter => {
+            app.projects.dir_input_mode = InputMode::Normal;
+            if !app.projects.dir_input.is_empty() {
+                let dir = app.projects.dir_input.clone();
+                app.spawn_projects_save_dir(dir);
+            }
+        }
+        KeyCode::Char(c) => app.projects.dir_input.push(c),
+        KeyCode::Backspace => {
+            app.projects.dir_input.pop();
         }
         _ => {}
     }

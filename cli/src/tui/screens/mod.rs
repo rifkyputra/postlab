@@ -1,4 +1,4 @@
-pub mod automation;
+pub mod agent;
 pub mod dashboard;
 pub mod docker;
 pub mod firewall;
@@ -15,6 +15,8 @@ pub mod services;
 pub mod ssh;
 pub mod swap;
 pub mod system;
+pub mod tailscale;
 pub mod tunnel;
 pub mod users;
 pub mod wasmcloud;
+pub mod projects;

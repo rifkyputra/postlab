@@ -11,9 +11,9 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Tabs},
     Terminal,
 };
@@ -79,11 +79,16 @@ async fn run_loop(
                 Screen::Networking => screens::networking::render(f, app, chunks[1]),
                 Screen::Docker => screens::docker::render(f, app, chunks[1]),
                 Screen::WasmCloud => screens::wasmcloud::render(f, app, chunks[1]),
-                Screen::Automation => screens::automation::render(f, app, chunks[1]),
                 Screen::System => screens::system::render(f, app, chunks[1]),
+                Screen::Agent => screens::agent::render(f, app, chunks[1]),
+                Screen::Projects => screens::projects::render(f, app, chunks[1]),
             }
 
             render_status_bar(f, app, chunks[2]);
+
+            if app.overlay.open {
+                render_agent_overlay(f, app, area);
+            }
 
             if let Some(confirm) = &app.confirm {
                 render_confirm_dialog(f, confirm, area);
@@ -169,7 +174,7 @@ fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     let msg = app
         .status_msg
         .as_deref()
-        .unwrap_or("[q] quit  [1-8] screens  [Tab] next  [←/→] switch tabs");
+        .unwrap_or("[q] quit  [1-9] screens  [Tab] next  [←/→] switch tabs");
     let style = if app.status_msg.is_some() {
         Style::default().fg(Color::Yellow)
     } else {
@@ -177,6 +182,72 @@ fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     };
     let p = Paragraph::new(Span::styled(msg, style));
     f.render_widget(p, area);
+}
+
+fn render_agent_overlay(f: &mut ratatui::Frame, app: &App, area: Rect) {
+    let ctx_lines = app.overlay.context_body.lines().count().min(8) as u16;
+    let popup_w = area.width.saturating_sub(4).min(76);
+    // context block (ctx_lines + 2 borders) + input (3) + hints (1) + outer borders (2)
+    let popup_h = (ctx_lines + 2 + 3 + 1 + 2).min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(popup_w)) / 2;
+    let y = area.y + (area.height.saturating_sub(popup_h)) / 2;
+    let popup = Rect { x, y, width: popup_w, height: popup_h };
+
+    f.render_widget(Clear, popup);
+
+    let title = Line::from(vec![
+        Span::raw(" Ask Pi Agent"),
+        if !app.overlay.context_label.is_empty() {
+            Span::styled(
+                format!(" — {} ", app.overlay.context_label),
+                Style::default().fg(Color::DarkGray),
+            )
+        } else {
+            Span::raw(" ")
+        },
+    ]);
+    let outer = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(title);
+    let inner = outer.inner(popup);
+    f.render_widget(outer, popup);
+
+    // inner = context + input + hints
+    let avail_ctx = inner.height.saturating_sub(4); // 3 for input, 1 for hints
+    let ctx_h = ctx_lines.min(avail_ctx) + 2;
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(ctx_h),
+            Constraint::Length(3),
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    // Context block
+    if !app.overlay.context_body.is_empty() {
+        let ctx_para = Paragraph::new(app.overlay.context_body.as_str())
+            .block(Block::default().borders(Borders::ALL).title(" Context "));
+        f.render_widget(ctx_para, chunks[0]);
+    }
+
+    // Input block
+    let input_text = format!("> {}█", app.overlay.question);
+    let input_para = Paragraph::new(input_text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" Question "),
+    );
+    f.render_widget(input_para, chunks[1]);
+
+    // Hints
+    let hints = Paragraph::new(Span::styled(
+        "[Enter] send   [Esc] close   [Backspace] edit",
+        Style::default().fg(Color::DarkGray),
+    ));
+    f.render_widget(hints, chunks[2]);
 }
 
 fn render_confirm_dialog(

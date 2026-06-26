@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::tui::app::{App, NetworkingTab};
 
-use super::{gateway, tunnel};
+use super::{gateway, tailscale, tunnel};
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
@@ -20,6 +20,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     match app.networking_tab {
         NetworkingTab::Gateway => gateway::render(f, app, chunks[1]),
         NetworkingTab::Tunnel => tunnel::render(f, app, chunks[1]),
+        NetworkingTab::Tailscale => tailscale::render(f, app, chunks[1]),
     }
 }
 
