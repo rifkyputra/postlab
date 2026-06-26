@@ -177,57 +177,37 @@
       "id": "automation",
       "name": "Automation",
       "nav_key": "7",
-      "description": "ZeroClaw automation daemon management",
+      "description": "Pi Agent (pi-coding-agent) management and session browser",
       "tabs": [
         {
-          "id": "overview",
-          "name": "Overview",
-          "description": "Install/uninstall ZeroClaw daemon; view running status and components"
+          "id": "status",
+          "name": "Status",
+          "description": "Pi Agent install status, version, default model, and quick actions"
         },
         {
-          "id": "channels",
-          "name": "Channels",
-          "description": "Configure NATS messaging channels for automation events"
-        },
-        {
-          "id": "cron",
-          "name": "Cron",
-          "description": "Create and manage cron-style scheduled automation jobs"
-        },
-        {
-          "id": "memory",
-          "name": "Memory",
-          "description": "View and edit automation agent memory state"
+          "id": "sessions",
+          "name": "Sessions",
+          "description": "Browse saved pi session JSONL files in ~/.pi/sessions/"
         },
         {
           "id": "config",
           "name": "Config",
-          "description": "Raw configuration editor for the ZeroClaw daemon"
-        },
-        {
-          "id": "easy_config",
-          "name": "Easy Config",
-          "description": "Guided configuration wizard for common automation setups"
-        },
-        {
-          "id": "permissions",
-          "name": "Permissions",
-          "description": "Manage automation agent tool permissions and access controls"
-        },
-        {
-          "id": "skills",
-          "name": "Skills",
-          "description": "Browse and enable automation skills"
+          "description": "View ~/.pi/agent/settings.json with secret masking and search"
         },
         {
           "id": "auth",
           "name": "Auth",
-          "description": "Manage authentication credentials for automation providers"
+          "description": "View configured provider credentials from ~/.pi/auth.json"
+        },
+        {
+          "id": "skills",
+          "name": "Skills",
+          "description": "Browse and remove installed pi skills from ~/.pi/skills/"
         },
         {
           "id": "logs",
           "name": "Logs",
-          "description": "Live log stream from the ZeroClaw automation daemon"
+          "description": "Tail the most recent pi session log"
         }
       ]
     },

@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check*)",
+      "Bash(cargo clippy*)",
+      "Bash(cargo test*)",
+      "Bash(cargo build*)",
+      "Bash(cargo clean*)",
+      "Bash(make build*)",
+      "Bash(make check*)",
+      "Bash(make test*)",
+      "Bash(make run*)",
+      "Bash(make info*)",
+      "Bash(make list*)",
+      "Bash(make link*)",
+      "Bash(make help*)",
+      "Bash(make dev*)",
+      "Bash(rustc*)",
+      "Bash(rustup*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git branch*)",
+      "Bash(git stash list*)",
+      "Bash(ls*)",
+      "Bash(find . *)",
+      "Bash(grep*)",
+      "Bash(rg*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[harness] Reminder: make check && make test must pass before this task is complete.'"
+          }
+        ]
+      }
+    ]
+  }
+}

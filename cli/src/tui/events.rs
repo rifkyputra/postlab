@@ -5,7 +5,7 @@ use crate::core::models::{Route, TunnelRoute};
 use super::app::{
     App, ConfirmAction, ConfirmDialog, DashboardTab, DockerTab, InputMode, NetworkingTab,
     PackageTab, ProcessSort, Screen, SecurityTab, SystemTab, TunnelPanel, WasmCloudTab,
-    ZeroclawTab, ACTIONS, PROTOS,
+    PiAgentTab, ACTIONS, PROTOS,
 };
 
 /// Returns true if the app should quit.
@@ -69,29 +69,11 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_services_key(app, key);
         return false;
     }
-    if app.screen == Screen::Automation && app.automation.cron_form_mode == InputMode::Editing {
-        handle_automation_cron_input(app, key);
-        return false;
-    }
     if app.screen == Screen::Automation
-        && app.automation.active_tab == ZeroclawTab::Config
+        && app.automation.active_tab == PiAgentTab::Config
         && app.automation.config_search_mode == InputMode::Editing
     {
-        handle_zeroclaw_config_search_input(app, key);
-        return false;
-    }
-    if app.screen == Screen::Automation
-        && app.automation.active_tab == ZeroclawTab::EasyConfig
-        && app.automation.easy_config_input_mode == InputMode::Editing
-    {
-        handle_easy_config_input(app, key);
-        return false;
-    }
-    if app.screen == Screen::Automation
-        && app.automation.active_tab == ZeroclawTab::Permissions
-        && app.automation.permissions_input_mode == InputMode::Editing
-    {
-        handle_permissions_text_input(app, key);
+        handle_pi_agent_config_search_input(app, key);
         return false;
     }
     if app.screen == Screen::System
@@ -301,9 +283,6 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
         }
         ConfirmAction::ServiceAction { name, op } => app.spawn_service_action(name, op),
         ConfirmAction::MaintenanceAction { op } => app.spawn_maintenance_action(op),
-        ConfirmAction::DeleteCronJob { id, .. } => app.spawn_zeroclaw_delete_cron(id),
-        ConfirmAction::DeleteMemoryEntry { key } => app.spawn_zeroclaw_delete_memory(key),
-        ConfirmAction::ZeroclawDaemonStop => app.spawn_zeroclaw_action("daemon_stop"),
         ConfirmAction::DeleteSwap { path } => app.spawn_swap_delete(path),
     }
 }
@@ -1621,9 +1600,9 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             // Automation: header (h=3) + height 3 tab bar, default divider (w=1)
             // Header rows 3,4,5; tab bar rows 6,7,8 → text at row 7
             if row == 7 {
-                let titles: Vec<&str> = ZeroclawTab::all().iter().map(|t| t.title()).collect();
+                let titles: Vec<&str> = PiAgentTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
-                    app.automation.active_tab = ZeroclawTab::all()[idx].clone();
+                    app.automation.active_tab = PiAgentTab::all()[idx].clone();
                 }
             }
         }
@@ -2638,72 +2617,62 @@ fn handle_wasm_cloud_inspector_input(app: &mut App, key: KeyEvent) {
     }
 }
 
-// ── Automation / Zeroclaw ─────────────────────────────────────────────────
+// ── Automation / Pi Agent ─────────────────────────────────────────────────
 
 fn handle_automation_key(app: &mut App, key: KeyEvent) {
-    // Tab cycling
     match key.code {
         KeyCode::Right | KeyCode::Char('L') => {
-            let idx = (app.automation.active_tab.index() + 1) % ZeroclawTab::all().len();
-            let new_tab = ZeroclawTab::all()[idx].clone();
-            switch_zeroclaw_tab(app, new_tab);
+            let idx = (app.automation.active_tab.index() + 1) % PiAgentTab::all().len();
+            let new_tab = PiAgentTab::all()[idx].clone();
+            switch_pi_agent_tab(app, new_tab);
             return;
         }
         KeyCode::Left | KeyCode::Char('H') => {
             let idx = app.automation.active_tab.index();
             let prev = if idx == 0 {
-                ZeroclawTab::all().len() - 1
+                PiAgentTab::all().len() - 1
             } else {
                 idx - 1
             };
-            let new_tab = ZeroclawTab::all()[prev].clone();
-            switch_zeroclaw_tab(app, new_tab);
+            let new_tab = PiAgentTab::all()[prev].clone();
+            switch_pi_agent_tab(app, new_tab);
             return;
         }
         _ => {}
     }
 
     match app.automation.active_tab.clone() {
-        ZeroclawTab::Overview => handle_zeroclaw_overview_key(app, key),
-        ZeroclawTab::Channels => handle_zeroclaw_channels_key(app, key),
-        ZeroclawTab::Cron => handle_zeroclaw_cron_key(app, key),
-        ZeroclawTab::Memory => handle_zeroclaw_memory_key(app, key),
-        ZeroclawTab::Config => handle_zeroclaw_config_key(app, key),
-        ZeroclawTab::EasyConfig => handle_easy_config_key(app, key),
-        ZeroclawTab::Permissions => handle_permissions_key(app, key),
-        ZeroclawTab::Skills => handle_zeroclaw_skills_key(app, key),
-        ZeroclawTab::Auth => handle_zeroclaw_auth_key(app, key),
-        ZeroclawTab::Logs => handle_zeroclaw_logs_key(app, key),
+        PiAgentTab::Status => handle_pi_agent_status_key(app, key),
+        PiAgentTab::Sessions => handle_pi_agent_sessions_key(app, key),
+        PiAgentTab::Config => handle_pi_agent_config_key(app, key),
+        PiAgentTab::Auth => handle_pi_agent_auth_key(app, key),
+        PiAgentTab::Skills => handle_pi_agent_skills_key(app, key),
+        PiAgentTab::Logs => handle_pi_agent_logs_key(app, key),
     }
 }
 
-fn switch_zeroclaw_tab(app: &mut App, tab: ZeroclawTab) {
+fn switch_pi_agent_tab(app: &mut App, tab: PiAgentTab) {
     app.automation.active_tab = tab.clone();
     match tab {
-        ZeroclawTab::Overview => app.spawn_load_zeroclaw_overview(),
-        ZeroclawTab::Channels => app.spawn_load_zeroclaw_channels(),
-        ZeroclawTab::Cron => app.spawn_load_zeroclaw_cron(),
-        ZeroclawTab::Memory => app.spawn_load_zeroclaw_memory(),
-        ZeroclawTab::Config => app.spawn_load_zeroclaw_config(),
-        ZeroclawTab::EasyConfig => app.spawn_load_easy_config(),
-        ZeroclawTab::Permissions => app.spawn_load_permissions(),
-        ZeroclawTab::Skills => app.spawn_load_zeroclaw_skills(),
-        ZeroclawTab::Auth => app.spawn_load_zeroclaw_auth(),
-        ZeroclawTab::Logs => app.spawn_load_zeroclaw_logs(),
+        PiAgentTab::Status => app.spawn_load_pi_agent_status(),
+        PiAgentTab::Sessions => app.spawn_load_pi_agent_sessions(),
+        PiAgentTab::Config => app.spawn_load_pi_agent_config(),
+        PiAgentTab::Auth => app.spawn_load_pi_agent_auth(),
+        PiAgentTab::Skills => app.spawn_load_pi_agent_skills(),
+        PiAgentTab::Logs => app.spawn_load_pi_agent_logs(),
     }
 }
 
-fn handle_zeroclaw_overview_key(app: &mut App, key: KeyEvent) {
+fn handle_pi_agent_status_key(app: &mut App, key: KeyEvent) {
     if !app.automation.info.installed {
-        // Only allow install + refresh when not installed
         match key.code {
             KeyCode::Char('I') => {
                 if !app.automation.installing {
-                    app.spawn_zeroclaw_install();
+                    app.spawn_pi_agent_install();
                 }
             }
             KeyCode::Char('r') | KeyCode::Char('R') => {
-                app.spawn_load_zeroclaw_overview();
+                app.spawn_load_pi_agent_status();
             }
             _ => {}
         }
@@ -2712,126 +2681,39 @@ fn handle_zeroclaw_overview_key(app: &mut App, key: KeyEvent) {
 
     match key.code {
         KeyCode::Char('r') | KeyCode::Char('R') => {
-            app.spawn_load_zeroclaw_overview();
-        }
-        KeyCode::Char('s') => {
-            app.spawn_zeroclaw_action("daemon_start");
-        }
-        KeyCode::Char('S') => {
-            app.confirm = Some(crate::tui::app::ConfirmDialog {
-                message: "Stop zeroclaw daemon? [y/n]".to_string(),
-                action: crate::tui::app::ConfirmAction::ZeroclawDaemonStop,
-            });
-        }
-        KeyCode::Char('i') => {
-            app.spawn_zeroclaw_action("service_install");
+            app.spawn_load_pi_agent_status();
         }
         KeyCode::Char('u') => {
-            app.spawn_zeroclaw_action("update_check");
+            app.spawn_pi_agent_action("update_check");
         }
         KeyCode::Char('U') => {
-            app.spawn_zeroclaw_action("update_apply");
-        }
-        KeyCode::Char('d') => {
-            app.spawn_zeroclaw_action("doctor");
+            app.spawn_pi_agent_action("update_apply");
         }
         _ => {}
     }
 }
 
-fn handle_zeroclaw_channels_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.channels.len();
-    if len == 0 {
-        return;
-    }
-    match key.code {
-        KeyCode::Down | KeyCode::Char('j') => {
-            let i = app.automation.channels_state.selected().unwrap_or(0);
-            app.automation.channels_state.select(Some((i + 1) % len));
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            let i = app.automation.channels_state.selected().unwrap_or(0);
-            app.automation
-                .channels_state
-                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
-        }
-        KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_channels();
-        }
-        _ => {}
-    }
-}
-
-fn handle_zeroclaw_cron_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.cron.len();
+fn handle_pi_agent_sessions_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.sessions.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.cron_state.selected().unwrap_or(0);
-            app.automation.cron_state.select(Some((i + 1) % len));
+            let i = app.automation.sessions_state.selected().unwrap_or(0);
+            app.automation.sessions_state.select(Some((i + 1) % len));
         }
         KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.cron_state.selected().unwrap_or(0);
+            let i = app.automation.sessions_state.selected().unwrap_or(0);
             app.automation
-                .cron_state
+                .sessions_state
                 .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
-        KeyCode::Char('a') => {
-            app.automation.cron_form_mode = InputMode::Editing;
-            app.automation.cron_form_schedule = String::new();
-            app.automation.cron_form_command = String::new();
-            app.automation.cron_form_focus = 0;
-        }
-        KeyCode::Char('d') => {
-            if let Some(idx) = app.automation.cron_state.selected() {
-                if let Some(job) = app.automation.cron.get(idx) {
-                    let id = job.id.clone();
-                    let schedule = job.schedule.clone();
-                    app.confirm = Some(crate::tui::app::ConfirmDialog {
-                        message: format!("Delete cron '{}' ({})? [y/n]", id, schedule),
-                        action: crate::tui::app::ConfirmAction::DeleteCronJob { id, schedule },
-                    });
-                }
-            }
-        }
         KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_cron();
+            app.spawn_load_pi_agent_sessions();
         }
         _ => {}
     }
 }
 
-fn handle_zeroclaw_memory_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.memory.len();
-    match key.code {
-        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.memory_state.selected().unwrap_or(0);
-            app.automation.memory_state.select(Some((i + 1) % len));
-        }
-        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.memory_state.selected().unwrap_or(0);
-            app.automation
-                .memory_state
-                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
-        }
-        KeyCode::Char('d') => {
-            if let Some(idx) = app.automation.memory_state.selected() {
-                if let Some(entry) = app.automation.memory.get(idx) {
-                    let key_str = entry.key.clone();
-                    app.confirm = Some(crate::tui::app::ConfirmDialog {
-                        message: format!("Delete memory '{}'? [y/n]", key_str),
-                        action: crate::tui::app::ConfirmAction::DeleteMemoryEntry { key: key_str },
-                    });
-                }
-            }
-        }
-        KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_memory();
-        }
-        _ => {}
-    }
-}
-
-fn handle_zeroclaw_config_key(app: &mut App, key: KeyEvent) {
+fn handle_pi_agent_config_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
             app.automation.config_scroll = app.automation.config_scroll.saturating_add(1);
@@ -2840,7 +2722,7 @@ fn handle_zeroclaw_config_key(app: &mut App, key: KeyEvent) {
             app.automation.config_scroll = app.automation.config_scroll.saturating_sub(1);
         }
         KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_config();
+            app.spawn_load_pi_agent_config();
         }
         KeyCode::Char('/') => {
             app.automation.config_search_mode = InputMode::Editing;
@@ -2859,7 +2741,7 @@ fn handle_zeroclaw_config_key(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_zeroclaw_config_search_input(app: &mut App, key: KeyEvent) {
+fn handle_pi_agent_config_search_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
             app.automation.config_search.clear();
@@ -2914,9 +2796,27 @@ fn config_search_jump(app: &mut App, forward: bool) {
     }
 }
 
-// ── Skills ────────────────────────────────────────────────────────────────
+fn handle_pi_agent_auth_key(app: &mut App, key: KeyEvent) {
+    let len = app.automation.auth_entries.len();
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
+            let i = app.automation.auth_state.selected().unwrap_or(0);
+            app.automation.auth_state.select(Some((i + 1) % len));
+        }
+        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
+            let i = app.automation.auth_state.selected().unwrap_or(0);
+            app.automation
+                .auth_state
+                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
+        }
+        KeyCode::Char('r') => {
+            app.spawn_load_pi_agent_auth();
+        }
+        _ => {}
+    }
+}
 
-fn handle_zeroclaw_skills_key(app: &mut App, key: KeyEvent) {
+fn handle_pi_agent_skills_key(app: &mut App, key: KeyEvent) {
     let len = app.automation.skills.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
@@ -2933,43 +2833,19 @@ fn handle_zeroclaw_skills_key(app: &mut App, key: KeyEvent) {
             if let Some(idx) = app.automation.skills_state.selected() {
                 if let Some(skill) = app.automation.skills.get(idx) {
                     let name = skill.name.clone();
-                    app.spawn_zeroclaw_remove_skill(name);
+                    app.spawn_pi_agent_remove_skill(name);
                 }
             }
         }
         KeyCode::Char('r') => {
             app.automation.skills_status = None;
-            app.spawn_load_zeroclaw_skills();
+            app.spawn_load_pi_agent_skills();
         }
         _ => {}
     }
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────
-
-fn handle_zeroclaw_auth_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.auth_entries.len();
-    match key.code {
-        KeyCode::Down | KeyCode::Char('j') if len > 0 => {
-            let i = app.automation.auth_state.selected().unwrap_or(0);
-            app.automation.auth_state.select(Some((i + 1) % len));
-        }
-        KeyCode::Up | KeyCode::Char('k') if len > 0 => {
-            let i = app.automation.auth_state.selected().unwrap_or(0);
-            app.automation
-                .auth_state
-                .select(Some(if i == 0 { len - 1 } else { i - 1 }));
-        }
-        KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_auth();
-        }
-        _ => {}
-    }
-}
-
-// ── Logs ──────────────────────────────────────────────────────────────────
-
-fn handle_zeroclaw_logs_key(app: &mut App, key: KeyEvent) {
+fn handle_pi_agent_logs_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
             app.automation.logs_follow = false;
@@ -2987,215 +2863,7 @@ fn handle_zeroclaw_logs_key(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Char('R') | KeyCode::Char('r') => {
-            app.spawn_load_zeroclaw_logs();
-        }
-        _ => {}
-    }
-}
-
-// ── Easy Config ───────────────────────────────────────────────────────────
-
-fn handle_easy_config_key(app: &mut App, key: KeyEvent) {
-    let len = app.automation.easy_config.len();
-    if len == 0 {
-        if key.code == KeyCode::Char('r') {
-            app.spawn_load_easy_config();
-        }
-        return;
-    }
-
-    match key.code {
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.easy_config_selected = (app.automation.easy_config_selected + 1) % len;
-            app.automation.easy_config_status = None;
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.automation.easy_config_selected = if app.automation.easy_config_selected == 0 {
-                len - 1
-            } else {
-                app.automation.easy_config_selected - 1
-            };
-            app.automation.easy_config_status = None;
-        }
-        KeyCode::Enter | KeyCode::Char('e') => {
-            let current_val = app
-                .automation
-                .easy_config
-                .get(app.automation.easy_config_selected)
-                .map(|f| f.value.clone())
-                .unwrap_or_default();
-            app.automation.easy_config_input = current_val;
-            app.automation.easy_config_input_mode = InputMode::Editing;
-            app.automation.easy_config_status = None;
-        }
-        KeyCode::Char('r') => {
-            app.spawn_load_easy_config();
-            app.automation.easy_config_status = None;
-        }
-        _ => {}
-    }
-}
-
-fn handle_easy_config_input(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Esc => {
-            app.automation.easy_config_input_mode = InputMode::Normal;
-            app.automation.easy_config_input.clear();
-        }
-        KeyCode::Enter => {
-            let idx = app.automation.easy_config_selected;
-            if let Some(field) = app.automation.easy_config.get(idx) {
-                let path = field.path.to_string();
-                let value = app.automation.easy_config_input.trim().to_string();
-                app.spawn_save_easy_config_field(path, value);
-            }
-            app.automation.easy_config_input_mode = InputMode::Normal;
-            app.automation.easy_config_input.clear();
-        }
-        KeyCode::Backspace => {
-            app.automation.easy_config_input.pop();
-        }
-        KeyCode::Char(c) => {
-            app.automation.easy_config_input.push(c);
-        }
-        _ => {}
-    }
-}
-
-// ── Permissions ───────────────────────────────────────────────────────────
-
-fn handle_permissions_key(app: &mut App, key: KeyEvent) {
-    use crate::core::zeroclaw::PermFieldKind;
-
-    let len = app.automation.permissions.len();
-    if len == 0 {
-        if key.code == KeyCode::Char('r') {
-            app.spawn_load_permissions();
-        }
-        return;
-    }
-
-    match key.code {
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.automation.permissions_selected = (app.automation.permissions_selected + 1) % len;
-            app.automation.permissions_status = None;
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.automation.permissions_selected = if app.automation.permissions_selected == 0 {
-                len - 1
-            } else {
-                app.automation.permissions_selected - 1
-            };
-            app.automation.permissions_status = None;
-        }
-        // Space toggles bools; Enter opens edit for text/list
-        KeyCode::Char(' ') => {
-            let idx = app.automation.permissions_selected;
-            if let Some(field) = app.automation.permissions.get(idx) {
-                if field.kind == PermFieldKind::Bool {
-                    let new_val = if field.value == "true" {
-                        "false"
-                    } else {
-                        "true"
-                    };
-                    let path = field.path.to_string();
-                    app.spawn_save_permission(path, new_val.to_string());
-                    app.automation.permissions_status = None;
-                }
-            }
-        }
-        KeyCode::Enter | KeyCode::Char('e') => {
-            let idx = app.automation.permissions_selected;
-            if let Some(field) = app.automation.permissions.get(idx) {
-                match field.kind {
-                    PermFieldKind::Bool => {
-                        let new_val = if field.value == "true" {
-                            "false"
-                        } else {
-                            "true"
-                        };
-                        let path = field.path.to_string();
-                        app.spawn_save_permission(path, new_val.to_string());
-                        app.automation.permissions_status = None;
-                    }
-                    PermFieldKind::Text | PermFieldKind::TextList => {
-                        app.automation.permissions_input = field.value.clone();
-                        app.automation.permissions_input_mode = InputMode::Editing;
-                        app.automation.permissions_status = None;
-                    }
-                }
-            }
-        }
-        KeyCode::Char('r') => {
-            app.spawn_load_permissions();
-            app.automation.permissions_status = None;
-        }
-        _ => {}
-    }
-}
-
-fn handle_permissions_text_input(app: &mut App, key: KeyEvent) {
-    use crate::core::zeroclaw::PermFieldKind;
-
-    match key.code {
-        KeyCode::Esc => {
-            app.automation.permissions_input_mode = InputMode::Normal;
-            app.automation.permissions_input.clear();
-        }
-        KeyCode::Enter => {
-            let idx = app.automation.permissions_selected;
-            if let Some(field) = app.automation.permissions.get(idx) {
-                let path = field.path.to_string();
-                let raw = app.automation.permissions_input.trim().to_string();
-                let value = if field.kind == PermFieldKind::TextList {
-                    crate::core::zeroclaw::comma_list_to_toml_array(&raw)
-                } else {
-                    raw
-                };
-                app.spawn_save_permission(path, value);
-            }
-            app.automation.permissions_input_mode = InputMode::Normal;
-            app.automation.permissions_input.clear();
-        }
-        KeyCode::Backspace => {
-            app.automation.permissions_input.pop();
-        }
-        KeyCode::Char(c) => {
-            app.automation.permissions_input.push(c);
-        }
-        _ => {}
-    }
-}
-
-fn handle_automation_cron_input(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Tab => {
-            app.automation.cron_form_focus = (app.automation.cron_form_focus + 1) % 2;
-        }
-        KeyCode::Enter => {
-            let schedule = app.automation.cron_form_schedule.trim().to_string();
-            let command = app.automation.cron_form_command.trim().to_string();
-            if !schedule.is_empty() && !command.is_empty() {
-                app.automation.cron_form_mode = InputMode::Normal;
-                app.spawn_zeroclaw_add_cron(schedule, command);
-            }
-        }
-        KeyCode::Esc => {
-            app.automation.cron_form_mode = InputMode::Normal;
-        }
-        KeyCode::Backspace => {
-            if app.automation.cron_form_focus == 0 {
-                app.automation.cron_form_schedule.pop();
-            } else {
-                app.automation.cron_form_command.pop();
-            }
-        }
-        KeyCode::Char(c) => {
-            if app.automation.cron_form_focus == 0 {
-                app.automation.cron_form_schedule.push(c);
-            } else {
-                app.automation.cron_form_command.push(c);
-            }
+            app.spawn_load_pi_agent_logs();
         }
         _ => {}
     }

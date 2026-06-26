@@ -197,53 +197,41 @@ impl DashboardTab {
     }
 }
 
-// ── Zeroclaw / Automation tabs ─────────────────────────────────────────────
+// ── Pi Agent / Automation tabs ────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ZeroclawTab {
-    Overview,
-    Channels,
-    Cron,
-    Memory,
+pub enum PiAgentTab {
+    Status,
+    Sessions,
     Config,
-    EasyConfig,
-    Permissions,
-    Skills,
     Auth,
+    Skills,
     Logs,
 }
 
-impl ZeroclawTab {
-    pub fn all() -> &'static [ZeroclawTab] {
+impl PiAgentTab {
+    pub fn all() -> &'static [PiAgentTab] {
         &[
-            ZeroclawTab::Overview,
-            ZeroclawTab::Channels,
-            ZeroclawTab::Cron,
-            ZeroclawTab::Memory,
-            ZeroclawTab::Config,
-            ZeroclawTab::EasyConfig,
-            ZeroclawTab::Permissions,
-            ZeroclawTab::Skills,
-            ZeroclawTab::Auth,
-            ZeroclawTab::Logs,
+            PiAgentTab::Status,
+            PiAgentTab::Sessions,
+            PiAgentTab::Config,
+            PiAgentTab::Auth,
+            PiAgentTab::Skills,
+            PiAgentTab::Logs,
         ]
     }
     pub fn title(&self) -> &'static str {
         match self {
-            ZeroclawTab::Overview => "Overview",
-            ZeroclawTab::Channels => "Channels",
-            ZeroclawTab::Cron => "Cron",
-            ZeroclawTab::Memory => "Memory",
-            ZeroclawTab::Config => "Config",
-            ZeroclawTab::EasyConfig => "Easy Config",
-            ZeroclawTab::Permissions => "Permissions",
-            ZeroclawTab::Skills => "Skills",
-            ZeroclawTab::Auth => "Auth",
-            ZeroclawTab::Logs => "Logs",
+            PiAgentTab::Status => "Status",
+            PiAgentTab::Sessions => "Sessions",
+            PiAgentTab::Config => "Config",
+            PiAgentTab::Auth => "Auth",
+            PiAgentTab::Skills => "Skills",
+            PiAgentTab::Logs => "Logs",
         }
     }
     pub fn index(&self) -> usize {
-        ZeroclawTab::all()
+        PiAgentTab::all()
             .iter()
             .position(|t| t == self)
             .unwrap_or(0)
@@ -359,36 +347,23 @@ pub enum TaskResult {
         output: String,
         success: bool,
     },
-    ZeroclawInstallProgress(String),
-    ZeroclawInstallDone {
+    PiAgentInstallProgress(String),
+    PiAgentInstallDone {
         output: String,
         success: bool,
     },
-    ZeroclawInfo(crate::core::zeroclaw::ZeroclawInfo),
-    ZeroclawStatus(crate::core::zeroclaw::ZeroclawStatus),
-    ZeroclawChannels(Vec<crate::core::zeroclaw::ZeroclawChannel>),
-    ZeroclawCron(Vec<crate::core::zeroclaw::CronJob>),
-    ZeroclawMemory(Vec<crate::core::zeroclaw::MemoryEntry>),
-    ZeroclawConfig(String),
-    EasyConfigLoaded(Vec<crate::core::zeroclaw::EasyConfigField>),
-    EasyConfigSaved {
-        path: String,
-        result: Result<(), String>,
-    },
-    PermissionsLoaded(Vec<crate::core::zeroclaw::PermissionField>),
-    PermissionSaved {
-        path: String,
-        result: Result<(), String>,
-    },
-    ZeroclawActionDone {
+    PiAgentInfo(crate::core::pi_agent::PiAgentInfo),
+    PiAgentSessions(Vec<crate::core::pi_agent::PiSession>),
+    PiAgentConfig(String),
+    PiAgentAuth(Vec<crate::core::pi_agent::PiAuthEntry>),
+    PiAgentSkills(Vec<crate::core::pi_agent::PiSkill>),
+    PiAgentSkillRemoved { name: String, success: bool },
+    PiAgentLogs(Vec<String>),
+    PiAgentActionDone {
         action: String,
         output: String,
         success: bool,
     },
-    ZeroclawSkills(Vec<crate::core::zeroclaw::ZeroclawSkill>),
-    ZeroclawSkillRemoved { name: String, success: bool },
-    ZeroclawAuth(Vec<crate::core::zeroclaw::ZeroclawAuthEntry>),
-    ZeroclawLogs(Vec<String>),
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
     Status(String),
@@ -418,9 +393,6 @@ pub enum ConfirmAction {
     KillGhost { pid: u32, name: String },
     ServiceAction { name: String, op: String },
     MaintenanceAction { op: String },
-    DeleteCronJob { id: String, schedule: String },
-    DeleteMemoryEntry { key: String },
-    ZeroclawDaemonStop,
     DeleteSwap { path: String },
 }
 
@@ -908,110 +880,59 @@ impl Default for DockerState {
     }
 }
 
-// ── Automation / Zeroclaw state ───────────────────────────────────────────
+// ── Automation / Pi Agent state ───────────────────────────────────────────
 
 pub struct AutomationState {
-    pub active_tab: ZeroclawTab,
-    pub info: crate::core::zeroclaw::ZeroclawInfo,
-    pub status: crate::core::zeroclaw::ZeroclawStatus,
-    pub channels: Vec<crate::core::zeroclaw::ZeroclawChannel>,
-    pub channels_state: TableState,
-    pub cron: Vec<crate::core::zeroclaw::CronJob>,
-    pub cron_state: TableState,
-    pub memory: Vec<crate::core::zeroclaw::MemoryEntry>,
-    pub memory_state: ListState,
+    pub active_tab: PiAgentTab,
+    pub info: crate::core::pi_agent::PiAgentInfo,
+    pub sessions: Vec<crate::core::pi_agent::PiSession>,
+    pub sessions_state: TableState,
     pub config_text: String,
     pub config_scroll: u16,
     pub config_search: String,
     pub config_search_mode: InputMode,
-    // Easy Config tab
-    pub easy_config: Vec<crate::core::zeroclaw::EasyConfigField>,
-    pub easy_config_selected: usize,
-    pub easy_config_input_mode: InputMode,
-    pub easy_config_input: String,
-    pub easy_config_status: Option<String>,
-    // Permissions tab
-    pub permissions: Vec<crate::core::zeroclaw::PermissionField>,
-    pub permissions_selected: usize,
-    pub permissions_input_mode: InputMode,
-    pub permissions_input: String,
-    pub permissions_status: Option<String>,
+    pub auth_entries: Vec<crate::core::pi_agent::PiAuthEntry>,
+    pub auth_state: TableState,
+    pub skills: Vec<crate::core::pi_agent::PiSkill>,
+    pub skills_state: TableState,
+    pub skills_status: Option<String>,
+    pub logs: Vec<String>,
+    pub logs_scroll: u16,
+    pub logs_follow: bool,
     pub loading: bool,
     pub installing: bool,
     pub install_log: Vec<String>,
     pub action_output: Option<String>,
-    /// Tick counter for periodic status refresh
     pub poll_counter: u32,
-    // Cron-add form
-    pub cron_form_mode: InputMode,
-    pub cron_form_schedule: String,
-    pub cron_form_command: String,
-    pub cron_form_focus: usize,
-    // Skills tab
-    pub skills: Vec<crate::core::zeroclaw::ZeroclawSkill>,
-    pub skills_state: TableState,
-    #[allow(dead_code)]
-    pub skills_input_mode: InputMode,
-    #[allow(dead_code)]
-    pub skills_input: String,
-    pub skills_status: Option<String>,
-    // Auth tab
-    pub auth_entries: Vec<crate::core::zeroclaw::ZeroclawAuthEntry>,
-    pub auth_state: TableState,
-    // Logs tab
-    pub logs: Vec<String>,
-    pub logs_scroll: u16,
-    pub logs_follow: bool,
 }
 
 impl Default for AutomationState {
     fn default() -> Self {
         Self {
-            active_tab: ZeroclawTab::Overview,
-            info: crate::core::zeroclaw::ZeroclawInfo {
+            active_tab: PiAgentTab::Status,
+            info: crate::core::pi_agent::PiAgentInfo {
                 installed: false,
                 version: None,
             },
-            status: crate::core::zeroclaw::ZeroclawStatus::default(),
-            channels: Vec::new(),
-            channels_state: TableState::default(),
-            cron: Vec::new(),
-            cron_state: TableState::default(),
-            memory: Vec::new(),
-            memory_state: ListState::default(),
+            sessions: Vec::new(),
+            sessions_state: TableState::default(),
             config_text: String::new(),
             config_scroll: 0,
             config_search: String::new(),
             config_search_mode: InputMode::Normal,
-            easy_config: Vec::new(),
-            easy_config_selected: 0,
-            easy_config_input_mode: InputMode::Normal,
-            easy_config_input: String::new(),
-            easy_config_status: None,
-            permissions: Vec::new(),
-            permissions_selected: 0,
-            permissions_input_mode: InputMode::Normal,
-            permissions_input: String::new(),
-            permissions_status: None,
+            auth_entries: Vec::new(),
+            auth_state: TableState::default(),
+            skills: Vec::new(),
+            skills_state: TableState::default(),
+            skills_status: None,
+            logs: Vec::new(),
+            logs_scroll: 0,
+            logs_follow: true,
             loading: false,
             installing: false,
             install_log: Vec::new(),
             action_output: None,
             poll_counter: 0,
-            cron_form_mode: InputMode::Normal,
-            cron_form_schedule: String::new(),
-            cron_form_command: String::new(),
-            cron_form_focus: 0,
-            skills: Vec::new(),
-            skills_state: TableState::default(),
-            skills_input_mode: InputMode::Normal,
-            skills_input: String::new(),
-            skills_status: None,
-            auth_entries: Vec::new(),
-            auth_state: TableState::default(),
-            logs: Vec::new(),
-            logs_scroll: 0,
-            logs_follow: true,
         }
     }
 }
@@ -1387,7 +1308,7 @@ impl App {
                 self.spawn_poll_nats_status();
             }
             Screen::Automation => {
-                self.spawn_load_zeroclaw_overview();
+                self.spawn_load_pi_agent_status();
             }
             Screen::System => {
                 self.spawn_load_system_tab(self.system_tab.clone());
@@ -2933,141 +2854,82 @@ impl App {
         });
     }
 
-    // ── Zeroclaw spawn methods ────────────────────────────────────────────
+    // ── Pi Agent spawn methods ────────────────────────────────────────────
 
-    pub fn spawn_load_zeroclaw_overview(&mut self) {
+    pub fn spawn_load_pi_agent_status(&mut self) {
         let tx = self.task_tx.clone();
         self.automation.loading = true;
         tokio::spawn(async move {
-            let info = crate::core::zeroclaw::get_info().await;
-            let _ = tx.send(TaskResult::ZeroclawInfo(info));
-            let status = crate::core::zeroclaw::get_status().await;
-            let _ = tx.send(TaskResult::ZeroclawStatus(status));
+            let info = crate::core::pi_agent::get_info().await;
+            let _ = tx.send(TaskResult::PiAgentInfo(info));
         });
     }
 
-    pub fn spawn_load_zeroclaw_channels(&mut self) {
+    pub fn spawn_load_pi_agent_sessions(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let channels = crate::core::zeroclaw::list_channels().await;
-            let _ = tx.send(TaskResult::ZeroclawChannels(channels));
+            let sessions = crate::core::pi_agent::list_sessions().await;
+            let _ = tx.send(TaskResult::PiAgentSessions(sessions));
         });
     }
 
-    pub fn spawn_load_zeroclaw_cron(&mut self) {
+    pub fn spawn_load_pi_agent_config(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let jobs = crate::core::zeroclaw::list_cron().await;
-            let _ = tx.send(TaskResult::ZeroclawCron(jobs));
+            let config = crate::core::pi_agent::get_config().await;
+            let _ = tx.send(TaskResult::PiAgentConfig(config));
         });
     }
 
-    pub fn spawn_load_zeroclaw_memory(&mut self) {
+    pub fn spawn_load_pi_agent_auth(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let entries = crate::core::zeroclaw::list_memory().await;
-            let _ = tx.send(TaskResult::ZeroclawMemory(entries));
+            let entries = crate::core::pi_agent::get_auth().await;
+            let _ = tx.send(TaskResult::PiAgentAuth(entries));
         });
     }
 
-    pub fn spawn_load_zeroclaw_config(&mut self) {
+    pub fn spawn_load_pi_agent_skills(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let config = crate::core::zeroclaw::get_config().await;
-            let _ = tx.send(TaskResult::ZeroclawConfig(config));
+            let skills = crate::core::pi_agent::list_skills().await;
+            let _ = tx.send(TaskResult::PiAgentSkills(skills));
         });
     }
 
-    pub fn spawn_load_easy_config(&mut self) {
+    pub fn spawn_pi_agent_remove_skill(&mut self, name: String) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let fields = crate::core::zeroclaw::get_easy_config().await;
-            let _ = tx.send(TaskResult::EasyConfigLoaded(fields));
+            let success = crate::core::pi_agent::remove_skill(&name).await.is_ok();
+            let _ = tx.send(TaskResult::PiAgentSkillRemoved { name, success });
         });
     }
 
-    pub fn spawn_save_easy_config_field(&mut self, path: String, value: String) {
+    pub fn spawn_load_pi_agent_logs(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
-            let result = crate::core::zeroclaw::set_config_field(&path, &value)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = tx.send(TaskResult::EasyConfigSaved { path, result });
+            let lines = crate::core::pi_agent::get_logs(200).await;
+            let _ = tx.send(TaskResult::PiAgentLogs(lines));
         });
     }
 
-    pub fn spawn_load_permissions(&mut self) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let fields = crate::core::zeroclaw::get_permissions().await;
-            let _ = tx.send(TaskResult::PermissionsLoaded(fields));
-        });
-    }
-
-    pub fn spawn_load_zeroclaw_skills(&mut self) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let skills = crate::core::zeroclaw::list_skills().await;
-            let _ = tx.send(TaskResult::ZeroclawSkills(skills));
-        });
-    }
-
-    pub fn spawn_zeroclaw_remove_skill(&mut self, name: String) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let success = crate::core::zeroclaw::remove_skill(&name).await.is_ok();
-            let _ = tx.send(TaskResult::ZeroclawSkillRemoved { name, success });
-        });
-    }
-
-    pub fn spawn_load_zeroclaw_auth(&mut self) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let entries = crate::core::zeroclaw::get_auth_status().await;
-            let _ = tx.send(TaskResult::ZeroclawAuth(entries));
-        });
-    }
-
-    pub fn spawn_load_zeroclaw_logs(&mut self) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let lines = crate::core::zeroclaw::get_logs(200).await;
-            let _ = tx.send(TaskResult::ZeroclawLogs(lines));
-        });
-    }
-
-    pub fn spawn_save_permission(&mut self, path: String, value: String) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::core::zeroclaw::set_config_field(&path, &value)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = tx.send(TaskResult::PermissionSaved { path, result });
-        });
-    }
-
-    pub fn spawn_zeroclaw_action(&mut self, action: &'static str) {
+    pub fn spawn_pi_agent_action(&mut self, action: &'static str) {
         let tx = self.task_tx.clone();
         let pool = self.pool.clone();
         tokio::spawn(async move {
             let result: anyhow::Result<String> = match action {
-                "daemon_start" => crate::core::zeroclaw::daemon_start().await,
-                "daemon_stop" => crate::core::zeroclaw::daemon_stop().await,
-                "service_install" => crate::core::zeroclaw::service_install().await,
-                "service_start" => crate::core::zeroclaw::service_start().await,
-                "service_stop" => crate::core::zeroclaw::service_stop().await,
-                "update_check" => crate::core::zeroclaw::update_check().await,
-                "update_apply" => crate::core::zeroclaw::update_apply().await,
-                "doctor" => crate::core::zeroclaw::run_doctor().await,
+                "update_check" => crate::core::pi_agent::update_check().await,
+                "update_apply" => crate::core::pi_agent::update_apply().await,
                 _ => Ok("Unknown action".to_string()),
             };
             let (output, success) = match result {
                 Ok(o) => (o, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = crate::db::audit::log_action(&pool, "zeroclaw", Some(action), &output, success)
-                .await;
-            let _ = tx.send(TaskResult::ZeroclawActionDone {
+            let _ =
+                crate::db::audit::log_action(&pool, "pi-agent", Some(action), &output, success)
+                    .await;
+            let _ = tx.send(TaskResult::PiAgentActionDone {
                 action: action.to_string(),
                 output,
                 success,
@@ -3075,55 +2937,7 @@ impl App {
         });
     }
 
-    pub fn spawn_zeroclaw_add_cron(&mut self, schedule: String, command: String) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::core::zeroclaw::add_cron(&schedule, &command).await;
-            let (output, success) = match result {
-                Ok(()) => ("Cron job added".to_string(), true),
-                Err(e) => (e.to_string(), false),
-            };
-            let _ = tx.send(TaskResult::ZeroclawActionDone {
-                action: "add_cron".to_string(),
-                output,
-                success,
-            });
-        });
-    }
-
-    pub fn spawn_zeroclaw_delete_cron(&mut self, id: String) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::core::zeroclaw::delete_cron(&id).await;
-            let (output, success) = match result {
-                Ok(()) => (format!("Cron job {} removed", id), true),
-                Err(e) => (e.to_string(), false),
-            };
-            let _ = tx.send(TaskResult::ZeroclawActionDone {
-                action: "delete_cron".to_string(),
-                output,
-                success,
-            });
-        });
-    }
-
-    pub fn spawn_zeroclaw_delete_memory(&mut self, key: String) {
-        let tx = self.task_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::core::zeroclaw::delete_memory(&key).await;
-            let (output, success) = match result {
-                Ok(()) => (format!("Memory entry '{}' deleted", key), true),
-                Err(e) => (e.to_string(), false),
-            };
-            let _ = tx.send(TaskResult::ZeroclawActionDone {
-                action: "delete_memory".to_string(),
-                output,
-                success,
-            });
-        });
-    }
-
-    pub fn spawn_zeroclaw_install(&mut self) {
+    pub fn spawn_pi_agent_install(&mut self) {
         let tx = self.task_tx.clone();
         self.automation.installing = true;
         self.automation.install_log.clear();
@@ -3132,16 +2946,16 @@ impl App {
             let tx_fwd = tx.clone();
             let fwd = tokio::spawn(async move {
                 while let Some(line) = prx.recv().await {
-                    let _ = tx_fwd.send(TaskResult::ZeroclawInstallProgress(line));
+                    let _ = tx_fwd.send(TaskResult::PiAgentInstallProgress(line));
                 }
             });
-            let result = crate::core::zeroclaw::install_from_release(ptx).await;
+            let result = crate::core::pi_agent::install_pi(ptx).await;
             let _ = fwd.await;
             let (output, success) = match result {
                 Ok(o) => (o, true),
                 Err(e) => (e.to_string(), false),
             };
-            let _ = tx.send(TaskResult::ZeroclawInstallDone { output, success });
+            let _ = tx.send(TaskResult::PiAgentInstallDone { output, success });
         });
     }
 
@@ -3564,127 +3378,38 @@ impl App {
                     self.ghost.ghosts.len()
                 ));
             }
-            TaskResult::ZeroclawInstallProgress(line) => {
+            TaskResult::PiAgentInstallProgress(line) => {
                 self.automation.install_log.push(line);
             }
-            TaskResult::ZeroclawInstallDone { output, success } => {
+            TaskResult::PiAgentInstallDone { output, success } => {
                 self.automation.installing = false;
                 self.automation.install_log.push(output.clone());
                 self.status_msg = Some(if success {
-                    "zeroclaw installed — press [r] to refresh".to_string()
+                    "pi installed — press [r] to refresh".to_string()
                 } else {
                     format!("Install failed: {}", output.lines().next().unwrap_or(""))
                 });
                 if success {
-                    self.spawn_load_zeroclaw_overview();
+                    self.spawn_load_pi_agent_status();
                 }
             }
-            TaskResult::ZeroclawInfo(info) => {
+            TaskResult::PiAgentInfo(info) => {
                 self.automation.loading = false;
                 self.automation.info = info;
             }
-            TaskResult::ZeroclawStatus(status) => {
-                self.automation.status = status;
-            }
-            TaskResult::ZeroclawChannels(channels) => {
-                self.automation.channels = channels;
-                if self.automation.channels_state.selected().is_none()
-                    && !self.automation.channels.is_empty()
+            TaskResult::PiAgentSessions(sessions) => {
+                self.automation.sessions = sessions;
+                if self.automation.sessions_state.selected().is_none()
+                    && !self.automation.sessions.is_empty()
                 {
-                    self.automation.channels_state.select(Some(0));
+                    self.automation.sessions_state.select(Some(0));
                 }
             }
-            TaskResult::ZeroclawCron(jobs) => {
-                self.automation.cron = jobs;
-                if self.automation.cron_state.selected().is_none()
-                    && !self.automation.cron.is_empty()
-                {
-                    self.automation.cron_state.select(Some(0));
-                }
-            }
-            TaskResult::ZeroclawMemory(entries) => {
-                self.automation.memory = entries;
-                if self.automation.memory_state.selected().is_none()
-                    && !self.automation.memory.is_empty()
-                {
-                    self.automation.memory_state.select(Some(0));
-                }
-            }
-            TaskResult::ZeroclawConfig(text) => {
+            TaskResult::PiAgentConfig(text) => {
                 self.automation.config_text = text;
                 self.automation.config_scroll = 0;
             }
-            TaskResult::EasyConfigLoaded(fields) => {
-                self.automation.easy_config = fields;
-                if self.automation.easy_config_selected >= self.automation.easy_config.len() {
-                    self.automation.easy_config_selected = 0;
-                }
-            }
-            TaskResult::EasyConfigSaved { path, result } => match result {
-                Ok(()) => {
-                    self.automation.easy_config_status = Some(format!("Saved {}", path));
-                    self.spawn_load_easy_config();
-                }
-                Err(e) => {
-                    self.automation.easy_config_status = Some(format!("Error: {}", e));
-                }
-            },
-            TaskResult::PermissionsLoaded(fields) => {
-                self.automation.permissions = fields;
-                if self.automation.permissions_selected >= self.automation.permissions.len() {
-                    self.automation.permissions_selected = 0;
-                }
-            }
-            TaskResult::PermissionSaved { path, result } => match result {
-                Ok(()) => {
-                    self.automation.permissions_status = Some(format!("Saved {}", path));
-                    self.spawn_load_permissions();
-                }
-                Err(e) => {
-                    self.automation.permissions_status = Some(format!("Error: {}", e));
-                }
-            },
-            TaskResult::ZeroclawActionDone {
-                action,
-                output,
-                success,
-            } => {
-                self.automation.action_output = Some(output.clone());
-                self.status_msg = Some(if success {
-                    format!("zeroclaw {} — done", action)
-                } else {
-                    format!(
-                        "zeroclaw {} FAILED: {}",
-                        action,
-                        output.lines().next().unwrap_or("")
-                    )
-                });
-                // Refresh relevant tab after action
-                match action.as_str() {
-                    "add_cron" | "delete_cron" => self.spawn_load_zeroclaw_cron(),
-                    "delete_memory" => self.spawn_load_zeroclaw_memory(),
-                    "daemon_start" | "daemon_stop" | "service_start" | "service_stop"
-                    | "service_install" => self.spawn_load_zeroclaw_overview(),
-                    _ => {}
-                }
-            }
-            TaskResult::ZeroclawSkills(skills) => {
-                self.automation.skills = skills;
-                if self.automation.skills_state.selected().is_none()
-                    && !self.automation.skills.is_empty()
-                {
-                    self.automation.skills_state.select(Some(0));
-                }
-            }
-            TaskResult::ZeroclawSkillRemoved { name, success } => {
-                self.automation.skills_status = Some(if success {
-                    format!("Removed skill '{}'", name)
-                } else {
-                    format!("Failed to remove '{}'", name)
-                });
-                self.spawn_load_zeroclaw_skills();
-            }
-            TaskResult::ZeroclawAuth(entries) => {
+            TaskResult::PiAgentAuth(entries) => {
                 self.automation.auth_entries = entries;
                 if self.automation.auth_state.selected().is_none()
                     && !self.automation.auth_entries.is_empty()
@@ -3692,12 +3417,47 @@ impl App {
                     self.automation.auth_state.select(Some(0));
                 }
             }
-            TaskResult::ZeroclawLogs(lines) => {
+            TaskResult::PiAgentSkills(skills) => {
+                self.automation.skills = skills;
+                if self.automation.skills_state.selected().is_none()
+                    && !self.automation.skills.is_empty()
+                {
+                    self.automation.skills_state.select(Some(0));
+                }
+            }
+            TaskResult::PiAgentSkillRemoved { name, success } => {
+                self.automation.skills_status = Some(if success {
+                    format!("Removed skill '{}'", name)
+                } else {
+                    format!("Failed to remove '{}'", name)
+                });
+                self.spawn_load_pi_agent_skills();
+            }
+            TaskResult::PiAgentLogs(lines) => {
                 self.automation.logs = lines;
                 if self.automation.logs_follow {
-                    // Scroll to bottom when following
                     self.automation.logs_scroll =
                         (self.automation.logs.len() as u16).saturating_sub(20);
+                }
+            }
+            TaskResult::PiAgentActionDone {
+                action,
+                output,
+                success,
+            } => {
+                self.automation.action_output = Some(output.clone());
+                self.status_msg = Some(if success {
+                    format!("pi {} — done", action)
+                } else {
+                    format!(
+                        "pi {} FAILED: {}",
+                        action,
+                        output.lines().next().unwrap_or("")
+                    )
+                });
+                match action.as_str() {
+                    "update_check" | "update_apply" => self.spawn_load_pi_agent_status(),
+                    _ => {}
                 }
             }
             TaskResult::SwapLoaded(status) => {
@@ -3798,10 +3558,10 @@ impl App {
                 }
             }
             Screen::Automation => {
-                // Refresh zeroclaw status every 40 ticks (~10 s)
+                // Refresh pi agent status every 40 ticks (~10 s)
                 self.automation.poll_counter = self.automation.poll_counter.wrapping_add(1);
                 if self.automation.poll_counter.is_multiple_of(40) {
-                    self.spawn_load_zeroclaw_overview();
+                    self.spawn_load_pi_agent_status();
                 }
             }
             _ => {}

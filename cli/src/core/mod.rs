@@ -17,6 +17,6 @@ pub mod tunnel;
 pub mod users;
 pub mod wasm_cloud;
 pub mod workloads;
-pub mod zeroclaw;
+pub mod pi_agent;
 
 pub use platform::Platform;

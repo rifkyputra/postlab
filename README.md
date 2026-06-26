@@ -32,7 +32,7 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 | **4. Networking** | Gateway, Tunnel | **Gateway:** Caddy installation and route management (domain → port) with automatic TLS. **Tunnel:** Cloudflare tunnel creation, route management, and ingress configuration. |
 | **5. Docker** | Containers, Images, Compose, Workloads, Managed | Manage Docker or Podman lifecycle, view image sizes, control Compose stacks, host-managed workloads, and one-click dev services (PostgreSQL, Redis, RabbitMQ, etc.). |
 | **6. wasmCloud** | Hosts, Components, Apps, Inspector | Manage wasmCloud lattices, host nodes, components, and applications. NATS backbone health and interactive inspector. |
-| **7. Automation** | Overview, Channels, Cron, Memory, Config, Easy Config, Permissions, Skills, Auth, Logs | Install and manage [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw): daemon control, channels, cron jobs, agent memory, TOML config editing, permissions, skills, auth profiles, and live logs. |
+| **7. Automation** | Overview, Channels, Cron, Memory, Config, Easy Config, Permissions, Skills, Auth, Logs | Install and manage pi agent: daemon control, channels, cron jobs, agent memory, TOML config editing, permissions, skills, auth profiles, and live logs. |
 | **8. System** | Ghosts, Janitor, Services, Users, Swap | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable. |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
@@ -132,17 +132,17 @@ sudo postlab --database /var/lib/postlab/data.db
 
 ---
 
-## ZeroClaw Integration
+## Pi Agent Integration
 
-The **Automation** screen manages [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) directly from Postlab:
+The **Automation** screen manages pi agent directly from Postlab:
 
-- Install zeroclaw and its systemd service from the Overview tab
+- Install pi agent and its systemd service from the Overview tab
 - Start / stop the daemon, run doctor, and check for updates
 - Manage channels, cron schedules, agent memory, skills, and auth profiles
 - Edit raw TOML config or use guided Easy Config / Permissions editors
 - Tail daemon logs with optional follow mode
 
-Implementation lives in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`. Postlab shells out to the `zeroclaw` CLI — it does not embed zeroclaw source code.
+Implementation lives in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`. Postlab shells out to the pi agent CLI — it does not embed pi agent source code.
 
 ---
 
@@ -175,7 +175,7 @@ cli/src/
 │   ├── ghost/               # Ghost service detection logic
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
-│   └── zeroclaw/            # ZeroClaw CLI integration
+│   └── zeroclaw/            # Pi Agent CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
 │   └── audit.rs             # Log actions for audit history
@@ -234,7 +234,7 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 - [x] **Ghost Hunter** — Detect abandoned services and processes.
 - [x] **Services** — systemd / launchd start, stop, restart, enable, disable.
 - [x] **Users & Swap** — Unix account management and swap file control.
-- [x] **ZeroClaw** — Full Automation screen for agent lifecycle and config.
+- [x] **Pi Agent** — Full Automation screen for agent lifecycle and config.
 - [ ] **Snapshots** — Btrfs/ZFS snapshot management.
 - [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
 

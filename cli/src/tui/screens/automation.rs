@@ -2,21 +2,21 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table, Tabs},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs},
     Frame,
 };
 
-use crate::tui::app::{App, InputMode, ZeroclawTab};
+use crate::tui::app::{App, PiAgentTab};
 use ratatui::text::Text;
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // header
-            Constraint::Length(3), // tab bar
-            Constraint::Min(0),    // content
-            Constraint::Length(1), // hints
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(area);
 
@@ -24,32 +24,20 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     render_tabs(f, app, chunks[1]);
 
     match app.automation.active_tab {
-        ZeroclawTab::Overview => render_overview(f, app, chunks[2]),
-        ZeroclawTab::Channels => render_channels(f, app, chunks[2]),
-        ZeroclawTab::Cron => render_cron(f, app, chunks[2]),
-        ZeroclawTab::Memory => render_memory(f, app, chunks[2]),
-        ZeroclawTab::Config => render_config(f, app, chunks[2]),
-        ZeroclawTab::EasyConfig => render_easy_config(f, app, chunks[2]),
-        ZeroclawTab::Permissions => render_permissions(f, app, chunks[2]),
-        ZeroclawTab::Skills => render_skills(f, app, chunks[2]),
-        ZeroclawTab::Auth => render_auth(f, app, chunks[2]),
-        ZeroclawTab::Logs => render_logs(f, app, chunks[2]),
+        PiAgentTab::Status => render_status(f, app, chunks[2]),
+        PiAgentTab::Sessions => render_sessions(f, app, chunks[2]),
+        PiAgentTab::Config => render_config(f, app, chunks[2]),
+        PiAgentTab::Auth => render_auth(f, app, chunks[2]),
+        PiAgentTab::Skills => render_skills(f, app, chunks[2]),
+        PiAgentTab::Logs => render_logs(f, app, chunks[2]),
     }
 
     render_hints(f, app, chunks[3]);
-
-    if app.automation.cron_form_mode == InputMode::Editing {
-        render_cron_form(f, app, area);
-    }
 }
 
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let (dot_color, dot) = if app.automation.info.installed {
-        if app.automation.status.daemon_running {
-            (Color::Green, "●")
-        } else {
-            (Color::Yellow, "●")
-        }
+        (Color::Green, "●")
     } else {
         (Color::Red, "○")
     };
@@ -59,23 +47,11 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         .version
         .as_deref()
         .unwrap_or("not installed");
-    let daemon_state = if !app.automation.info.installed {
-        ""
-    } else if app.automation.status.daemon_running {
-        "  daemon running"
-    } else {
-        "  daemon stopped"
-    };
-    let loading = if app.automation.loading {
-        "  Loading…"
-    } else {
-        ""
-    };
+    let loading = if app.automation.loading { "  Loading…" } else { "" };
     let text = Line::from(vec![
         Span::styled(dot, Style::default().fg(dot_color)),
-        Span::raw(" ZeroClaw  "),
+        Span::raw(" Pi Agent  "),
         Span::styled(version, Style::default().fg(Color::DarkGray)),
-        Span::styled(daemon_state, Style::default().fg(Color::DarkGray)),
         Span::styled(loading, Style::default().fg(Color::Yellow)),
     ]);
     let p =
@@ -84,7 +60,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_tabs(f: &mut Frame, app: &App, area: Rect) {
-    let titles: Vec<&str> = ZeroclawTab::all().iter().map(|t| t.title()).collect();
+    let titles: Vec<&str> = PiAgentTab::all().iter().map(|t| t.title()).collect();
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL))
         .select(app.automation.active_tab.index())
@@ -98,38 +74,35 @@ fn render_tabs(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_hints(f: &mut Frame, app: &App, area: Rect) {
     let hints = match app.automation.active_tab {
-        ZeroclawTab::Overview => {
+        PiAgentTab::Status => {
             if app.automation.info.installed {
-                "[←/→] tabs  [s] start daemon  [S] stop  [i] install service  [u] update check  [U] update  [d] doctor  [r] refresh"
+                "[←/→] tabs  [u] update check  [U] update  [r] refresh"
             } else if app.automation.installing {
-                "Installing zeroclaw…  please wait"
+                "Installing pi…  please wait"
             } else {
-                "[←/→] tabs  [I] install zeroclaw  [r] refresh"
+                "[←/→] tabs  [I] install pi  [r] refresh"
             }
         }
-        ZeroclawTab::Channels => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
-        ZeroclawTab::Cron => "[←/→] tabs  [↑↓/jk] select  [a] add  [d] delete  [r] refresh",
-        ZeroclawTab::Memory => "[←/→] tabs  [↑↓/jk] select  [d] delete  [r] refresh",
-        ZeroclawTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh",
-        ZeroclawTab::EasyConfig => "[←/→] tabs  [↑↓/jk] select  [Enter/e] edit  [Esc] cancel  [r] reload",
-        ZeroclawTab::Permissions => "[←/→] tabs  [↑↓/jk] select  [Space] toggle bool  [Enter/e] edit text/list (comma-sep)  [Esc] cancel  [r] reload",
-        ZeroclawTab::Skills => "[←/→] tabs  [↑↓/jk] select  [d] remove skill  [r] refresh",
-        ZeroclawTab::Auth => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
-        ZeroclawTab::Logs => "[←/→] tabs  [↑↓/jk] scroll  [f] toggle follow  [R] reload",
+        PiAgentTab::Sessions => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
+        PiAgentTab::Config => {
+            "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh"
+        }
+        PiAgentTab::Auth => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
+        PiAgentTab::Skills => "[←/→] tabs  [↑↓/jk] select  [d] remove  [r] refresh",
+        PiAgentTab::Logs => "[←/→] tabs  [↑↓/jk] scroll  [f] toggle follow  [R] reload",
     };
     let p = Paragraph::new(Span::styled(hints, Style::default().fg(Color::DarkGray)));
     f.render_widget(p, area);
 }
 
-// ── Overview ──────────────────────────────────────────────────────────────
+// ── Status ────────────────────────────────────────────────────────────────
 
-fn render_overview(f: &mut Frame, app: &App, area: Rect) {
+fn render_status(f: &mut Frame, app: &App, area: Rect) {
     if !app.automation.info.installed {
-        // Show install log if in progress, otherwise the install prompt
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
-                "  ZeroClaw is not installed.",
+                "  Pi Agent is not installed.",
                 Style::default().fg(Color::Red),
             )]),
             Line::from(""),
@@ -159,254 +132,141 @@ fn render_overview(f: &mut Frame, app: &App, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    " to install from GitHub Releases (pre-built binary, no Rust needed)",
+                    " to install via pi.dev/install.sh (requires curl)",
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
             lines.push(Line::from(""));
             lines.push(Line::from(vec![Span::styled(
-                "  Installs to ~/.local/bin/zeroclaw",
+                "  Or manually: npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
                 Style::default().fg(Color::DarkGray),
             )]));
         }
         let p =
-            Paragraph::new(lines).block(Block::default().title(" ZeroClaw ").borders(Borders::ALL));
+            Paragraph::new(lines).block(Block::default().title(" Pi Agent ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(6), Constraint::Min(0)])
-        .split(area);
-
-    // Status summary
-    let daemon_color = if app.automation.status.daemon_running {
-        Color::Green
-    } else {
-        Color::Red
-    };
-    let daemon_text = if app.automation.status.daemon_running {
-        "● Running"
-    } else {
-        "○ Stopped"
-    };
-    let status_lines = vec![
+    let version = app.automation.info.version.as_deref().unwrap_or("unknown");
+    let lines = vec![
+        Line::from(""),
         Line::from(vec![
-            Span::styled("  Daemon:  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(daemon_text, Style::default().fg(daemon_color)),
+            Span::styled("  Version:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(version, Style::default().fg(Color::Green)),
         ]),
+        Line::from(""),
         Line::from(vec![
-            Span::styled("  Gateway: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Config:   ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("port {}", app.automation.status.gateway_port),
+                "~/.pi/agent/settings.json",
                 Style::default().fg(Color::White),
             ),
         ]),
+        Line::from(vec![
+            Span::styled("  Auth:     ", Style::default().fg(Color::DarkGray)),
+            Span::styled("~/.pi/auth.json", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Sessions: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("~/.pi/sessions/", Style::default().fg(Color::White)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Default model: ",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                "deepseek/deepseek-v4-pro  [openrouter]",
+                Style::default().fg(Color::Cyan),
+            ),
+        ]),
     ];
-    let p = Paragraph::new(status_lines)
-        .block(Block::default().title(" Status ").borders(Borders::ALL));
-    f.render_widget(p, chunks[0]);
 
-    // Components table
-    if app.automation.status.components.is_empty() {
-        let raw = app.automation.status.raw.trim();
-        let content = if raw.is_empty() {
-            "  No component data — is the daemon running?".to_string()
-        } else {
-            raw.to_string()
-        };
-        let p = Paragraph::new(content)
-            .style(Style::default().fg(Color::DarkGray))
-            .block(Block::default().title(" Components ").borders(Borders::ALL));
-        f.render_widget(p, chunks[1]);
-    } else {
-        let header = Row::new(vec!["Component", "Status"]).style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
-        let rows: Vec<Row> = app
-            .automation
-            .status
-            .components
-            .iter()
-            .map(|c| {
-                let status_color = match c.status.as_str() {
-                    "ok" => Color::Green,
-                    "error" => Color::Red,
-                    "degraded" => Color::Yellow,
-                    _ => Color::DarkGray,
-                };
-                Row::new(vec![
-                    Cell::from(c.name.clone()),
-                    Cell::from(c.status.clone()).style(Style::default().fg(status_color)),
-                ])
-            })
-            .collect();
-        let table = Table::new(rows, [Constraint::Fill(1), Constraint::Length(10)])
-            .header(header)
-            .block(Block::default().title(" Components ").borders(Borders::ALL));
-        f.render_widget(table, chunks[1]);
-    }
-}
-
-// ── Channels ──────────────────────────────────────────────────────────────
-
-fn render_channels(f: &mut Frame, app: &App, area: Rect) {
-    if app.automation.channels.is_empty() {
-        let msg = "  No channels configured in ~/.zeroclaw/config.toml";
-        let p = Paragraph::new(msg)
-            .style(Style::default().fg(Color::DarkGray))
-            .block(Block::default().title(" Channels ").borders(Borders::ALL));
+    if let Some(ref output) = app.automation.action_output {
+        let mut all = lines;
+        all.push(Line::from(""));
+        all.push(Line::from(vec![Span::styled(
+            "  Last action output:",
+            Style::default().fg(Color::DarkGray),
+        )]));
+        for l in output.lines().take(6) {
+            all.push(Line::from(vec![Span::styled(
+                format!("    {}", l),
+                Style::default().fg(Color::Yellow),
+            )]));
+        }
+        let p =
+            Paragraph::new(all).block(Block::default().title(" Pi Agent ").borders(Borders::ALL));
         f.render_widget(p, area);
-        return;
+    } else {
+        let p = Paragraph::new(lines)
+            .block(Block::default().title(" Pi Agent ").borders(Borders::ALL));
+        f.render_widget(p, area);
     }
-
-    let header = Row::new(vec!["Name", "Platform", "Enabled"]).style(
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    );
-    let rows: Vec<Row> = app
-        .automation
-        .channels
-        .iter()
-        .map(|ch| {
-            let enabled_color = if ch.enabled {
-                Color::Green
-            } else {
-                Color::DarkGray
-            };
-            let enabled_text = if ch.enabled { "yes" } else { "no" };
-            Row::new(vec![
-                Cell::from(ch.name.clone()),
-                Cell::from(ch.platform.clone()),
-                Cell::from(enabled_text).style(Style::default().fg(enabled_color)),
-            ])
-        })
-        .collect();
-
-    let title = format!(" Channels ({}) ", app.automation.channels.len());
-    let widths = [
-        Constraint::Fill(1),
-        Constraint::Length(12),
-        Constraint::Length(8),
-    ];
-    let mut state = app.automation.channels_state.clone();
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(Block::default().title(title).borders(Borders::ALL))
-        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-        .highlight_symbol("› ");
-    f.render_stateful_widget(table, area, &mut state);
 }
 
-// ── Cron ──────────────────────────────────────────────────────────────────
+// ── Sessions ──────────────────────────────────────────────────────────────
 
-fn render_cron(f: &mut Frame, app: &App, area: Rect) {
-    if app.automation.cron.is_empty() {
+fn render_sessions(f: &mut Frame, app: &App, area: Rect) {
+    if app.automation.sessions.is_empty() {
         let msg = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
-                "  No cron jobs.  Press [a] to add one.",
+                "  No sessions found in ~/.pi/sessions/",
+                Style::default().fg(Color::DarkGray),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  Sessions are created automatically when you run pi.",
                 Style::default().fg(Color::DarkGray),
             )]),
         ];
         let p =
-            Paragraph::new(msg).block(Block::default().title(" Cron Jobs ").borders(Borders::ALL));
+            Paragraph::new(msg).block(Block::default().title(" Sessions ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
 
-    let header = Row::new(vec!["ID", "Schedule", "Command", "Last Run", "Next Run"]).style(
+    let header = Row::new(vec!["Name", "Modified", "Path"]).style(
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
     );
     let rows: Vec<Row> = app
         .automation
-        .cron
+        .sessions
         .iter()
-        .map(|job| {
+        .map(|s| {
             Row::new(vec![
-                Cell::from(job.id.as_str()),
-                Cell::from(job.schedule.as_str()),
-                Cell::from(job.command.as_str()),
-                Cell::from(job.last_run.as_deref().unwrap_or("-")),
-                Cell::from(job.next_run.as_deref().unwrap_or("-")),
+                Cell::from(s.name.as_str()),
+                Cell::from(s.modified.as_str()),
+                Cell::from(s.path.as_str()).style(Style::default().fg(Color::DarkGray)),
             ])
         })
         .collect();
 
-    let title = format!(" Cron Jobs ({}) ", app.automation.cron.len());
+    let title = format!(" Sessions ({}) ", app.automation.sessions.len());
     let widths = [
-        Constraint::Length(10),
-        Constraint::Length(16),
+        Constraint::Length(30),
+        Constraint::Length(18),
         Constraint::Fill(1),
-        Constraint::Length(16),
-        Constraint::Length(16),
     ];
-    let mut state = app.automation.cron_state.clone();
+    let mut state = app.automation.sessions_state.clone();
     let table = Table::new(rows, widths)
         .header(header)
         .block(Block::default().title(title).borders(Borders::ALL))
         .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("› ");
     f.render_stateful_widget(table, area, &mut state);
-}
-
-// ── Memory ────────────────────────────────────────────────────────────────
-
-fn render_memory(f: &mut Frame, app: &App, area: Rect) {
-    if app.automation.memory.is_empty() {
-        let msg = vec![
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  No memory entries.  Run the zeroclaw agent to build memory.",
-                Style::default().fg(Color::DarkGray),
-            )]),
-        ];
-        let p = Paragraph::new(msg).block(Block::default().title(" Memory ").borders(Borders::ALL));
-        f.render_widget(p, area);
-        return;
-    }
-
-    let items: Vec<ListItem> = app
-        .automation
-        .memory
-        .iter()
-        .map(|e| {
-            let line = Line::from(vec![
-                Span::styled(
-                    format!("  {:30}", e.key),
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!("  {}", e.preview),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]);
-            ListItem::new(line)
-        })
-        .collect();
-
-    let title = format!(" Memory ({}) ", app.automation.memory.len());
-    let mut state = app.automation.memory_state.clone();
-    let list = List::new(items)
-        .block(Block::default().title(title).borders(Borders::ALL))
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-        .highlight_symbol("› ");
-    f.render_stateful_widget(list, area, &mut state);
 }
 
 // ── Config ────────────────────────────────────────────────────────────────
 
 fn render_config(f: &mut Frame, app: &App, area: Rect) {
     let searching = !app.automation.config_search.is_empty()
-        || app.automation.config_search_mode == InputMode::Editing;
+        || app.automation.config_search_mode == crate::tui::app::InputMode::Editing;
 
     let chunks = if searching {
         Layout::default()
@@ -427,7 +287,7 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
             .style(Style::default().fg(Color::DarkGray))
             .block(
                 Block::default()
-                    .title(" ~/.zeroclaw/config.toml (secrets masked) ")
+                    .title(" ~/.pi/agent/settings.json (secrets masked) ")
                     .borders(Borders::ALL),
             );
         f.render_widget(p, content_area);
@@ -467,7 +327,7 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
         let p = Paragraph::new(Text::from(lines))
             .block(
                 Block::default()
-                    .title(" ~/.zeroclaw/config.toml (secrets masked) ")
+                    .title(" ~/.pi/agent/settings.json (secrets masked) ")
                     .borders(Borders::ALL),
             )
             .scroll((app.automation.config_scroll, 0));
@@ -476,7 +336,8 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
 
     if searching {
         let search_area = chunks[1];
-        let in_edit = app.automation.config_search_mode == InputMode::Editing;
+        let in_edit =
+            app.automation.config_search_mode == crate::tui::app::InputMode::Editing;
         let query_display = if in_edit {
             format!("/{}{}", app.automation.config_search, "█")
         } else {
@@ -512,267 +373,62 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-// ── Easy Config ───────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────
 
-fn render_easy_config(f: &mut Frame, app: &App, area: Rect) {
-    use crate::tui::app::InputMode;
+fn render_auth(f: &mut Frame, app: &App, area: Rect) {
+    if app.automation.auth_entries.is_empty() {
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  No providers configured in ~/.pi/auth.json",
+                Style::default().fg(Color::DarkGray),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "  Add API keys via environment variables (e.g. OPENROUTER_API_KEY)",
+                Style::default().fg(Color::DarkGray),
+            )]),
+            Line::from(vec![Span::styled(
+                "  or run pi and use /login inside the agent.",
+                Style::default().fg(Color::DarkGray),
+            )]),
+        ];
+        let p =
+            Paragraph::new(lines).block(Block::default().title(" Auth ").borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // field list
-            Constraint::Length(3), // description box
-            Constraint::Length(1), // status bar
-        ])
-        .split(area);
-
-    // ── Field list ────────────────────────────────────────────────────────
-    let is_editing = app.automation.easy_config_input_mode == InputMode::Editing;
-
-    let items: Vec<Row> = app
-        .automation
-        .easy_config
-        .iter()
-        .enumerate()
-        .map(|(i, field)| {
-            let selected = i == app.automation.easy_config_selected;
-            let label_style = if selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
-            let value_cell = if selected && is_editing {
-                Cell::from(format!("{}{}", app.automation.easy_config_input, "█")).style(
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )
-            } else {
-                let val = if field.value.is_empty() {
-                    Span::styled("(not set)", Style::default().fg(Color::DarkGray))
-                } else {
-                    Span::styled(field.value.as_str(), Style::default().fg(Color::Cyan))
-                };
-                let row_bg = if selected {
-                    Style::default().bg(Color::DarkGray)
-                } else {
-                    Style::default()
-                };
-                Cell::from(Line::from(vec![val])).style(row_bg)
-            };
-
-            Row::new(vec![Cell::from(field.label).style(label_style), value_cell]).height(1)
-        })
-        .collect();
-
-    let count = app.automation.easy_config.len();
-    let table = Table::new(items, [Constraint::Length(26), Constraint::Fill(1)])
-        .block(
-            Block::default()
-                .title(format!(" Quick Settings ({} fields) ", count))
-                .borders(Borders::ALL),
-        )
-        .highlight_symbol("› ");
-
-    let mut state = ratatui::widgets::TableState::default();
-    state.select(Some(app.automation.easy_config_selected));
-    f.render_stateful_widget(table, chunks[0], &mut state);
-
-    // ── Description for selected field ────────────────────────────────────
-    let desc = app
-        .automation
-        .easy_config
-        .get(app.automation.easy_config_selected)
-        .map(|f| {
-            Line::from(vec![
-                Span::styled(
-                    format!("  {} — ", f.label),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::styled(f.desc, Style::default().fg(Color::DarkGray)),
-            ])
-        })
-        .unwrap_or_else(|| Line::from(""));
-
-    let desc_block = Paragraph::new(desc).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray)),
+    let header = Row::new(vec!["Provider", "Status"]).style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     );
-    f.render_widget(desc_block, chunks[1]);
-
-    // ── Status line ───────────────────────────────────────────────────────
-    let status_text = app.automation.easy_config_status.as_deref().unwrap_or("");
-    let status_style = if status_text.starts_with("Error") {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default().fg(Color::Green)
-    };
-    f.render_widget(
-        Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
-        chunks[2],
-    );
-}
-
-// ── Permissions ───────────────────────────────────────────────────────────
-
-fn render_permissions(f: &mut Frame, app: &App, area: Rect) {
-    use crate::core::zeroclaw::PermFieldKind;
-    use crate::tui::app::InputMode;
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // field table
-            Constraint::Length(3), // description
-            Constraint::Length(1), // status
-        ])
-        .split(area);
-
-    let is_editing = app.automation.permissions_input_mode == InputMode::Editing;
-
     let rows: Vec<Row> = app
         .automation
-        .permissions
+        .auth_entries
         .iter()
-        .enumerate()
-        .map(|(i, field)| {
-            let selected = i == app.automation.permissions_selected;
-            let label_style = if selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+        .map(|e| {
+            let status_color = if e.status == "configured" {
+                Color::Green
             } else {
-                Style::default().fg(Color::White)
+                Color::Red
             };
-
-            let value_cell = match field.kind {
-                PermFieldKind::Bool => {
-                    let is_on = field.value == "true";
-                    let (text, bg) = if is_on {
-                        (" ON ", Color::Green)
-                    } else {
-                        (
-                            "OFF",
-                            if selected {
-                                Color::Red
-                            } else {
-                                Color::DarkGray
-                            },
-                        )
-                    };
-                    Cell::from(format!("[{}]", text)).style(
-                        Style::default()
-                            .fg(Color::Black)
-                            .bg(bg)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                }
-                PermFieldKind::Text | PermFieldKind::TextList => {
-                    if selected && is_editing {
-                        Cell::from(format!("{}{}", app.automation.permissions_input, "█")).style(
-                            Style::default()
-                                .fg(Color::Black)
-                                .bg(Color::Yellow)
-                                .add_modifier(Modifier::BOLD),
-                        )
-                    } else {
-                        let val = if field.value.is_empty() {
-                            Span::styled("(not set)", Style::default().fg(Color::DarkGray))
-                        } else {
-                            Span::styled(field.value.as_str(), Style::default().fg(Color::Cyan))
-                        };
-                        let style = if selected {
-                            Style::default().bg(Color::DarkGray)
-                        } else {
-                            Style::default()
-                        };
-                        Cell::from(Line::from(vec![val])).style(style)
-                    }
-                }
-            };
-
-            let kind_badge = match field.kind {
-                PermFieldKind::Bool => {
-                    Cell::from(Span::styled("bool", Style::default().fg(Color::DarkGray)))
-                }
-                PermFieldKind::Text => {
-                    Cell::from(Span::styled("text", Style::default().fg(Color::DarkGray)))
-                }
-                PermFieldKind::TextList => {
-                    Cell::from(Span::styled("list", Style::default().fg(Color::Blue)))
-                }
-            };
-
             Row::new(vec![
-                Cell::from(field.label).style(label_style),
-                value_cell,
-                kind_badge,
+                Cell::from(e.provider.as_str()),
+                Cell::from(e.status.as_str()).style(Style::default().fg(status_color)),
             ])
-            .height(1)
         })
         .collect();
 
-    let count = app.automation.permissions.len();
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(22),
-            Constraint::Fill(1),
-            Constraint::Length(5),
-        ],
-    )
-    .block(
-        Block::default()
-            .title(format!(" Permissions ({} fields) ", count))
-            .borders(Borders::ALL),
-    )
-    .highlight_symbol("› ");
-
-    let mut state = ratatui::widgets::TableState::default();
-    state.select(Some(app.automation.permissions_selected));
-    f.render_stateful_widget(table, chunks[0], &mut state);
-
-    // ── Description ───────────────────────────────────────────────────────
-    let desc = app
-        .automation
-        .permissions
-        .get(app.automation.permissions_selected)
-        .map(|f| {
-            Line::from(vec![
-                Span::styled(
-                    format!("  {} — ", f.label),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::styled(f.desc, Style::default().fg(Color::DarkGray)),
-            ])
-        })
-        .unwrap_or_else(|| Line::from(""));
-
-    f.render_widget(
-        Paragraph::new(desc).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
-        ),
-        chunks[1],
-    );
-
-    // ── Status ────────────────────────────────────────────────────────────
-    let status_text = app.automation.permissions_status.as_deref().unwrap_or("");
-    let status_style = if status_text.starts_with("Error") {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default().fg(Color::Green)
-    };
-    f.render_widget(
-        Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
-        chunks[2],
-    );
+    let title = format!(" Auth ({} providers) ", app.automation.auth_entries.len());
+    let mut state = app.automation.auth_state.clone();
+    let table = Table::new(rows, [Constraint::Length(20), Constraint::Fill(1)])
+        .header(header)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("› ");
+    f.render_stateful_widget(table, area, &mut state);
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────
@@ -787,7 +443,7 @@ fn render_skills(f: &mut Frame, app: &App, area: Rect) {
         let msg = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
-                "  No skills installed.  Install with: zeroclaw skills install <url>",
+                "  No skills found in ~/.pi/skills/",
                 Style::default().fg(Color::DarkGray),
             )]),
         ];
@@ -795,7 +451,7 @@ fn render_skills(f: &mut Frame, app: &App, area: Rect) {
             .block(Block::default().title(" Skills ").borders(Borders::ALL));
         f.render_widget(p, chunks[0]);
     } else {
-        let header = Row::new(vec!["Name", "Source", "Description"]).style(
+        let header = Row::new(vec!["Name", "Description"]).style(
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -806,22 +462,15 @@ fn render_skills(f: &mut Frame, app: &App, area: Rect) {
             .iter()
             .map(|s| {
                 Row::new(vec![
-                    Cell::from(s.name.clone()),
-                    Cell::from(Span::styled(
-                        s.source.as_str(),
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                    Cell::from(s.description.as_str()),
+                    Cell::from(s.name.as_str()),
+                    Cell::from(s.description.as_str())
+                        .style(Style::default().fg(Color::DarkGray)),
                 ])
             })
             .collect();
 
         let title = format!(" Skills ({}) ", app.automation.skills.len());
-        let widths = [
-            Constraint::Length(24),
-            Constraint::Length(32),
-            Constraint::Fill(1),
-        ];
+        let widths = [Constraint::Length(24), Constraint::Fill(1)];
         let mut state = app.automation.skills_state.clone();
         let table = Table::new(rows, widths)
             .header(header)
@@ -831,229 +480,47 @@ fn render_skills(f: &mut Frame, app: &App, area: Rect) {
         f.render_stateful_widget(table, chunks[0], &mut state);
     }
 
-    // Status line
-    let status = app.automation.skills_status.as_deref().unwrap_or("");
-    let style = if status.starts_with("Failed") {
+    let status_text = app.automation.skills_status.as_deref().unwrap_or("");
+    let status_style = if status_text.starts_with("Failed") {
         Style::default().fg(Color::Red)
     } else {
         Style::default().fg(Color::Green)
     };
     f.render_widget(
-        Paragraph::new(Span::styled(format!("  {}", status), style)),
+        Paragraph::new(Span::styled(format!("  {}", status_text), status_style)),
         chunks[1],
     );
-}
-
-// ── Auth ──────────────────────────────────────────────────────────────────
-
-fn render_auth(f: &mut Frame, app: &App, area: Rect) {
-    if app.automation.auth_entries.is_empty() {
-        let lines = vec![
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  No auth entries.  Run: zeroclaw auth login --provider <name>",
-                Style::default().fg(Color::DarkGray),
-            )]),
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  Supported providers: openrouter, openai, anthropic, ollama, gemini",
-                Style::default().fg(Color::DarkGray),
-            )]),
-        ];
-        let p = Paragraph::new(lines)
-            .block(Block::default().title(" Auth Status ").borders(Borders::ALL));
-        f.render_widget(p, area);
-        return;
-    }
-
-    let header = Row::new(vec!["Provider", "Profile", "Status"]).style(
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    );
-
-    let rows: Vec<Row> = app
-        .automation
-        .auth_entries
-        .iter()
-        .map(|e| {
-            let (status_color, status_icon) = match e.status.to_lowercase().as_str() {
-                s if s.contains("ok") || s.contains("valid") || s.contains("authenticated") => {
-                    (Color::Green, "●")
-                }
-                s if s.contains("expired") || s.contains("invalid") => (Color::Red, "●"),
-                _ => (Color::DarkGray, "○"),
-            };
-            Row::new(vec![
-                Cell::from(e.provider.clone()),
-                Cell::from(Span::styled(
-                    e.profile.as_str(),
-                    Style::default().fg(Color::DarkGray),
-                )),
-                Cell::from(Line::from(vec![
-                    Span::styled(
-                        format!("{} ", status_icon),
-                        Style::default().fg(status_color),
-                    ),
-                    Span::styled(e.status.as_str(), Style::default().fg(status_color)),
-                ])),
-            ])
-        })
-        .collect();
-
-    let title = format!(" Auth ({} providers) ", app.automation.auth_entries.len());
-    let widths = [
-        Constraint::Length(20),
-        Constraint::Length(16),
-        Constraint::Fill(1),
-    ];
-    let mut state = app.automation.auth_state.clone();
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(Block::default().title(title).borders(Borders::ALL))
-        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-        .highlight_symbol("› ");
-    f.render_stateful_widget(table, area, &mut state);
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────
 
 fn render_logs(f: &mut Frame, app: &App, area: Rect) {
-    let follow_indicator = if app.automation.logs_follow {
-        " [FOLLOW]"
-    } else {
-        ""
-    };
-    let title = format!(" Daemon Logs{} ", follow_indicator);
-
     if app.automation.logs.is_empty() {
-        let lines = vec![
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  No log file found. Start the daemon first, or check ~/.zeroclaw/",
-                Style::default().fg(Color::DarkGray),
-            )]),
-        ];
-        let p =
-            Paragraph::new(lines).block(Block::default().title(title).borders(Borders::ALL));
+        let p = Paragraph::new(
+            "  No session log found. Run pi to create a session, then refresh.",
+        )
+        .style(Style::default().fg(Color::DarkGray))
+        .block(Block::default().title(" Session Log ").borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
+
+    let follow_indicator = if app.automation.logs_follow {
+        " [following]"
+    } else {
+        ""
+    };
+    let title = format!(" Session Log{} ", follow_indicator);
 
     let lines: Vec<Line> = app
         .automation
         .logs
         .iter()
-        .map(|line| {
-            let lower = line.to_lowercase();
-            let style = if lower.contains("error") || lower.contains("err]") {
-                Style::default().fg(Color::Red)
-            } else if lower.contains("warn") {
-                Style::default().fg(Color::Yellow)
-            } else if lower.contains("info") || lower.contains("inf]") {
-                Style::default().fg(Color::White)
-            } else if lower.contains("debug") || lower.contains("dbg]") {
-                Style::default().fg(Color::DarkGray)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            Line::from(Span::styled(line.as_str(), style))
-        })
+        .map(|l| Line::from(Span::styled(l.as_str(), Style::default().fg(Color::White))))
         .collect();
 
     let p = Paragraph::new(Text::from(lines))
         .block(Block::default().title(title).borders(Borders::ALL))
         .scroll((app.automation.logs_scroll, 0));
     f.render_widget(p, area);
-}
-
-// ── Cron-add form popup ───────────────────────────────────────────────────
-
-fn render_cron_form(f: &mut Frame, app: &App, area: Rect) {
-    let w = area.width.clamp(40, 60);
-    let h = 7u16;
-    let x = area.x + (area.width.saturating_sub(w)) / 2;
-    let y = area.y + (area.height.saturating_sub(h)) / 2;
-    let popup = Rect {
-        x,
-        y,
-        width: w,
-        height: h,
-    };
-
-    f.render_widget(Clear, popup);
-
-    let inner = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // padding
-            Constraint::Length(1), // schedule label
-            Constraint::Length(1), // schedule input
-            Constraint::Length(1), // command label
-            Constraint::Length(1), // command input
-            Constraint::Length(1), // hint
-        ])
-        .margin(1)
-        .split(popup);
-
-    let block = Block::default()
-        .title(" Add Cron Job ")
-        .borders(Borders::ALL)
-        .style(Style::default().fg(Color::Yellow));
-    f.render_widget(block, popup);
-
-    let sched_style = if app.automation.cron_form_focus == 0 {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let cmd_style = if app.automation.cron_form_focus == 1 {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-
-    f.render_widget(
-        Paragraph::new("Schedule (cron expr):").style(Style::default().fg(Color::DarkGray)),
-        inner[1],
-    );
-    f.render_widget(
-        Paragraph::new(format!(
-            "{}{}",
-            app.automation.cron_form_schedule,
-            if app.automation.cron_form_focus == 0 {
-                "█"
-            } else {
-                ""
-            }
-        ))
-        .style(sched_style),
-        inner[2],
-    );
-    f.render_widget(
-        Paragraph::new("Command:").style(Style::default().fg(Color::DarkGray)),
-        inner[3],
-    );
-    f.render_widget(
-        Paragraph::new(format!(
-            "{}{}",
-            app.automation.cron_form_command,
-            if app.automation.cron_form_focus == 1 {
-                "█"
-            } else {
-                ""
-            }
-        ))
-        .style(cmd_style),
-        inner[4],
-    );
-    f.render_widget(
-        Paragraph::new("[Tab] switch  [Enter] save  [Esc] cancel")
-            .style(Style::default().fg(Color::DarkGray)),
-        inner[5],
-    );
 }
