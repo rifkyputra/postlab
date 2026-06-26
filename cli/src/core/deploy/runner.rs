@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tokio::process::Command;
 
+#[expect(dead_code)]
 pub async fn start_deployment(deploy_type: &DeploymentType, dir: &Path) -> Result<()> {
     match deploy_type {
         DeploymentType::DockerCompose => {
@@ -44,6 +45,7 @@ pub async fn start_deployment(deploy_type: &DeploymentType, dir: &Path) -> Resul
     Ok(())
 }
 
+#[expect(dead_code)]
 pub async fn stop_deployment(deploy_type: &DeploymentType, dir: &Path) -> Result<()> {
     match deploy_type {
         DeploymentType::DockerCompose => {

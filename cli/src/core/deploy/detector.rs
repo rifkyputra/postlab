@@ -1,6 +1,7 @@
 use crate::core::models::DeploymentType;
 use std::path::Path;
 
+#[expect(dead_code)]
 pub fn detect_deployment_type(dir: &Path) -> DeploymentType {
     if dir.join("docker-compose.yml").exists() || dir.join("compose.yaml").exists() {
         return DeploymentType::DockerCompose;

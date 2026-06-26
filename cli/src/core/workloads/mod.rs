@@ -220,11 +220,10 @@ impl DefaultManagedWorkloadManager {
             if ch.is_ascii_alphanumeric() {
                 slug.push(ch.to_ascii_lowercase());
                 last_dash = false;
-            } else if matches!(ch, '-' | '_' | ' ' | '.') {
-                if !slug.is_empty() && !last_dash {
-                    slug.push('-');
-                    last_dash = true;
-                }
+            } else if matches!(ch, '-' | '_' | ' ' | '.')
+                && !slug.is_empty() && !last_dash {
+                slug.push('-');
+                last_dash = true;
             }
         }
 

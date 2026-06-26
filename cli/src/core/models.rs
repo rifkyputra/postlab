@@ -280,6 +280,7 @@ pub struct WasmCloudComponent {
     pub host_id: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WasmCloudLink {
     pub source_id: String,
@@ -374,6 +375,7 @@ pub struct GhostProcess {
 
 // ── Git Deployments ────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DeploymentType {
     DockerCompose,
@@ -382,6 +384,7 @@ pub enum DeploymentType {
 }
 
 impl DeploymentType {
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             DeploymentType::DockerCompose => "Docker Compose",
@@ -391,6 +394,7 @@ impl DeploymentType {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DeploymentStatus {
     Cloning,
@@ -401,6 +405,7 @@ pub enum DeploymentStatus {
 }
 
 impl DeploymentStatus {
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             DeploymentStatus::Cloning => "Cloning",
@@ -412,6 +417,7 @@ impl DeploymentStatus {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deployment {
     pub id: String, // UUID or short hash

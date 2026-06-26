@@ -183,6 +183,7 @@ pub struct CronJob {
 pub struct MemoryEntry {
     pub key: String,
     pub preview: String,
+    #[allow(dead_code)]
     pub created_at: String,
 }
 
@@ -658,7 +659,7 @@ pub async fn list_memory() -> Vec<MemoryEntry> {
 
     out.lines()
         .filter(|l| !l.trim().is_empty() && !l.starts_with("Key") && !l.starts_with('-'))
-        .filter_map(|line| {
+        .map(|line| {
             let parts: Vec<&str> = line.splitn(3, '\t').collect();
             if parts.len() >= 2 {
                 let preview = parts.get(1).unwrap_or(&"").trim().to_string();
@@ -667,18 +668,18 @@ pub async fn list_memory() -> Vec<MemoryEntry> {
                 } else {
                     preview
                 };
-                return Some(MemoryEntry {
+                return MemoryEntry {
                     key: parts[0].trim().to_string(),
                     preview,
                     created_at: parts.get(2).unwrap_or(&"").trim().to_string(),
-                });
+                };
             }
             // Single-column fallback
-            Some(MemoryEntry {
+            MemoryEntry {
                 key: line.trim().to_string(),
                 preview: String::new(),
                 created_at: String::new(),
-            })
+            }
         })
         .collect()
 }

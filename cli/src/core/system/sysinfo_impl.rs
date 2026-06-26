@@ -67,8 +67,8 @@ impl SystemInfo for SysinfoManager {
 
     async fn net(&self) -> Result<NetStats> {
         let networks = Networks::new_with_refreshed_list();
-        let rx: u64 = networks.iter().map(|(_, n)| n.received()).sum();
-        let tx: u64 = networks.iter().map(|(_, n)| n.transmitted()).sum();
+        let rx: u64 = networks.values().map(|n| n.received()).sum();
+        let tx: u64 = networks.values().map(|n| n.transmitted()).sum();
         Ok(NetStats {
             rx_bytes: rx,
             tx_bytes: tx,

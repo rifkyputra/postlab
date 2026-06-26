@@ -36,16 +36,21 @@ pub trait WasmCloudManager: Send + Sync {
 
     // Host management
     async fn list_hosts(&self) -> Result<Vec<WasmCloudHost>>;
+    #[expect(dead_code)]
     async fn start_host(&self) -> Result<()>;
+    #[expect(dead_code)]
     async fn stop_host(&self) -> Result<()>;
 
     // Inventory
     async fn list_components(&self) -> Result<Vec<WasmCloudComponent>>;
+    #[expect(dead_code)]
     async fn list_links(&self) -> Result<Vec<WasmCloudLink>>;
 
     // Applications (WADM)
     async fn list_apps(&self) -> Result<Vec<WasmCloudApp>>;
+    #[expect(dead_code)]
     async fn deploy_app(&self, manifest_path: &str) -> Result<()>;
+    #[expect(dead_code)]
     async fn undeploy_app(&self, name: &str) -> Result<()>;
 
     // Inspection

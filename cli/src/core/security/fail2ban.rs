@@ -9,6 +9,7 @@ use crate::core::models::JailedIp;
 #[async_trait]
 pub trait Fail2BanManager: Send + Sync {
     /// Returns true if fail2ban-client is installed and reachable.
+    #[expect(dead_code)]
     async fn is_installed(&self) -> bool;
     /// List all currently-banned IPs across all jails.
     async fn list_jailed(&self) -> Result<Vec<JailedIp>>;
@@ -124,8 +125,8 @@ async fn get_jail_names() -> Result<Vec<String>> {
         })?;
 
     let names: Vec<String> = jail_line
-        .splitn(2, ':')
-        .nth(1)
+        .split_once(':')
+        .map(|x| x.1)
         .unwrap_or("")
         .split(',')
         .map(|s| s.trim().to_string())
@@ -155,14 +156,14 @@ async fn get_jailed_for_jail(jail: &str) -> Result<Vec<JailedIp>> {
     let total_failures: u32 = output
         .lines()
         .find(|l| l.contains("Total failed"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
+        .and_then(|l| l.split_once(':').map(|x| x.1))
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
 
     let ip_line = output
         .lines()
         .find(|l| l.contains("Banned IP list"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
+        .and_then(|l| l.split_once(':').map(|x| x.1))
         .unwrap_or("");
 
     let ips: Vec<JailedIp> = ip_line

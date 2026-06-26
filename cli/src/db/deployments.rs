@@ -2,6 +2,7 @@ use crate::core::models::{Deployment, DeploymentStatus, DeploymentType};
 use anyhow::Result;
 use sqlx::{Row, SqlitePool};
 
+#[allow(dead_code)]
 pub async fn list_deployments(pool: &SqlitePool) -> Result<Vec<Deployment>> {
     let rows = sqlx::query(
         "SELECT id, repo_url, path, deploy_type, status, last_updated FROM deployments",
@@ -42,6 +43,7 @@ pub async fn list_deployments(pool: &SqlitePool) -> Result<Vec<Deployment>> {
     Ok(deployments)
 }
 
+#[allow(dead_code)]
 pub async fn add_deployment(pool: &SqlitePool, deployment: &Deployment) -> Result<()> {
     let deploy_type = match deployment.deploy_type {
         DeploymentType::DockerCompose => "DockerCompose",
@@ -70,6 +72,7 @@ pub async fn add_deployment(pool: &SqlitePool, deployment: &Deployment) -> Resul
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn update_deployment_status(
     pool: &SqlitePool,
     id: &str,
@@ -112,6 +115,7 @@ pub async fn update_deployment_status(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn delete_deployment(pool: &SqlitePool, id: &str) -> Result<()> {
     sqlx::query("DELETE FROM deployments WHERE id = ?")
         .bind(id)

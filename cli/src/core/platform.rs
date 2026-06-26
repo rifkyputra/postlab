@@ -51,6 +51,7 @@ impl OsFamily {
 }
 
 pub struct Platform {
+    #[expect(dead_code)]
     pub os: OsFamily,
     pub system: Arc<dyn SystemInfo>,
     pub packages: Arc<dyn PackageManager>,

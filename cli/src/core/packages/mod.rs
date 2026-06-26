@@ -19,7 +19,9 @@ pub trait PackageManager: Send + Sync {
     async fn search(&self, query: &str) -> Result<Vec<Package>>;
     async fn install(&self, name: &str) -> Result<String>;
     async fn remove(&self, name: &str) -> Result<String>;
+    #[expect(dead_code)]
     async fn upgrade_all(&self) -> Result<String>;
+    #[expect(dead_code)]
     async fn update_cache(&self) -> Result<()>;
     async fn clean_cache(&self) -> Result<String>;
 
