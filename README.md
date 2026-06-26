@@ -142,7 +142,7 @@ The **Automation** screen manages pi agent directly from Postlab:
 - Edit raw TOML config or use guided Easy Config / Permissions editors
 - Tail daemon logs with optional follow mode
 
-Implementation lives in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`. Postlab shells out to the pi agent CLI — it does not embed pi agent source code.
+Implementation lives in `cli/src/core/pi_agent/` and `cli/src/tui/screens/agent.rs`. Postlab shells out to the pi agent CLI — it does not embed pi agent source code.
 
 ---
 
@@ -175,7 +175,7 @@ cli/src/
 │   ├── ghost/               # Ghost service detection logic
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
-│   └── zeroclaw/            # Pi Agent CLI integration
+│   └── pi_agent/            # Pi Agent CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
 │   └── audit.rs             # Log actions for audit history

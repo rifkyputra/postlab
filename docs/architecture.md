@@ -27,7 +27,7 @@ cli/src/
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
 │   ├── deploy/              # Git-based deployment (detector, git, runner)
-│   └── zeroclaw/            # Pi Agent CLI integration
+│   └── pi_agent/            # Pi Agent CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create)
 │   ├── audit.rs             # Audit log persistence
