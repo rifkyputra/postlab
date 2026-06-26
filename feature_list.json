@@ -111,6 +111,11 @@
           "id": "tunnel",
           "name": "Tunnel",
           "description": "Manage Cloudflare Tunnel: install, start/stop, view status"
+        },
+        {
+          "id": "tailscale",
+          "name": "Tailscale",
+          "description": "Install Tailscale, view VPN status and peers, bring up/down the connection"
         }
       ]
     },
@@ -174,11 +179,26 @@
       ]
     },
     {
-      "id": "automation",
-      "name": "Automation",
+      "id": "agent",
+      "name": "Agent",
       "nav_key": "7",
-      "description": "Pi Agent (pi-coding-agent) management and session browser",
+      "description": "Pi Agent (pi-coding-agent): interactive chat, scheduled tasks, install/update management, sessions, config, auth, and skill library",
       "tabs": [
+        {
+          "id": "chat",
+          "name": "Chat",
+          "description": "Interactive chat with pi agent over stdin/stdout JSONL RPC; streams text deltas in real time"
+        },
+        {
+          "id": "tools",
+          "name": "Tools",
+          "description": "Log of tool executions (read, bash, edit, write, grep, find, ls) during the active session"
+        },
+        {
+          "id": "tasks",
+          "name": "Tasks",
+          "description": "Postlab-owned scheduler: create background agent jobs with configurable intervals (30m–24h), toggle enable/disable, run on demand, persisted in SQLite"
+        },
         {
           "id": "status",
           "name": "Status",
@@ -202,7 +222,12 @@
         {
           "id": "skills",
           "name": "Skills",
-          "description": "Browse and remove installed pi skills from ~/.pi/skills/"
+          "description": "Browse and remove installed pi skills from ~/.pi/agent/npm/node_modules/"
+        },
+        {
+          "id": "library",
+          "name": "Library",
+          "description": "Browse postlab's curated pi skill library and install skills with a single keypress"
         },
         {
           "id": "logs",
@@ -240,6 +265,34 @@
           "id": "swap",
           "name": "Swap",
           "description": "View swap usage and manage swap files"
+        }
+      ]
+    }
+  ],
+    {
+      "id": "projects",
+      "name": "Projects",
+      "nav_key": "9",
+      "tabs": [
+        {
+          "id": "projects",
+          "name": "Projects",
+          "description": "Browse local projects in the configured directory; shows name and last modified time"
+        },
+        {
+          "id": "new",
+          "name": "New",
+          "description": "Scaffold a new prototype using create-better-t-stack via npx; streams output in real time"
+        },
+        {
+          "id": "clone",
+          "name": "Clone",
+          "description": "Clone a git repository into the projects directory; supports user/repo GitHub shorthand or full URLs"
+        },
+        {
+          "id": "settings",
+          "name": "Settings",
+          "description": "Configure the projects directory (persisted in SQLite); shows the active $EDITOR"
         }
       ]
     }
