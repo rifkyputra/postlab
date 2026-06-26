@@ -29,11 +29,12 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 | **1. Dashboard** | Overview, Processes, Resources | Live hostname, OS, uptime, CPU cores, memory, disk gauges, and performance history. Process list with sort and kill. |
 | **2. Packages** | Installed, Search, Quick Install, Queue | Install / remove / upgrade packages; curated quick-install list; background operation queue. |
 | **3. Security** | Findings, Firewall, Ports, SSH, Fail2Ban | SSH/ASLR audits with one-click fixes; UFW / firewalld / pf management; external port checker; authorized_keys manager; Fail2Ban list / ban / unban. |
-| **4. Networking** | Gateway, Tunnel | **Gateway:** Caddy installation and route management (domain → port) with automatic TLS. **Tunnel:** Cloudflare tunnel creation, route management, and ingress configuration. |
+| **4. Networking** | Gateway, Tunnel, Tailscale | **Gateway:** Caddy installation and route management (domain → port) with automatic TLS. **Tunnel:** Cloudflare tunnel creation, route management, and ingress configuration. **Tailscale:** Install Tailscale, view VPN status and peers, bring up/down the connection. |
 | **5. Docker** | Containers, Images, Compose, Workloads, Managed | Manage Docker or Podman lifecycle, view image sizes, control Compose stacks, host-managed workloads, and one-click dev services (PostgreSQL, Redis, RabbitMQ, etc.). |
 | **6. wasmCloud** | Hosts, Components, Apps, Inspector | Manage wasmCloud lattices, host nodes, components, and applications. NATS backbone health and interactive inspector. |
-| **7. Automation** | Overview, Channels, Cron, Memory, Config, Easy Config, Permissions, Skills, Auth, Logs | Install and manage pi agent: daemon control, channels, cron jobs, agent memory, TOML config editing, permissions, skills, auth profiles, and live logs. |
+| **7. Agent** | Chat, Tools, Tasks, Status, Sessions, Config, Auth, Skills, Library, Logs | Interactive chat with pi agent; tool execution log; background task scheduler; install/update management; session browser; config/auth viewer; skill library with one-click install; live log tail. |
 | **8. System** | Ghosts, Janitor, Services, Users, Swap | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable. |
+| **9. Projects** | Projects, New, Clone, Settings | Browse local projects by last modified time; scaffold a new app via create-better-t-stack; clone a GitHub repo by shorthand or URL; configure the projects directory. |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
 Every destructive change to config files creates a timestamped `.bak` backup first.
@@ -106,9 +107,9 @@ sudo postlab --database /var/lib/postlab/data.db
 
 | Key | Action |
 | --- | ------ |
-| `1`–`8` | Switch screens |
-| `a` | Jump to Automation (global, except on Automation screen) |
-| `s` | Jump to System (global, except on Automation screen) |
+| `1`–`9` | Switch screens |
+| `a` | Jump to Agent (global, except on Agent screen) |
+| `s` | Jump to System (global, except on Agent screen) |
 | `Tab` / `Shift+Tab` | Next / previous screen |
 | `H` / `L` or `←` `→` | Switch tabs within a screen |
 | `↑` `↓` | Navigate lists or tables |
@@ -134,13 +135,14 @@ sudo postlab --database /var/lib/postlab/data.db
 
 ## Pi Agent Integration
 
-The **Automation** screen manages pi agent directly from Postlab:
+The **Agent** screen manages pi agent directly from Postlab:
 
-- Install pi agent and its systemd service from the Overview tab
-- Start / stop the daemon, run doctor, and check for updates
-- Manage channels, cron schedules, agent memory, skills, and auth profiles
-- Edit raw TOML config or use guided Easy Config / Permissions editors
-- Tail daemon logs with optional follow mode
+- Install and update pi agent from the Status tab
+- Chat interactively with pi agent and watch tool executions in real time
+- Schedule background agent jobs with configurable intervals (30m–24h)
+- Browse past sessions, view config/auth, and manage installed skills
+- Install skills from the curated Library with a single keypress
+- Tail the most recent session log
 
 Implementation lives in `cli/src/core/pi_agent/` and `cli/src/tui/screens/agent.rs`. Postlab shells out to the pi agent CLI — it does not embed pi agent source code.
 
@@ -175,6 +177,8 @@ cli/src/
 │   ├── ghost/               # Ghost service detection logic
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
+│   ├── tailscale/           # Tailscale CLI integration
+│   ├── projects/            # Local project browser and scaffolder
 │   └── pi_agent/            # Pi Agent CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
@@ -183,7 +187,7 @@ cli/src/
     ├── mod.rs               # Terminal init + main event loop
     ├── app.rs               # App state machine and background task management
     ├── events.rs            # Keyboard dispatch (global + screen-specific)
-    └── screens/             # UI for all 8 top-level screens
+    └── screens/             # UI for all 9 top-level screens
 ```
 
 ---
@@ -234,7 +238,9 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 - [x] **Ghost Hunter** — Detect abandoned services and processes.
 - [x] **Services** — systemd / launchd start, stop, restart, enable, disable.
 - [x] **Users & Swap** — Unix account management and swap file control.
-- [x] **Pi Agent** — Full Automation screen for agent lifecycle and config.
+- [x] **Pi Agent** — Full Agent screen: chat, tasks, sessions, skills library, config, auth, and logs.
+- [x] **Tailscale** — VPN status, peer list, and connection control.
+- [x] **Projects** — Browse, scaffold, and clone local projects.
 - [ ] **Snapshots** — Btrfs/ZFS snapshot management.
 - [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
 

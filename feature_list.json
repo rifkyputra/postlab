@@ -267,8 +267,7 @@
           "description": "View swap usage and manage swap files"
         }
       ]
-    }
-  ],
+    },
     {
       "id": "projects",
       "name": "Projects",

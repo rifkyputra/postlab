@@ -27,16 +27,19 @@ cli/src/
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
 │   ├── deploy/              # Git-based deployment (detector, git, runner)
-│   └── pi_agent/            # Pi Agent CLI integration
+│   ├── pi_agent/            # Pi Agent CLI integration + JSONL RPC protocol
+│   ├── projects/            # Project listing, git clone, stack scaffolding
+│   └── tailscale/           # Tailscale VPN status, install, up/down
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create)
+│   ├── agent_tasks.rs       # Scheduled agent task CRUD
 │   ├── audit.rs             # Audit log persistence
 │   └── deployments.rs       # Deployment CRUD
 └── tui/
     ├── mod.rs               # Terminal init, render loop, nav/status bar
     ├── app.rs               # App state machine + background task dispatch
     ├── events.rs            # Keyboard dispatch + mouse click handler
-    └── screens/             # One file per top-level screen
+    └── screens/             # One file per top-level screen (agent, dashboard, docker, networking, packages, projects, security, system, tailscale, wasmcloud)
 ```
 
 ## Layer Separation
@@ -77,6 +80,8 @@ SQLite via `sqlx`. The database is created at `~/.postlab/data.db` (configurable
 Current schema:
 - `audit_log` — records every package install/remove with success/failure and timestamp
 - `deployments` — Git-based deployment records (repo, path, type, status)
+- `agent_tasks` — scheduled Pi Agent background jobs with name, prompt, interval, and last-run tracking
+- `projects_config` — key-value settings (e.g., `projects_dir`) for the Projects screen
 
 ### `tui/` — Presentation layer
 
@@ -140,7 +145,9 @@ Each screen in `tui/screens/` exports a `render` function that takes `&mut Frame
 | Networking | `networking.rs` | Caddy routes, Cloudflare tunnels, ingress config |
 | Docker | `docker.rs` | Containers, images, Compose stacks, workloads, managed services |
 | wasmCloud | `wasmcloud.rs` | Hosts, components, apps, NATS health, inspector |
-| Automation | `automation.rs` | Pi Agent daemon, channels, cron, memory, config, permissions, skills, auth, logs |
+| Agent | `agent.rs` | Interactive chat (JSONL RPC), tools log, scheduled tasks, sessions, config, auth, skills, library, logs |
+| Projects | `projects.rs` | Browse projects, scaffold with create-better-t-stack, clone repos, configure directory |
+| Tailscale | `tailscale.rs` | VPN status, node list, install, bring up/down |
 | System | `system.rs` | Ghost processes, janitor, services, users, swap |
 
 ## Platform Detection
@@ -226,3 +233,42 @@ The release profile uses `opt-level = "z"`, `strip = true`, `lto = true`, and `c
 6. **Config file backups** — Every destructive config change creates a timestamped `.bak` file before modifying the original.
 
 7. **Root requirement** — Postlab checks `nix::unistd::Uid::effective().is_root()` at startup and exits if not root. This is required for package management, service control, and config file writes.
+
+## Pi Agent RPC
+
+The Pi Agent screen communicates with `pi` (the coding agent CLI) through a JSONL-over-stdin/stdout RPC protocol. `core/pi_agent/rpc.rs` spawns a `pi --mode rpc --provider <p> --model <m>` child process and bridges three async tasks:
+
+1. **stdin writer** — serializes JSON commands from an `mpsc::UnboundedSender<Value>` and writes them line-delimited to the child's stdin.
+2. **stdout reader** — parses JSONL events (`agent_start`, `text_delta`, `tool_execution_start`, `tool_execution_end`, `response`) and forwards them as `PiRpcEvent` variants to the caller's channel.
+3. **stderr reader** — forwards diagnostic output as `PiRpcEvent::Stderr` for the Logs tab.
+
+When Postlab runs as root, `spawn_rpc` drops privileges for the child process by reading `$SUDO_UID`/`$SUDO_GID` and calling `cmd.uid(…).gid(…)`, so the agent never runs with root.
+
+## Agent Task Scheduler
+
+Postlab owns its own task scheduler for background Pi Agent jobs. Tasks are stored in the `agent_tasks` SQLite table and managed through `db/agent_tasks.rs`:
+
+- **CRUD**: `create_task`, `list_tasks`, `delete_task`, `toggle_task`, `mark_run`
+- **Schedules**: `30m`, `1h`, `6h`, `12h`, `24h` — converted to seconds via `schedule_secs()`
+- **Execution tracking**: `last_run_at`, `last_result`, `last_success` are updated after each run
+
+The TUI periodically checks due tasks and spawns them as background tokio tasks that invoke `pi` with the stored prompt, then update the run status.
+
+## Projects Manager
+
+`core/projects/mod.rs` provides project directory operations:
+
+- **`list(dir)`** — reads a directory, filters to subdirectories, returns `ProjectEntry` sorted by modification time
+- **`clone_repo(url, dir, tx)`** — runs `git clone --progress`, supports `user/repo` GitHub shorthand and full URLs, streams stderr output for live TUI feedback
+- **`scaffold_new(name, dir, tx)`** — invokes `npx -y create-better-t-stack@latest` to bootstrap a new prototype, streaming stdout/stderr
+
+All paths expand `~` via the `expand_home()` helper, falling back to `/root` when `$HOME` is unset.
+
+## Tailscale Manager
+
+`core/tailscale/mod.rs` wraps the `tailscale` CLI:
+
+- **`is_installed()` / `version()`** — detect and report the local tailscale binary
+- **`status()`** — parses `tailscale status --json` into a structured `TailscaleStatus` with backend state, self IP/hostname, and sorted peer list
+- **`up()` / `down()`** — bring the VPN connection up or down
+- **`install()`** — downloads and runs the official Tailscale install script via curl, streaming output for the TUI

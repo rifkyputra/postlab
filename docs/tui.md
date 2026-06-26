@@ -86,14 +86,14 @@ Every layout property below MUST be kept in sync between the Rust rendering code
 | Text row (term)| **row 4**                        |
 | Inner left x   | 1                                |
 
-### Automation sub-tabs
+### Agent sub-tabs
 
 | Property       | Value                            |
 |----------------|----------------------------------|
 | Block borders  | `Borders::ALL`                   |
 | Divider        | Default `"│"` (1 char)           |
 | Tab height     | 3 rows                           |
-| Text row (term)| **row 7** (header at rows 3-5, tab bar at rows 6-8) |
+| Text row (term)| **row 4**                        |
 | Inner left x   | 1                                |
 
 ---
