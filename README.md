@@ -24,16 +24,16 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 
 ## Features
 
-| Screen           | Tabs / Sub-features                      | What it does                                                                                                 |
-| ---------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **1. Dashboard** | Overview, Processes, Resources           | Live Hostname, OS, uptime, CPU cores, memory, disk gauges, and performance history.                          |
-| **2. Packages**  | Installed, Search, Quick, Queue          | Install / remove / upgrade packages; curated quick-install list; background operation queue.                 |
-| **3. Security**  | Findings, Firewall, Ports, SSH, Fail2Ban | SSH/ASLR audits; UFW/Firewall management; external port checker; authorized_keys manager; Fail2Ban list/ban. |
-| **4. Gateway**   | Caddy                                    | Caddy installation and route management (domain → port) with automatic TLS.                                  |
-| **5. Tunnel**    | Cloudflare                               | Cloudflare tunnel creation, route management, and ingress configuration.                                     |
-| **6. Docker**    | Containers, Images, Compose, Workloads   | Manage Docker/Podman lifecycle, view image sizes, control Compose stacks, and manage Postlab-owned workloads. |
-| **7. wasmCloud** | Hosts, Components, Apps                  | Manage wasmCloud lattices, host nodes, components, and applications.                                         |
-| **8. Ghosts**    | Services Hunter                          | Identifies "ghost" services or abandoned processes that may be using resources or ports.                     |
+| Screen | Tabs / Sub-features | What it does |
+| ------ | ------------------- | ------------ |
+| **1. Dashboard** | Overview, Processes, Resources | Live hostname, OS, uptime, CPU cores, memory, disk gauges, and performance history. Process list with sort and kill. |
+| **2. Packages** | Installed, Search, Quick Install, Queue | Install / remove / upgrade packages; curated quick-install list; background operation queue. |
+| **3. Security** | Findings, Firewall, Ports, SSH, Fail2Ban | SSH/ASLR audits with one-click fixes; UFW / firewalld / pf management; external port checker; authorized_keys manager; Fail2Ban list / ban / unban. |
+| **4. Networking** | Gateway, Tunnel | **Gateway:** Caddy installation and route management (domain → port) with automatic TLS. **Tunnel:** Cloudflare tunnel creation, route management, and ingress configuration. |
+| **5. Docker** | Containers, Images, Compose, Workloads, Managed | Manage Docker or Podman lifecycle, view image sizes, control Compose stacks, host-managed workloads, and one-click dev services (PostgreSQL, Redis, RabbitMQ, etc.). |
+| **6. wasmCloud** | Hosts, Components, Apps, Inspector | Manage wasmCloud lattices, host nodes, components, and applications. NATS backbone health and interactive inspector. |
+| **7. Automation** | Overview, Channels, Cron, Memory, Config, Easy Config, Permissions, Skills, Auth, Logs | Install and manage [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw): daemon control, channels, cron jobs, agent memory, TOML config editing, permissions, skills, auth profiles, and live logs. |
+| **8. System** | Ghosts, Janitor, Services, Users, Swap | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable. |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
 Every destructive change to config files creates a timestamped `.bak` backup first.
@@ -51,6 +51,7 @@ Every destructive change to config files creates a timestamped `.bak` backup fir
 > - **Podman** workloads are rendered as Quadlet `.container` units.
 > - **Docker** workloads are rendered as a generated single-service `compose.yml` plus a generated `systemd` unit.
 > - Existing ad-hoc Compose stacks should continue to be managed through the regular `Compose` tab, not `Workloads`.
+> - The **Managed** tab provides curated one-click dev containers (PostgreSQL, Redis, MySQL, MongoDB, Elasticsearch, MinIO, MailHog, RabbitMQ) separate from Workloads.
 
 > [!CAUTION]
 > Workloads in v1 are **single-service only**. They are meant for durable host-managed services, not multi-service application graphs, cluster scheduling, or generic orchestration import/export.
@@ -91,7 +92,10 @@ sudo postlab
 
 # One-shot commands (no TUI)
 sudo postlab info    # Print system summary
-sudo postlab list    # Print installed packages
+sudo postlab list    # List installed packages
+
+# Custom SQLite database path (default: ~/.postlab/data.db)
+sudo postlab --database /var/lib/postlab/data.db
 ```
 
 ---
@@ -100,37 +104,45 @@ sudo postlab list    # Print installed packages
 
 ### Navigation
 
-| Key                  | Action                         |
-| -------------------- | ------------------------------ |
-| `1`–`8`              | Switch screens                 |
-| `Tab` / `Shift+Tab`  | Next / previous screen         |
-| `H` / `L` or `←` `→` | Switch tabs within a screen    |
-| `↑` `↓`              | Navigate lists or tables       |
-| `Enter`              | Confirm / execute / drill-down |
-| `q`                  | Quit                           |
+| Key | Action |
+| --- | ------ |
+| `1`–`8` | Switch screens |
+| `a` | Jump to Automation (global, except on Automation screen) |
+| `s` | Jump to System (global, except on Automation screen) |
+| `Tab` / `Shift+Tab` | Next / previous screen |
+| `H` / `L` or `←` `→` | Switch tabs within a screen |
+| `↑` `↓` | Navigate lists or tables |
+| `Enter` | Confirm / execute / drill-down |
+| `q` | Quit |
 
 ### Actions
 
-| Key     | Context            | Action                                          |
-| ------- | ------------------ | ----------------------------------------------- |
-| `Space` | Lists              | Toggle selection                                |
-| `/`     | Packages           | Search / Filter                                 |
-| `r`     | Global             | Refresh current screen/tab data                 |
-| `k`     | Processes / Ghosts | Kill selected process                           |
-| `a`     | Gateway / Tunnel   | Add route / create tunnel                       |
-| `D`     | Gateway / Tunnel   | Delete selected route / ingress entry           |
-| `f`     | Tunnel             | Toggle focus between Tunnels and Ingress panels |
-| `s`     | Security           | Start new security scan                         |
+| Key | Context | Action |
+| --- | ------- | ------ |
+| `Space` | Lists | Toggle selection |
+| `/` | Packages, Services, Config | Search / filter |
+| `r` / `R` | Global | Refresh current screen/tab data (context-specific) |
+| `k` | Processes / Ghosts | Kill selected process |
+| `a` | Gateway / Tunnel / Workloads | Add route / create tunnel / create workload |
+| `D` | Gateway / Tunnel | Delete selected route / ingress entry |
+| `f` | Tunnel | Toggle focus between Tunnels and Ingress panels |
+| — | Security → Findings | Auto-scans on first visit; re-scan after applying fixes |
+| `s` / `k` / `r` | System → Services | Start / stop / restart selected unit |
+| `e` / `d` | System → Services | Enable / disable selected unit |
 
 ---
 
-## zeroclaw/ — Reference Copy
+## ZeroClaw Integration
 
-The `zeroclaw/` directory at the repo root is a **temporary reference copy** of the [zeroclaw-labs/zeroclaw](https://github.com/zeroclaw-labs/zeroclaw) project, cloned to study its architecture while building the **Automation → ZeroClaw** management screen in postlab.
+The **Automation** screen manages [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) directly from Postlab:
 
-- Postlab does **not** import any code from `zeroclaw/`.
-- The zeroclaw management feature lives entirely in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`.
-- This directory will be **deleted** once it is no longer needed for reference.
+- Install zeroclaw and its systemd service from the Overview tab
+- Start / stop the daemon, run doctor, and check for updates
+- Manage channels, cron schedules, agent memory, skills, and auth profiles
+- Edit raw TOML config or use guided Easy Config / Permissions editors
+- Tail daemon logs with optional follow mode
+
+Implementation lives in `cli/src/core/zeroclaw/` and `cli/src/tui/screens/automation.rs`. Postlab shells out to the `zeroclaw` CLI — it does not embed zeroclaw source code.
 
 ---
 
@@ -145,17 +157,23 @@ cli/src/
 │   ├── platform.rs          # Platform { system, packages, processes, ... }
 │   │                        # detect() — auto-selects right impls at runtime
 │   ├── models.rs            # Shared data types
-│   ├── system/              # SystemInfo trait + sysinfo 0.30 impl
+│   ├── system/              # SystemInfo trait + sysinfo impl
 │   ├── packages/            # PackageManager trait + apt / dnf / pacman / brew
 │   ├── processes/           # ProcessManager trait + sysinfo impl
 │   ├── security/            # SecurityAuditor trait + SSH/ASLR checks
-│   ├── firewall/            # FirewallManager trait + ufw / firewalld
+│   ├── firewall/            # FirewallManager trait + ufw / firewalld / pf
+│   ├── portcheck/           # External port reachability checker
 │   ├── ssh/                 # SshKeyManager trait + authorized_keys / ssh-keygen
-│   ├── docker/              # DockerManager trait + Docker Engine API
-│   ├── wasm_cloud/          # wasmCloud management
+│   ├── services/            # ServiceManager trait + systemd / launchd
+│   ├── users/               # Unix user management
+│   ├── docker/              # DockerManager trait + docker / podman CLI
+│   ├── workloads/           # Host-managed single-service workloads
+│   ├── wasm_cloud/          # wasmCloud CLI management
+│   ├── nats/                # NATS backbone health for wasmCloud
 │   ├── ghost/               # Ghost service detection logic
 │   ├── gateway/             # GatewayManager trait + Caddy impl
-│   └── tunnel/              # TunnelManager trait + cloudflared impl
+│   ├── tunnel/              # TunnelManager trait + cloudflared impl
+│   └── zeroclaw/            # ZeroClaw CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
 │   └── audit.rs             # Log actions for audit history
@@ -163,7 +181,7 @@ cli/src/
     ├── mod.rs               # Terminal init + main event loop
     ├── app.rs               # App state machine and background task management
     ├── events.rs            # Keyboard dispatch (global + screen-specific)
-    └── screens/             # UI implementation for all 8 screens
+    └── screens/             # UI for all 8 top-level screens
 ```
 
 ---
@@ -179,15 +197,27 @@ Detected automatically at startup:
 - **Arch**: `pacman`
 - **macOS**: `brew`
 
+### Container Engines
+
+Detected automatically — prefers `docker`, falls back to `podman`.
+
+### Firewalls
+
+Detected automatically at startup:
+
+- **Debian / Ubuntu**: `ufw`
+- **Fedora / RHEL / Arch**: `firewalld`
+- **macOS**: `pf`
+
 ### Security Hardening Audits
 
-| Check                               | Severity | Action        |
-| ----------------------------------- | -------- | ------------- |
-| SSH root login enabled              | Critical | One-click fix |
-| SSH password auth enabled           | High     | One-click fix |
-| Firewall (ufw / firewalld) inactive | High     | One-click fix |
-| ASLR not fully enabled              | Medium   | One-click fix |
-| Auto-updates not configured         | Low      | One-click fix |
+| Check | Severity | Action |
+| ----- | -------- | ------ |
+| SSH root login enabled | Critical | One-click fix |
+| SSH password auth enabled | High | One-click fix |
+| Firewall (ufw / firewalld / pf) inactive | High | One-click fix |
+| ASLR not fully enabled | Medium | One-click fix |
+| Auto-updates not configured | Low | One-click fix |
 
 Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/etc/ssh/sshd_config.bak.20260303T142031`.
 
@@ -195,12 +225,14 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 
 ## Roadmap
 
-- [x] **Docker** — Management of containers, images, and Compose.
-- [x] **wasmCloud** — Host and component management.
+- [x] **Docker** — Containers, images, Compose, managed dev services, and host workloads.
+- [x] **wasmCloud** — Host, component, and app management with NATS health and inspector.
 - [x] **SSH Keys** — Interactive authorized_keys manager.
-- [x] **Firewall** — UFW/firewalld rule management.
-- [x] **Ghost Hunter** — Detect abandoned services.
-- [ ] **Services** — Full systemd start / stop / restart / status manager.
+- [x] **Firewall** — UFW / firewalld / pf rule management.
+- [x] **Ghost Hunter** — Detect abandoned services and processes.
+- [x] **Services** — systemd / launchd start, stop, restart, enable, disable.
+- [x] **Users & Swap** — Unix account management and swap file control.
+- [x] **ZeroClaw** — Full Automation screen for agent lifecycle and config.
 - [ ] **Snapshots** — Btrfs/ZFS snapshot management.
 - [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
 
