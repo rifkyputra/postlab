@@ -4,10 +4,9 @@ pub mod screens;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyEventKind, MouseEventKind, MouseButton},
+    event::{self, EnableMouseCapture, DisableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    event::{EnableMouseCapture, DisableMouseCapture},
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -99,8 +98,15 @@ async fn run_loop(
         if event::poll(tick)? {
             match event::read()? {
                 Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press && events::handle_key(app, key).await {
-                        break;
+                    if key.kind == KeyEventKind::Press {
+                        if key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            break;
+                        }
+                        if events::handle_key(app, key).await {
+                            break;
+                        }
                     }
                 }
                 Event::Mouse(mouse) => {
