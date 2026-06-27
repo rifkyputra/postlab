@@ -269,6 +269,7 @@ pub const BTS_RUNTIMES: &[&str] = &["bun", "node", "workers", "none"];
 pub const BTS_PAYMENTS: &[&str] = &["none", "polar"];
 pub const BTS_EXAMPLES: &[&str] = &["none", "todo", "ai"];
 pub const BTS_GIT: &[&str] = &["yes", "no"];
+pub const BTS_PACKAGE_MANAGERS: &[&str] = &["npm", "pnpm", "bun"];
 pub const BTS_WEB_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
 pub const BTS_SERVER_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
 pub const BTS_ADDONS: &[&str] = &[
@@ -1434,7 +1435,7 @@ pub struct ProjectsState {
     pub loading: bool,
     // New tab
     pub new_name: String,
-    pub new_form_focus: usize,  // 0-11 = Frontend..ServerDeploy
+    pub new_form_focus: usize,  // 0-12 = Frontend..PackageManager, 13 = Addons
     pub new_frontend_idx: usize,
     pub new_database_idx: usize,
     pub new_orm_idx: usize,
@@ -1447,6 +1448,7 @@ pub struct ProjectsState {
     pub new_git_idx: usize,
     pub new_web_deploy_idx: usize,
     pub new_server_deploy_idx: usize,
+    pub new_package_manager_idx: usize,
     pub new_addons_selected: Vec<bool>,
     pub new_addons_cursor: usize,
     pub new_addons_popup: bool,
@@ -1493,6 +1495,7 @@ impl Default for ProjectsState {
             new_git_idx: 0,
             new_web_deploy_idx: 0,
             new_server_deploy_idx: 0,
+            new_package_manager_idx: 0,
             new_addons_selected: vec![false; BTS_ADDONS.len()],
             new_addons_cursor: 0,
             new_addons_popup: false,
@@ -3682,14 +3685,20 @@ impl App {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
         let git_flag = if BTS_GIT[self.projects.new_git_idx] == "yes" { "--git" } else { "--no-git" };
-        let addons_flags: String = BTS_ADDONS
+        // create-better-t-stack prompts for any flag we omit. Emit one --addons per
+        // selection, or an explicit `--addons none` so it never prompts when empty.
+        let selected_addons: Vec<String> = BTS_ADDONS
             .iter()
             .zip(self.projects.new_addons_selected.iter())
             .filter_map(|(name, &sel)| if sel { Some(format!("--addons {}", name)) } else { None })
-            .collect::<Vec<_>>()
-            .join(" ");
+            .collect();
+        let addons_flags = if selected_addons.is_empty() {
+            "--addons none".to_string()
+        } else {
+            selected_addons.join(" ")
+        };
         let flags = format!(
-            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} --db-setup none {} --web-deploy {} --server-deploy {} {}",
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} --db-setup none --package-manager {} --no-install {} --web-deploy {} --server-deploy {} {}",
             BTS_FRONTENDS[self.projects.new_frontend_idx],
             BTS_DATABASES[self.projects.new_database_idx],
             BTS_ORMS[self.projects.new_orm_idx],
@@ -3699,6 +3708,7 @@ impl App {
             BTS_RUNTIMES[self.projects.new_runtime_idx],
             BTS_PAYMENTS[self.projects.new_payments_idx],
             BTS_EXAMPLES[self.projects.new_examples_idx],
+            BTS_PACKAGE_MANAGERS[self.projects.new_package_manager_idx],
             git_flag,
             BTS_WEB_DEPLOY[self.projects.new_web_deploy_idx],
             BTS_SERVER_DEPLOY[self.projects.new_server_deploy_idx],

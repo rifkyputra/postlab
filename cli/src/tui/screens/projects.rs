@@ -8,8 +8,8 @@ use ratatui::{
 
 use crate::tui::app::{
     App, InputMode, ProjectsTab, BTS_ADDONS, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES,
-    BTS_EXAMPLES, BTS_FRONTENDS, BTS_GIT, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES,
-    BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
+    BTS_EXAMPLES, BTS_FRONTENDS, BTS_GIT, BTS_ORMS, BTS_PACKAGE_MANAGERS, BTS_PAYMENTS,
+    BTS_RUNTIMES, BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
 };
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
@@ -156,6 +156,8 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(BTS_AUTHS[app.projects.new_auth_idx], cyan),
             Span::styled("  payments ", dim),
             Span::styled(BTS_PAYMENTS[app.projects.new_payments_idx], cyan),
+            Span::styled("  pm ", dim),
+            Span::styled(BTS_PACKAGE_MANAGERS[app.projects.new_package_manager_idx], cyan),
             Span::styled("  git ", dim),
             Span::styled(BTS_GIT[app.projects.new_git_idx], cyan),
             Span::styled("  deploy ", dim),
@@ -227,8 +229,9 @@ fn render_stack_popup(f: &mut Frame, app: &App, area: Rect) {
         ("Git",        BTS_GIT,           app.projects.new_git_idx),
         ("Web Deploy", BTS_WEB_DEPLOY,    app.projects.new_web_deploy_idx),
         ("Srv Deploy", BTS_SERVER_DEPLOY, app.projects.new_server_deploy_idx),
+        ("Pkg Mgr",    BTS_PACKAGE_MANAGERS, app.projects.new_package_manager_idx),
     ];
-    const ADDONS_FIELD: usize = 12;
+    const ADDONS_FIELD: usize = 13;
 
     let height = (fields.len() as u16 + 4).min(area.height.saturating_sub(2));
     let popup = centered_rect(54, height, area);
@@ -293,7 +296,7 @@ fn render_stack_popup(f: &mut Frame, app: &App, area: Rect) {
     }
 
     lines.push(Line::from(Span::styled(
-        "[j/k] field  [h/l] change  [Enter] addons/done  [Esc] close",
+        "[j/k ↑/↓] field  [h/l ←/→] change  [Enter] addons/done  [Esc] close",
         Style::default().fg(Color::DarkGray),
     )));
 

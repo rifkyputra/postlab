@@ -3560,8 +3560,8 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_stack_popup_key(app: &mut App, key: KeyEvent) {
-    const NUM_FIELDS: usize = 13;
-    const ADDONS_FIELD: usize = 12;
+    const NUM_FIELDS: usize = 14;
+    const ADDONS_FIELD: usize = 13;
     let on_addons = app.projects.new_form_focus == ADDONS_FIELD;
     match key.code {
         KeyCode::Esc => app.projects.new_stack_popup = false,
@@ -3576,8 +3576,8 @@ fn handle_projects_stack_popup_key(app: &mut App, key: KeyEvent) {
             app.projects.new_form_focus =
                 app.projects.new_form_focus.saturating_sub(1);
         }
-        KeyCode::Char('l') if !on_addons => cycle_bts_field(app, true),
-        KeyCode::Char('h') if !on_addons => cycle_bts_field(app, false),
+        KeyCode::Char('l') | KeyCode::Right if !on_addons => cycle_bts_field(app, true),
+        KeyCode::Char('h') | KeyCode::Left if !on_addons => cycle_bts_field(app, false),
         _ => {}
     }
 }
@@ -3615,7 +3615,8 @@ fn handle_projects_addons_popup_key(app: &mut App, key: KeyEvent) {
 fn cycle_bts_field(app: &mut App, forward: bool) {
     use crate::tui::app::{
         BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES, BTS_FRONTENDS, BTS_GIT,
-        BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES, BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
+        BTS_ORMS, BTS_PACKAGE_MANAGERS, BTS_PAYMENTS, BTS_RUNTIMES, BTS_SERVER_DEPLOY,
+        BTS_WEB_DEPLOY,
     };
     macro_rules! cycle {
         ($idx:expr, $opts:expr) => {{
@@ -3640,6 +3641,7 @@ fn cycle_bts_field(app: &mut App, forward: bool) {
         9 => cycle!(app.projects.new_git_idx, BTS_GIT),
         10 => cycle!(app.projects.new_web_deploy_idx, BTS_WEB_DEPLOY),
         11 => cycle!(app.projects.new_server_deploy_idx, BTS_SERVER_DEPLOY),
+        12 => cycle!(app.projects.new_package_manager_idx, BTS_PACKAGE_MANAGERS),
         _ => {}
     }
     // Keep the whole stack mutually consistent; the just-changed field wins.
