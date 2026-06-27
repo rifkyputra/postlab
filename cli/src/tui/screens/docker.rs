@@ -13,24 +13,24 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // header / status
             Constraint::Length(3), // tab bar
             Constraint::Min(0),    // content
+            Constraint::Length(3), // header / status
             Constraint::Length(1), // hints
         ])
         .split(area);
 
-    render_header(f, app, chunks[0]);
-    render_tabs(f, app, chunks[1]);
+    render_tabs(f, app, chunks[0]);
 
     match app.docker.active_tab {
-        DockerTab::Containers => render_containers(f, app, chunks[2]),
-        DockerTab::Images => render_images(f, app, chunks[2]),
-        DockerTab::Compose => render_compose(f, app, chunks[2]),
-        DockerTab::Workloads => render_workloads(f, app, chunks[2]),
-        DockerTab::Managed => render_managed(f, app, chunks[2]),
+        DockerTab::Containers => render_containers(f, app, chunks[1]),
+        DockerTab::Images => render_images(f, app, chunks[1]),
+        DockerTab::Compose => render_compose(f, app, chunks[1]),
+        DockerTab::Workloads => render_workloads(f, app, chunks[1]),
+        DockerTab::Managed => render_managed(f, app, chunks[1]),
     }
 
+    render_header(f, app, chunks[2]);
     render_hints(f, app, chunks[3]);
     if app.docker.active_tab == DockerTab::Workloads
         && app.docker.workloads.form.input_mode == InputMode::Editing
