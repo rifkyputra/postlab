@@ -651,7 +651,7 @@ fn handle_queue_tab(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_updates_tab(app: &mut App, key: KeyEvent) {
-    if app.packages.updates.is_empty() && !app.packages.updates_loading {
+    if !app.packages.updates_loading {
         app.spawn_load_updates();
     }
     match key.code {
@@ -706,7 +706,6 @@ fn handle_updates_tab(app: &mut App, key: KeyEvent) {
             let idx = (app.packages.active_tab.index() + 1) % PackageTab::all().len();
             app.packages.active_tab = PackageTab::all()[idx].clone();
             if app.packages.active_tab == PackageTab::Updates
-                && app.packages.updates.is_empty()
                 && !app.packages.updates_loading
             {
                 app.spawn_load_updates();
@@ -721,7 +720,6 @@ fn handle_updates_tab(app: &mut App, key: KeyEvent) {
             };
             app.packages.active_tab = PackageTab::all()[prev].clone();
             if app.packages.active_tab == PackageTab::Updates
-                && app.packages.updates.is_empty()
                 && !app.packages.updates_loading
             {
                 app.spawn_load_updates();
@@ -3520,7 +3518,7 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
-    const NUM_FIELDS: usize = 9;
+    const NUM_FIELDS: usize = 12;
     match key.code {
         KeyCode::Char('i') => app.projects.new_input_mode = InputMode::Editing,
         KeyCode::Enter if !app.projects.new_running && !app.projects.new_name.is_empty() => {
@@ -3552,8 +3550,8 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
 
 fn cycle_bts_field(app: &mut App, forward: bool) {
     use crate::tui::app::{
-        BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES, BTS_FRONTENDS, BTS_ORMS,
-        BTS_PAYMENTS, BTS_RUNTIMES,
+        BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES, BTS_FRONTENDS, BTS_GIT,
+        BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES, BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
     };
     macro_rules! cycle {
         ($idx:expr, $opts:expr) => {{
@@ -3575,6 +3573,9 @@ fn cycle_bts_field(app: &mut App, forward: bool) {
         6 => cycle!(app.projects.new_runtime_idx, BTS_RUNTIMES),
         7 => cycle!(app.projects.new_payments_idx, BTS_PAYMENTS),
         8 => cycle!(app.projects.new_examples_idx, BTS_EXAMPLES),
+        9 => cycle!(app.projects.new_git_idx, BTS_GIT),
+        10 => cycle!(app.projects.new_web_deploy_idx, BTS_WEB_DEPLOY),
+        11 => cycle!(app.projects.new_server_deploy_idx, BTS_SERVER_DEPLOY),
         _ => {}
     }
 }
