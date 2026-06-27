@@ -9,7 +9,7 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.2.0-blue.svg" alt="Version 0.2.0">
+    <img src="https://img.shields.io/badge/version-0.3.0-blue.svg" alt="Version 0.3.0">
     <img src="https://img.shields.io/badge/license-Apache--2.0-green.svg" alt="License Apache-2.0">
     <img src="https://github.com/rifkyputra/postlab/actions/workflows/build.yml/badge.svg" alt="Build Status">
   </p>
