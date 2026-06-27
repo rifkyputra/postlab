@@ -1,5 +1,5 @@
 use super::{run_cmd, run_cmd_streaming, PackageManager};
-use crate::core::models::Package;
+use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -116,5 +116,36 @@ impl PackageManager for AptManager {
 
     async fn clean_cache(&self) -> Result<String> {
         run_cmd("apt-get", &["clean"]).await
+    }
+
+    async fn list_upgradable(&self) -> Result<Vec<UpgradablePackage>> {
+        let out = run_cmd("apt", &["list", "--upgradable"])
+            .await
+            .unwrap_or_default();
+        Ok(out
+            .lines()
+            .filter_map(|line| {
+                // "libssl3/jammy-security 3.0.15-0ubuntu1.2 amd64 [upgradable from: 3.0.13-0ubuntu1.2]"
+                let (name_repo, rest) = line.split_once(' ')?;
+                let (name, repo) = name_repo.split_once('/')?;
+                let rest_parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                let new_ver = rest_parts.first()?.to_string();
+                let current = rest_parts
+                    .get(1)
+                    .and_then(|s| {
+                        let s = s.trim_start_matches('[').trim_end_matches(']');
+                        s.strip_prefix("upgradable from: ")
+                    })
+                    .unwrap_or("?")
+                    .to_string();
+                Some(UpgradablePackage {
+                    name: name.to_string(),
+                    current_version: current,
+                    new_version: new_ver,
+                    repository: repo.to_string(),
+                    is_security: repo.contains("-security"),
+                })
+            })
+            .collect())
     }
 }

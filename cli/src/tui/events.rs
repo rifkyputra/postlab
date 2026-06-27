@@ -337,7 +337,13 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
             });
         }
         ConfirmAction::ServiceAction { name, op } => app.spawn_service_action(name, op),
-        ConfirmAction::MaintenanceAction { op } => app.spawn_maintenance_action(op),
+        ConfirmAction::MaintenanceAction { op } => {
+            if op == "upgrade-all" {
+                app.spawn_upgrade_all();
+            } else {
+                app.spawn_maintenance_action(op);
+            }
+        }
         ConfirmAction::DeleteSwap { path } => app.spawn_swap_delete(path),
         ConfirmAction::Umount { target } => app.spawn_storage_umount(target),
     }
@@ -428,6 +434,7 @@ async fn handle_packages_key(app: &mut App, key: KeyEvent) -> bool {
         PackageTab::Search => handle_search_tab(app, key).await,
         PackageTab::QuickInstall => handle_quick_install_tab(app, key),
         PackageTab::Queue => handle_queue_tab(app, key),
+        PackageTab::Updates => handle_updates_tab(app, key),
     }
     false
 }
@@ -638,6 +645,87 @@ fn handle_queue_tab(app: &mut App, key: KeyEvent) {
                 idx - 1
             };
             app.packages.active_tab = PackageTab::all()[prev].clone();
+        }
+        _ => {}
+    }
+}
+
+fn handle_updates_tab(app: &mut App, key: KeyEvent) {
+    if app.packages.updates.is_empty() && !app.packages.updates_loading {
+        app.spawn_load_updates();
+    }
+    match key.code {
+        KeyCode::Char('R') => app.spawn_load_updates(),
+        KeyCode::Down | KeyCode::Char('j') => {
+            let len = app.packages.updates.len();
+            if len > 0 {
+                let next = app
+                    .packages
+                    .updates_state
+                    .selected()
+                    .map(|i| (i + 1).min(len - 1))
+                    .unwrap_or(0);
+                app.packages.updates_state.select(Some(next));
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if let Some(i) = app.packages.updates_state.selected() {
+                if i > 0 {
+                    app.packages.updates_state.select(Some(i - 1));
+                }
+            }
+        }
+        KeyCode::Char(' ') => {
+            if let Some(idx) = app.packages.updates_state.selected() {
+                if let Some(pkg) = app.packages.updates.get(idx) {
+                    let name = pkg.name.clone();
+                    if app.packages.updates_selected.contains(&name) {
+                        app.packages.updates_selected.remove(&name);
+                    } else {
+                        app.packages.updates_selected.insert(name);
+                    }
+                }
+            }
+        }
+        KeyCode::Char('u') => {
+            let selected: Vec<String> = app.packages.updates_selected.drain().collect();
+            for name in selected {
+                app.spawn_install(name);
+            }
+            app.packages.active_tab = PackageTab::Queue;
+        }
+        KeyCode::Char('U') => {
+            app.confirm = Some(crate::tui::app::ConfirmDialog {
+                message: "Upgrade all packages? [y/N]".to_string(),
+                action: crate::tui::app::ConfirmAction::MaintenanceAction {
+                    op: "upgrade-all".to_string(),
+                },
+            });
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            let idx = (app.packages.active_tab.index() + 1) % PackageTab::all().len();
+            app.packages.active_tab = PackageTab::all()[idx].clone();
+            if app.packages.active_tab == PackageTab::Updates
+                && app.packages.updates.is_empty()
+                && !app.packages.updates_loading
+            {
+                app.spawn_load_updates();
+            }
+        }
+        KeyCode::Left | KeyCode::Char('h') => {
+            let idx = app.packages.active_tab.index();
+            let prev = if idx == 0 {
+                PackageTab::all().len() - 1
+            } else {
+                idx - 1
+            };
+            app.packages.active_tab = PackageTab::all()[prev].clone();
+            if app.packages.active_tab == PackageTab::Updates
+                && app.packages.updates.is_empty()
+                && !app.packages.updates_loading
+            {
+                app.spawn_load_updates();
+            }
         }
         _ => {}
     }
@@ -3432,7 +3520,7 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
-    const NUM_FIELDS: usize = 6;
+    const NUM_FIELDS: usize = 9;
     match key.code {
         KeyCode::Char('i') => app.projects.new_input_mode = InputMode::Editing,
         KeyCode::Enter if !app.projects.new_running && !app.projects.new_name.is_empty() => {
@@ -3448,8 +3536,8 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
             app.projects.new_form_focus =
                 app.projects.new_form_focus.saturating_sub(1);
         }
-        KeyCode::Char(']') => cycle_bts_field(app, true),
-        KeyCode::Char('[') => cycle_bts_field(app, false),
+        KeyCode::Char('l') => cycle_bts_field(app, true),
+        KeyCode::Char('h') => cycle_bts_field(app, false),
         KeyCode::PageUp => {
             app.projects.new_output_scroll =
                 app.projects.new_output_scroll.saturating_add(5);
@@ -3464,7 +3552,8 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
 
 fn cycle_bts_field(app: &mut App, forward: bool) {
     use crate::tui::app::{
-        BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_FRONTENDS, BTS_ORMS,
+        BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES, BTS_FRONTENDS, BTS_ORMS,
+        BTS_PAYMENTS, BTS_RUNTIMES,
     };
     macro_rules! cycle {
         ($idx:expr, $opts:expr) => {{
@@ -3483,6 +3572,9 @@ fn cycle_bts_field(app: &mut App, forward: bool) {
         3 => cycle!(app.projects.new_auth_idx, BTS_AUTHS),
         4 => cycle!(app.projects.new_backend_idx, BTS_BACKENDS),
         5 => cycle!(app.projects.new_api_idx, BTS_APIS),
+        6 => cycle!(app.projects.new_runtime_idx, BTS_RUNTIMES),
+        7 => cycle!(app.projects.new_payments_idx, BTS_PAYMENTS),
+        8 => cycle!(app.projects.new_examples_idx, BTS_EXAMPLES),
         _ => {}
     }
 }

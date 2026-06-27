@@ -300,6 +300,15 @@ pub struct WasmCloudApp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpgradablePackage {
+    pub name: String,
+    pub current_version: String,
+    pub new_version: String,
+    pub repository: String,
+    pub is_security: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageDevice {
     pub device: String,
     pub mount: String,

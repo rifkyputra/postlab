@@ -257,13 +257,17 @@ impl AgentTab {
 }
 
 pub const BTS_FRONTENDS: &[&str] = &[
-    "tanstack-router", "react-router", "next", "nuxt", "svelte", "solid", "astro", "none",
+    "tanstack-router", "react-router", "tanstack-start", "next", "nuxt", "svelte", "solid",
+    "astro", "native-bare", "native-nativewind", "native-unistyles", "none",
 ];
 pub const BTS_DATABASES: &[&str] = &["sqlite", "postgres", "mysql", "mongodb", "none"];
 pub const BTS_ORMS: &[&str] = &["drizzle", "prisma", "mongoose", "none"];
 pub const BTS_AUTHS: &[&str] = &["better-auth", "clerk", "none"];
-pub const BTS_BACKENDS: &[&str] = &["hono", "express", "fastify", "elysia", "self", "none"];
+pub const BTS_BACKENDS: &[&str] = &["hono", "express", "fastify", "elysia", "convex", "self", "none"];
 pub const BTS_APIS: &[&str] = &["trpc", "orpc", "none"];
+pub const BTS_RUNTIMES: &[&str] = &["bun", "node", "workers", "none"];
+pub const BTS_PAYMENTS: &[&str] = &["none", "polar"];
+pub const BTS_EXAMPLES: &[&str] = &["none", "todo", "ai"];
 
 // ── Projects tabs ─────────────────────────────────────────────────────────
 
@@ -468,6 +472,8 @@ pub enum TaskResult {
     SmartLoaded(Vec<crate::core::models::SmartInfo>),
     StorageOpDone { op: String, success: bool },
     StorageFstabLoaded(String),
+    UpdatesList(Vec<crate::core::models::UpgradablePackage>),
+    UpdatesOpDone { success: bool },
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
     ProjectsList(Vec<crate::core::projects::ProjectEntry>),
@@ -601,6 +607,7 @@ pub enum PackageTab {
     Search,
     QuickInstall,
     Queue,
+    Updates,
 }
 
 impl PackageTab {
@@ -610,6 +617,7 @@ impl PackageTab {
             PackageTab::Search,
             PackageTab::QuickInstall,
             PackageTab::Queue,
+            PackageTab::Updates,
         ]
     }
     pub fn title(&self) -> &'static str {
@@ -618,6 +626,7 @@ impl PackageTab {
             PackageTab::Search => "Search",
             PackageTab::QuickInstall => "Quick Install",
             PackageTab::Queue => "Queue",
+            PackageTab::Updates => "Updates",
         }
     }
     pub fn index(&self) -> usize {
@@ -775,6 +784,11 @@ pub struct PackagesState {
     pub queue_state: ListState,
     pub queue_selected: Option<usize>,
     pub output_scroll: usize,
+    // Updates tab
+    pub updates: Vec<crate::core::models::UpgradablePackage>,
+    pub updates_state: TableState,
+    pub updates_selected: HashSet<String>,
+    pub updates_loading: bool,
 }
 
 impl Default for PackagesState {
@@ -798,6 +812,10 @@ impl Default for PackagesState {
             queue_state: ListState::default(),
             queue_selected: None,
             output_scroll: 0,
+            updates: Vec::new(),
+            updates_state: TableState::default(),
+            updates_selected: HashSet::new(),
+            updates_loading: false,
         }
     }
 }
@@ -1406,13 +1424,16 @@ pub struct ProjectsState {
     pub loading: bool,
     // New tab
     pub new_name: String,
-    pub new_form_focus: usize,  // 0-5 = Frontend..API
+    pub new_form_focus: usize,  // 0-8 = Frontend..Examples
     pub new_frontend_idx: usize,
     pub new_database_idx: usize,
     pub new_orm_idx: usize,
     pub new_auth_idx: usize,
     pub new_backend_idx: usize,
     pub new_api_idx: usize,
+    pub new_runtime_idx: usize,
+    pub new_payments_idx: usize,
+    pub new_examples_idx: usize,
     pub new_output: Vec<String>,
     pub new_output_scroll: usize,
     pub new_running: bool,
@@ -1444,6 +1465,9 @@ impl Default for ProjectsState {
             new_auth_idx: 0,
             new_backend_idx: 0,
             new_api_idx: 0,
+            new_runtime_idx: 0,
+            new_payments_idx: 0,
+            new_examples_idx: 0,
             new_output: Vec::new(),
             new_output_scroll: 0,
             new_running: false,
@@ -3309,6 +3333,56 @@ impl App {
         });
     }
 
+    // ── Updates spawn methods ────────────────────────────────────────────
+
+    pub fn spawn_load_updates(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.packages.updates_loading = true;
+        tokio::spawn(async move {
+            match platform.packages.list_upgradable().await {
+                Ok(list) => {
+                    let _ = tx.send(TaskResult::UpdatesList(list));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_upgrade_all(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        let pool = self.pool.clone();
+        self.packages.queue.push_back(QueuedOp {
+            kind: "upgrade".to_string(),
+            target: "all".to_string(),
+            status: OpStatus::Running,
+            output: String::new(),
+        });
+        if self.packages.queue_selected.is_none() {
+            self.packages.queue_selected = Some(self.packages.queue.len() - 1);
+            self.packages.output_scroll = 0;
+        }
+        tokio::spawn(async move {
+            let result = platform.packages.upgrade_all().await;
+            let (output, success) = match result {
+                Ok(out) => (out, true),
+                Err(e) => (e.to_string(), false),
+            };
+            let _ =
+                crate::db::audit::log_action(&pool, "upgrade", Some("all"), &output, success).await;
+            let _ = tx.send(TaskResult::OpDone {
+                op: "upgrade".to_string(),
+                target: "all".to_string(),
+                output,
+                success,
+            });
+            let _ = tx.send(TaskResult::UpdatesOpDone { success });
+        });
+    }
+
     // ── Projects spawn methods ────────────────────────────────────────────
 
     pub fn spawn_projects_load_dir(&mut self) {
@@ -3365,13 +3439,16 @@ impl App {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
         let flags = format!(
-            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {}",
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {}",
             BTS_FRONTENDS[self.projects.new_frontend_idx],
             BTS_DATABASES[self.projects.new_database_idx],
             BTS_ORMS[self.projects.new_orm_idx],
             BTS_AUTHS[self.projects.new_auth_idx],
             BTS_BACKENDS[self.projects.new_backend_idx],
             BTS_APIS[self.projects.new_api_idx],
+            BTS_RUNTIMES[self.projects.new_runtime_idx],
+            BTS_PAYMENTS[self.projects.new_payments_idx],
+            BTS_EXAMPLES[self.projects.new_examples_idx],
         );
         self.projects.new_running = true;
         self.projects.new_output.clear();
@@ -4619,6 +4696,16 @@ impl App {
             }
             TaskResult::StorageFstabLoaded(content) => {
                 self.storage.fstab_content = content;
+            }
+            TaskResult::UpdatesList(list) => {
+                if self.packages.updates_state.selected().is_none() && !list.is_empty() {
+                    self.packages.updates_state.select(Some(0));
+                }
+                self.packages.updates = list;
+                self.packages.updates_loading = false;
+            }
+            TaskResult::UpdatesOpDone { .. } => {
+                self.spawn_load_updates();
             }
             TaskResult::SwapLoaded(status) => {
                 if self.swap.table_state.selected().is_none() && !status.entries.is_empty() {

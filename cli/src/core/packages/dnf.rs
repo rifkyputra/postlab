@@ -1,5 +1,5 @@
 use super::{run_cmd, PackageManager};
-use crate::core::models::Package;
+use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -82,5 +82,32 @@ impl PackageManager for DnfManager {
 
     async fn clean_cache(&self) -> Result<String> {
         run_cmd(self.bin, &["clean", "all"]).await
+    }
+
+    async fn list_upgradable(&self) -> Result<Vec<UpgradablePackage>> {
+        let out = run_cmd(self.bin, &["check-update"])
+            .await
+            .unwrap_or_default();
+        Ok(out
+            .lines()
+            .filter_map(|line| {
+                // "openssh-server.x86_64    9.6p1-3.el9_5    rhel-9-appstream"
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 3 {
+                    return None;
+                }
+                let name_arch = parts[0];
+                let name = name_arch.split('.').next()?.to_string();
+                let new_ver = parts[1].to_string();
+                let repo = parts[2].to_string();
+                Some(UpgradablePackage {
+                    name,
+                    current_version: String::new(),
+                    new_version: new_ver,
+                    repository: repo.clone(),
+                    is_security: repo.contains("security"),
+                })
+            })
+            .collect())
     }
 }

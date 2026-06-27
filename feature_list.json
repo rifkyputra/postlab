@@ -78,6 +78,11 @@
           "id": "queue",
           "name": "Queue",
           "description": "Batch queue package installs and run them together"
+        },
+        {
+          "id": "updates",
+          "name": "Updates",
+          "description": "View available system upgrades with version deltas, security flagging, and one-key upgrade-all"
         }
       ]
     },

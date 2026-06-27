@@ -23,6 +23,9 @@ pub trait PackageManager: Send + Sync {
     #[expect(dead_code)]
     async fn update_cache(&self) -> Result<()>;
     async fn clean_cache(&self) -> Result<String>;
+    async fn list_upgradable(&self) -> Result<Vec<crate::core::models::UpgradablePackage>> {
+        Ok(Vec::new())
+    }
 
     /// Install with line-by-line progress forwarded to `tx`. Default falls back to `install()`.
     async fn install_streamed(

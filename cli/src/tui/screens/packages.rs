@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
     Frame,
 };
 
@@ -23,6 +23,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         PackageTab::Search => render_search(f, app, chunks[1]),
         PackageTab::QuickInstall => render_quick_install(f, app, chunks[1]),
         PackageTab::Queue => render_queue(f, app, chunks[1]),
+        PackageTab::Updates => render_updates(f, app, chunks[1]),
     }
 }
 
@@ -455,4 +456,103 @@ fn render_queue(f: &mut Frame, app: &App, area: Rect) {
             .border_style(Style::default().fg(title_color)),
     );
     f.render_widget(pane, chunks[1]);
+}
+
+fn render_updates(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(area);
+
+    let updates = &app.packages.updates;
+
+    if updates.is_empty() {
+        let msg = if app.packages.updates_loading {
+            "Checking for updates…"
+        } else {
+            "System is up to date ✓"
+        };
+        let color = if app.packages.updates_loading {
+            Color::DarkGray
+        } else {
+            Color::Green
+        };
+        let p = Paragraph::new(Span::styled(msg, Style::default().fg(color)))
+            .block(Block::default().title(" Updates ").borders(Borders::ALL));
+        f.render_widget(p, chunks[0]);
+    } else {
+        let security_count = updates.iter().filter(|u| u.is_security).count();
+        let regular_count = updates.len() - security_count;
+        let title = if security_count > 0 {
+            format!(
+                " Updates ({} available — {} security, {} regular) ",
+                updates.len(),
+                security_count,
+                regular_count
+            )
+        } else {
+            format!(" Updates ({} available) ", updates.len())
+        };
+
+        let header = Row::new(vec!["Package", "Current", "New", "Repository"])
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .height(1);
+
+        let rows: Vec<Row> = updates
+            .iter()
+            .map(|u| {
+                let selected = app.packages.updates_selected.contains(&u.name);
+                let prefix = if selected { "[*] " } else { "[ ] " };
+                let prefix_color = if selected {
+                    Color::Yellow
+                } else {
+                    Color::DarkGray
+                };
+                let row_color = if u.is_security {
+                    Color::Yellow
+                } else {
+                    Color::White
+                };
+                Row::new(vec![
+                    Cell::from(
+                        Span::styled(prefix, Style::default().fg(prefix_color))
+                    ),
+                    Cell::from(Span::styled(&u.name, Style::default().fg(row_color))),
+                    Cell::from(u.current_version.as_str()),
+                    Cell::from(u.new_version.as_str()),
+                    Cell::from(u.repository.as_str()),
+                ])
+            })
+            .collect();
+
+        let widths = [
+            Constraint::Length(5),
+            Constraint::Min(22),
+            Constraint::Length(18),
+            Constraint::Length(18),
+            Constraint::Min(12),
+        ];
+
+        let table = Table::new(rows, widths)
+            .header(header)
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .row_highlight_style(
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        let mut state = app.packages.updates_state.clone();
+        f.render_stateful_widget(table, chunks[0], &mut state);
+    }
+
+    let hints = Paragraph::new(Span::styled(
+        " [Space] select  [u] upgrade selected  [U] upgrade all  [R] refresh  [←/→] tabs ",
+        Style::default().fg(Color::DarkGray),
+    ));
+    f.render_widget(hints, chunks[1]);
 }

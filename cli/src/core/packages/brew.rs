@@ -1,5 +1,5 @@
 use super::{run_cmd, PackageManager};
-use crate::core::models::Package;
+use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -84,5 +84,34 @@ impl PackageManager for BrewManager {
 
     async fn clean_cache(&self) -> Result<String> {
         brew(&["cleanup"]).await
+    }
+
+    async fn list_upgradable(&self) -> Result<Vec<UpgradablePackage>> {
+        let out = brew(&["outdated", "--json"]).await.unwrap_or_default();
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap_or_default();
+        let entries = parsed.as_array().map(|a| a.to_vec()).unwrap_or_default();
+        Ok(entries
+            .iter()
+            .filter_map(|e| {
+                let name = e["name"].as_str()?.to_string();
+                let current = e["installed_versions"]
+                    .as_array()
+                    .and_then(|v| v.first())
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                let new = e["current_version"]
+                    .as_str()
+                    .unwrap_or("?")
+                    .to_string();
+                Some(UpgradablePackage {
+                    name,
+                    current_version: current,
+                    new_version: new,
+                    repository: String::new(),
+                    is_security: false,
+                })
+            })
+            .collect())
     }
 }

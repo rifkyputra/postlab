@@ -1,5 +1,5 @@
 use super::{run_cmd, PackageManager};
-use crate::core::models::Package;
+use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -69,5 +69,24 @@ impl PackageManager for PacmanManager {
 
     async fn clean_cache(&self) -> Result<String> {
         run_cmd("pacman", &["-Sc", "--noconfirm"]).await
+    }
+
+    async fn list_upgradable(&self) -> Result<Vec<UpgradablePackage>> {
+        let out = run_cmd("pacman", &["-Qu"]).await.unwrap_or_default();
+        Ok(out
+            .lines()
+            .filter_map(|line| {
+                // "linux 6.9.1.arch1-1 -> 6.9.2.arch1-1"
+                let (name, rest) = line.split_once(' ')?;
+                let (current, new) = rest.split_once(" -> ")?;
+                Some(UpgradablePackage {
+                    name: name.to_string(),
+                    current_version: current.to_string(),
+                    new_version: new.to_string(),
+                    repository: String::new(),
+                    is_security: false,
+                })
+            })
+            .collect())
     }
 }
