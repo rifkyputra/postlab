@@ -600,7 +600,88 @@ fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") {
         let home = std::env::var("HOME").unwrap_or_default();
         path.replacen("~", &home, 1)
+    } else if path == "~" {
+        std::env::var("HOME").unwrap_or_default()
     } else {
         path.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_bytes_zero() {
+        assert_eq!(format_bytes(0), "0 B");
+    }
+
+    #[test]
+    fn format_bytes_exact_kib() {
+        assert_eq!(format_bytes(1024), "1.0 KiB");
+        assert_eq!(format_bytes(2048), "2.0 KiB");
+    }
+
+    #[test]
+    fn format_bytes_mib() {
+        assert_eq!(format_bytes(2 * 1024 * 1024), "2.0 MiB");
+    }
+
+    #[test]
+    fn format_bytes_gib() {
+        assert_eq!(format_bytes(4 * 1024 * 1024 * 1024), "4.0 GiB");
+    }
+
+    #[test]
+    fn format_bytes_tib() {
+        assert_eq!(format_bytes(7 * 1024 * 1024 * 1024 * 1024), "7.0 TiB");
+    }
+
+    #[test]
+    fn format_bytes_fractional() {
+        let v = format_bytes(1536);
+        assert!(v.starts_with("1.5"));
+        assert!(v.ends_with("KiB"));
+    }
+
+    #[test]
+    fn truncate_short_string_is_unchanged() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_exact_length_is_unchanged() {
+        assert_eq!(truncate_str("abcdefghij", 10), "abcdefghij");
+    }
+
+    #[test]
+    fn truncate_long_string_adds_ellipsis() {
+        let result = truncate_str("this_is_a_very_long_string", 10);
+        assert!(result.len() <= 12);
+        assert!(result.ends_with('…'));
+        assert!(!result.contains("very_long"));
+    }
+
+    #[test]
+    fn expand_tilde_slash_replaces_with_home() {
+        let result = expand_tilde("~/projects");
+        assert!(!result.starts_with('~'));
+        assert!(result.ends_with("/projects"));
+    }
+
+    #[test]
+    fn expand_tilde_alone_replaces_with_home() {
+        let result = expand_tilde("~");
+        assert!(!result.contains('~'));
+    }
+
+    #[test]
+    fn expand_tilde_absolute_path_unchanged() {
+        assert_eq!(expand_tilde("/var/log"), "/var/log");
+    }
+
+    #[test]
+    fn expand_tilde_mid_path_unchanged() {
+        assert_eq!(expand_tilde("/home/~user/docs"), "/home/~user/docs");
     }
 }

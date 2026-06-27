@@ -297,6 +297,65 @@ fn mask_secrets(content: &str) -> String {
         .join("\n")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::mask_secrets;
+
+    #[test]
+    fn masks_api_key_value() {
+        let input = r#"{"openai_api_key": "sk-abc123"}"#;
+        let output = mask_secrets(input);
+        assert!(!output.contains("sk-abc123"));
+        assert!(output.contains("\"***\""));
+        assert!(output.contains("openai_api_key"));
+    }
+
+    #[test]
+    fn masks_token_value() {
+        let input = r#"{"github_token": "ghp_secret"}"#;
+        let output = mask_secrets(input);
+        assert!(!output.contains("ghp_secret"));
+        assert!(output.contains("\"***\""));
+    }
+
+    #[test]
+    fn masks_password_field() {
+        let input = r#""database_password": "my-pass-123""#;
+        let output = mask_secrets(input);
+        assert!(!output.contains("my-pass-123"));
+    }
+
+    #[test]
+    fn masks_webhook_url() {
+        let input = r#""discord_webhook": "https://discord.com/api/webhooks/xyz""#;
+        let output = mask_secrets(input);
+        assert!(!output.contains("webhooks/xyz"));
+    }
+
+    #[test]
+    fn leaves_non_secret_lines_unchanged() {
+        let input = r#"{"defaultModel": "claude-sonnet-4-5"}"#;
+        let output = mask_secrets(input);
+        assert!(output.contains("claude-sonnet-4-5"));
+    }
+
+    #[test]
+    fn handles_multiline_json() {
+        let input = "{\n  \"provider\": \"openai\",\n  \"api_key\": \"sk-12345\",\n  \"model\": \"gpt-4\"\n}";
+        let output = mask_secrets(input);
+        assert!(output.contains("\"provider\""));
+        assert!(!output.contains("sk-12345"));
+        assert!(output.contains("gpt-4"));
+    }
+
+    #[test]
+    fn masks_secret_even_without_colon() {
+        // Edge case: line with "secret" but no colon — should pass through unchanged
+        let input = "secret-stuff";
+        assert_eq!(mask_secrets(input), "secret-stuff");
+    }
+}
+
 pub async fn get_auth() -> Vec<PiAuthEntry> {
     let path = auth_path();
     let content = match tokio::fs::read_to_string(&path).await {

@@ -473,3 +473,128 @@ impl DockerCliManager {
         ]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DockerCliManager;
+
+    #[test]
+    fn parse_containers_single_running() {
+        let jsonl = r#"{"ID":"abc123","Names":"/nginx","Image":"nginx:latest","Status":"Up 3 hours","Ports":"0.0.0.0:80-\u003e80/tcp","CreatedAt":"2025-01-01"}"#;
+        let containers = DockerCliManager::parse_containers(jsonl);
+        assert_eq!(containers.len(), 1);
+        let c = &containers[0];
+        assert_eq!(c.id, "abc123");
+        assert_eq!(c.name, "nginx");
+        assert_eq!(c.image, "nginx:latest");
+        assert_eq!(c.status, "Up 3 hours");
+    }
+
+    #[test]
+    fn parse_containers_multiple() {
+        let jsonl = r#"{"ID":"id1","Names":"/app","Image":"app:v1","Status":"running","Ports":"","CreatedAt":"now"}
+{"ID":"id2","Names":"/db","Image":"postgres:16","Status":"exited","Ports":"5432/tcp","CreatedAt":"yesterday"}"#;
+        let containers = DockerCliManager::parse_containers(jsonl);
+        assert_eq!(containers.len(), 2);
+        assert_eq!(containers[0].name, "app");
+        assert_eq!(containers[1].name, "db");
+    }
+
+    #[test]
+    fn parse_containers_strips_leading_slash_from_names() {
+        let jsonl = r#"{"ID":"x","Names":"/some-service","Image":"img","Status":"ok","Ports":"","CreatedAt":""}"#;
+        let containers = DockerCliManager::parse_containers(jsonl);
+        assert_eq!(containers[0].name, "some-service");
+    }
+
+    #[test]
+    fn parse_containers_empty_input() {
+        assert!(DockerCliManager::parse_containers("").is_empty());
+    }
+
+    #[test]
+    fn parse_containers_skips_invalid_json() {
+        let jsonl = "not-json\n{\"ID\":\"ok\",\"Names\":\"/app\",\"Image\":\"img\",\"Status\":\"ok\",\"Ports\":\"\",\"CreatedAt\":\"\"}";
+        let containers = DockerCliManager::parse_containers(jsonl);
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].id, "ok");
+    }
+
+    #[test]
+    fn parse_images_basic() {
+        let jsonl = r#"{"ID":"sha256:abc","Repository":"nginx","Tag":"latest","Size":"188MB","CreatedAt":"5 days ago"}"#;
+        let images = DockerCliManager::parse_images(jsonl);
+        assert_eq!(images.len(), 1);
+        let img = &images[0];
+        assert_eq!(img.id, "sha256:abc");
+        assert_eq!(img.repository, "nginx");
+        assert_eq!(img.tag, "latest");
+        assert_eq!(img.size, "188MB");
+    }
+
+    #[test]
+    fn parse_images_multiple_tags() {
+        let jsonl = r#"{"ID":"id1","Repository":"alpine","Tag":"3.19","Size":"7MB","CreatedAt":"now"}
+{"ID":"id2","Repository":"alpine","Tag":"latest","Size":"7MB","CreatedAt":"now"}"#;
+        let images = DockerCliManager::parse_images(jsonl);
+        assert_eq!(images.len(), 2);
+    }
+
+    #[test]
+    fn parse_images_empty_input() {
+        assert!(DockerCliManager::parse_images("").is_empty());
+    }
+
+    #[test]
+    fn parse_compose_single_service() {
+        let jsonl = r#"{"Name":"app","Status":"running","Image":"myapp:latest","Publishers":[{"PublishedPort":80,"TargetPort":3000}]}"#;
+        let services = DockerCliManager::parse_compose(jsonl);
+        assert_eq!(services.len(), 1);
+        let s = &services[0];
+        assert_eq!(s.name, "app");
+        assert_eq!(s.status, "running");
+        assert_eq!(s.ports, "80:3000");
+    }
+
+    #[test]
+    fn parse_compose_omits_zero_published_ports() {
+        let jsonl = r#"{"Name":"svc","Status":"ok","Image":"img","Publishers":[{"PublishedPort":0,"TargetPort":3000}]}"#;
+        let services = DockerCliManager::parse_compose(jsonl);
+        assert_eq!(services[0].ports, "");
+    }
+
+    #[test]
+    fn parse_compose_skips_nameless_entries() {
+        let jsonl = r#"{"Status":"orphan","Image":"img"}"#;
+        assert!(DockerCliManager::parse_compose(jsonl).is_empty());
+    }
+
+    #[test]
+    fn get_field_falls_through_multiple_keys() {
+        let v: serde_json::Value =
+            serde_json::from_str(r#"{"repo":"alpine","tag":"edge"}"#).unwrap();
+        assert_eq!(
+            DockerCliManager::get_field(&v, &["Repository", "repo"]),
+            "alpine"
+        );
+    }
+
+    #[test]
+    fn get_field_falls_back_to_second_key() {
+        let v: serde_json::Value =
+            serde_json::from_str(r#"{"tag":"edge"}"#).unwrap();
+        assert_eq!(
+            DockerCliManager::get_field(&v, &["Repository", "repo"]),
+            ""
+        );
+    }
+
+    #[test]
+    fn get_field_handles_array_values() {
+        let v: serde_json::Value =
+            serde_json::from_str(r#"{"ports":["80:80","443:443"]}"#).unwrap();
+        let result = DockerCliManager::get_field(&v, &["ports"]);
+        assert!(result.contains("80:80"));
+        assert!(result.contains("443:443"));
+    }
+}

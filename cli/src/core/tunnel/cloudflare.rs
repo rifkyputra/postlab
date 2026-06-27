@@ -624,3 +624,65 @@ fn replace_service_for_hostname(yaml: &str, hostname: &str, new_service: &str) -
     }
     yaml.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_YAML: &str = "\
+tunnel: abc-123\ncredentials-file: /home/user/.cloudflared/abc-123.json\n\ningress:\n  - hostname: app.example.com\n    service: http://localhost:3000\n  - hostname: api.example.com\n    service: http://localhost:8080\n  - service: http_status:404\n";
+
+    #[test]
+    fn remove_hostname_removes_host_and_service() {
+        let result = remove_hostname_from_yaml(SAMPLE_YAML, "app.example.com");
+        assert!(!result.contains("hostname: app.example.com"));
+        assert!(!result.contains("http://localhost:3000"));
+        assert!(result.contains("hostname: api.example.com"));
+        assert!(result.contains("http_status:404"));
+    }
+
+    #[test]
+    fn remove_hostname_last_entry_keeps_catchall() {
+        let result = remove_hostname_from_yaml(SAMPLE_YAML, "api.example.com");
+        assert!(!result.contains("hostname: api.example.com"));
+        assert!(result.contains("hostname: app.example.com"));
+        assert!(result.contains("http_status:404"));
+    }
+
+    #[test]
+    fn remove_hostname_not_found_is_noop() {
+        let result = remove_hostname_from_yaml(SAMPLE_YAML, "nonexistent.example.com");
+        assert_eq!(result.trim(), SAMPLE_YAML.trim());
+    }
+
+    #[test]
+    fn remove_hostname_empty_yaml() {
+        let result = remove_hostname_from_yaml("", "app.example.com");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn replace_service_updates_correct_hostname() {
+        let result =
+            replace_service_for_hostname(SAMPLE_YAML, "app.example.com", "http://localhost:4000");
+        assert!(result.contains("service: http://localhost:4000"));
+        assert!(result.contains("service: http://localhost:8080"));
+        assert!(!result.contains("service: http://localhost:3000"));
+    }
+
+    #[test]
+    fn replace_service_not_found_is_noop() {
+        let result = replace_service_for_hostname(
+            SAMPLE_YAML,
+            "nonexistent.example.com",
+            "http://localhost:9999",
+        );
+        assert_eq!(result.trim(), SAMPLE_YAML.trim());
+    }
+
+    #[test]
+    fn replace_service_empty_yaml_is_unchanged() {
+        let result = replace_service_for_hostname("", "app.example.com", "http://localhost:3000");
+        assert_eq!(result, "");
+    }
+}
