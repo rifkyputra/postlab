@@ -1,8 +1,14 @@
 # Postlab
 
 <div align="center">
-<img width="600" alt="Postlab Logo High Resolution" src="https://github.com/user-attachments/assets/edbb6950-8aef-4c5d-9f95-e0e0e51074c5" />
-  
+<pre>
+██████╗  ██████╗ ███████╗████████╗██╗      █████╗ ██████╗ 
+██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║     ██╔══██╗██╔══██╗
+██████╔╝██║   ██║███████╗   ██║   ██║     ███████║██████╔╝
+██╔═══╝ ██║   ██║╚════██║   ██║   ██║     ██╔══██║██╔══██╗
+██║     ╚██████╔╝███████║   ██║   ███████╗██║  ██║██████╔╝
+╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═════╝ 
+</pre>
 
   <p>
     <b>Interactive bare metal server manager — runs directly on the machine it manages.</b>
