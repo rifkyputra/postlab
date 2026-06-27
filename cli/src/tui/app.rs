@@ -271,6 +271,11 @@ pub const BTS_EXAMPLES: &[&str] = &["none", "todo", "ai"];
 pub const BTS_GIT: &[&str] = &["yes", "no"];
 pub const BTS_WEB_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
 pub const BTS_SERVER_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
+pub const BTS_ADDONS: &[&str] = &[
+    "pwa", "tauri", "electrobun", "starlight", "biome", "lefthook", "husky", "mcp",
+    "turborepo", "nx", "vite-plus", "fumadocs", "ultracite", "oxlint", "opentui", "wxt",
+    "skills", "evlog",
+];
 
 // ── Projects tabs ─────────────────────────────────────────────────────────
 
@@ -1440,6 +1445,8 @@ pub struct ProjectsState {
     pub new_git_idx: usize,
     pub new_web_deploy_idx: usize,
     pub new_server_deploy_idx: usize,
+    pub new_addons_selected: Vec<bool>,
+    pub new_addons_cursor: usize,
     pub new_output: Vec<String>,
     pub new_output_scroll: usize,
     pub new_running: bool,
@@ -1477,6 +1484,8 @@ impl Default for ProjectsState {
             new_git_idx: 0,
             new_web_deploy_idx: 0,
             new_server_deploy_idx: 0,
+            new_addons_selected: vec![false; BTS_ADDONS.len()],
+            new_addons_cursor: 0,
             new_output: Vec::new(),
             new_output_scroll: 0,
             new_running: false,
@@ -3448,8 +3457,14 @@ impl App {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
         let git_flag = if BTS_GIT[self.projects.new_git_idx] == "yes" { "--git" } else { "--no-git" };
+        let addons_flags: String = BTS_ADDONS
+            .iter()
+            .zip(self.projects.new_addons_selected.iter())
+            .filter_map(|(name, &sel)| if sel { Some(format!("--addons {}", name)) } else { None })
+            .collect::<Vec<_>>()
+            .join(" ");
         let flags = format!(
-            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} {} --web-deploy {} --server-deploy {}",
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} {} --web-deploy {} --server-deploy {} {}",
             BTS_FRONTENDS[self.projects.new_frontend_idx],
             BTS_DATABASES[self.projects.new_database_idx],
             BTS_ORMS[self.projects.new_orm_idx],
@@ -3462,6 +3477,7 @@ impl App {
             git_flag,
             BTS_WEB_DEPLOY[self.projects.new_web_deploy_idx],
             BTS_SERVER_DEPLOY[self.projects.new_server_deploy_idx],
+            addons_flags,
         );
         self.projects.new_running = true;
         self.projects.new_output.clear();

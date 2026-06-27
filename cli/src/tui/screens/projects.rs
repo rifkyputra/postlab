@@ -7,8 +7,9 @@ use ratatui::{
 };
 
 use crate::tui::app::{
-    App, InputMode, ProjectsTab, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES,
-    BTS_FRONTENDS, BTS_GIT, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES, BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
+    App, InputMode, ProjectsTab, BTS_ADDONS, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES,
+    BTS_EXAMPLES, BTS_FRONTENDS, BTS_GIT, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES,
+    BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
 };
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
@@ -109,7 +110,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // name input
-            Constraint::Length(14), // config form (12 fields + 2 borders)
+            Constraint::Length(15), // config form (13 fields + 2 borders)
             Constraint::Min(0),     // output
             Constraint::Length(1),  // hint
         ])
@@ -145,7 +146,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         ("Web Deploy", BTS_WEB_DEPLOY,    app.projects.new_web_deploy_idx),
         ("Srv Deploy", BTS_SERVER_DEPLOY, app.projects.new_server_deploy_idx),
     ];
-    let form_lines: Vec<Line> = fields
+    let mut form_lines: Vec<Line> = fields
         .iter()
         .enumerate()
         .map(|(i, (label, opts, sel))| {
@@ -177,10 +178,49 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
             Line::from(spans)
         })
         .collect();
+
+    // Addons row — multi-select: ● selected, ○ unselected, [name] = cursor
+    {
+        const ADDONS_FIELD: usize = 12;
+        let focused = app.projects.new_form_focus == ADDONS_FIELD && !app.projects.new_running;
+        let prefix = Span::styled(
+            if focused { "> " } else { "  " },
+            Style::default().fg(Color::Yellow),
+        );
+        let label_span = Span::styled(
+            format!("{:<10}", "Addons"),
+            if focused {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        );
+        let mut spans = vec![prefix, label_span];
+        for (j, &addon) in BTS_ADDONS.iter().enumerate() {
+            let selected = app.projects.new_addons_selected[j];
+            let is_cursor = focused && j == app.projects.new_addons_cursor;
+            spans.push(Span::raw(" "));
+            let bullet = if selected { "●" } else { "○" };
+            let text = if is_cursor {
+                format!("[{}{}]", bullet, addon)
+            } else {
+                format!("{}{}", bullet, addon)
+            };
+            spans.push(if selected {
+                Span::styled(text, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            } else if is_cursor {
+                Span::styled(text, Style::default().fg(Color::Yellow))
+            } else {
+                Span::styled(text, Style::default().fg(Color::DarkGray))
+            });
+        }
+        form_lines.push(Line::from(spans));
+    }
+
     let form_para = Paragraph::new(form_lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Stack  [j/k] field  [h/l] option "),
+            .title(" Stack  [j/k] field  [h/l] option/cursor  [Space] toggle addon "),
     );
     f.render_widget(form_para, chunks[1]);
 
@@ -209,7 +249,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     } else if app.projects.new_running {
         "scaffolding in progress…  [PgUp/PgDn] scroll"
     } else {
-        "[i] name  [j/k] field  [h/l] option  [Enter] scaffold"
+        "[i] name  [j/k] field  [h/l] option/cursor  [Space] addon  [Enter] scaffold"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(hint_p, chunks[3]);

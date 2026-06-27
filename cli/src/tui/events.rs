@@ -3518,7 +3518,10 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
-    const NUM_FIELDS: usize = 12;
+    use crate::tui::app::BTS_ADDONS;
+    const NUM_FIELDS: usize = 13;
+    const ADDONS_FIELD: usize = 12;
+    let on_addons = app.projects.new_form_focus == ADDONS_FIELD;
     match key.code {
         KeyCode::Char('i') => app.projects.new_input_mode = InputMode::Editing,
         KeyCode::Enter if !app.projects.new_running && !app.projects.new_name.is_empty() => {
@@ -3534,8 +3537,27 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
             app.projects.new_form_focus =
                 app.projects.new_form_focus.saturating_sub(1);
         }
-        KeyCode::Char('l') => cycle_bts_field(app, true),
-        KeyCode::Char('h') => cycle_bts_field(app, false),
+        KeyCode::Char('l') => {
+            if on_addons {
+                if app.projects.new_addons_cursor + 1 < BTS_ADDONS.len() {
+                    app.projects.new_addons_cursor += 1;
+                }
+            } else {
+                cycle_bts_field(app, true);
+            }
+        }
+        KeyCode::Char('h') => {
+            if on_addons {
+                app.projects.new_addons_cursor =
+                    app.projects.new_addons_cursor.saturating_sub(1);
+            } else {
+                cycle_bts_field(app, false);
+            }
+        }
+        KeyCode::Char(' ') if on_addons => {
+            let cur = app.projects.new_addons_cursor;
+            app.projects.new_addons_selected[cur] = !app.projects.new_addons_selected[cur];
+        }
         KeyCode::PageUp => {
             app.projects.new_output_scroll =
                 app.projects.new_output_scroll.saturating_add(5);
