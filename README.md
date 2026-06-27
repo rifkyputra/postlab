@@ -22,6 +22,16 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 
 ---
 
+## Demo
+
+<div align="center">
+  <img src="demo.gif" alt="Postlab TUI demo — touring the Dashboard, Packages, Security, Networking, Docker, and Agent screens" width="900">
+</div>
+
+> Regenerate the GIF with [`vhs`](https://github.com/charmbracelet/vhs): `vhs demo.tape`.
+
+---
+
 ## Features
 
 | Screen | Tabs / Sub-features | What it does |
