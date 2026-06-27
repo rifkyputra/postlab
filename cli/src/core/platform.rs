@@ -76,7 +76,7 @@ pub fn detect() -> Result<Platform> {
     let os = OsFamily::detect();
     let system = Arc::new(SysinfoManager::new());
     let processes = Arc::new(SysinfoProcessManager::new());
-    let security = Arc::new(DefaultSecurityAuditor::new(os));
+    let security = build_security_auditor(os);
     let fail2ban = Arc::new(DefaultFail2Ban) as Arc<dyn Fail2BanManager>;
     let gateway = Arc::new(CaddyManager);
     let tailscale = Arc::new(TailscaleManager);
@@ -117,6 +117,17 @@ pub fn detect() -> Result<Platform> {
         nats,
         workloads,
     })
+}
+
+#[cfg(feature = "wasm-plugins")]
+fn build_security_auditor(os: OsFamily) -> Arc<dyn SecurityAuditor> {
+    let native: Arc<dyn SecurityAuditor> = Arc::new(DefaultSecurityAuditor::new(os));
+    crate::core::plugins::security_auditor(native)
+}
+
+#[cfg(not(feature = "wasm-plugins"))]
+fn build_security_auditor(os: OsFamily) -> Arc<dyn SecurityAuditor> {
+    Arc::new(DefaultSecurityAuditor::new(os))
 }
 
 fn detect_firewall() -> Arc<dyn FirewallManager> {

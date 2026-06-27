@@ -13,6 +13,10 @@
 # Rust
 /target/
 crates/*/target/
+examples/*/target/
+
+# Built WASM example components
+examples/**/*.component.wasm
 
 # SQLite WAL files
 *.db-shm

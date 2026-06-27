@@ -13,9 +13,15 @@ else
   RELEASE_DIR := target/$(TARGET)/release
 endif
 
-.PHONY: help build build-release release build-linux build-all run dev info list check test clean install link link-release docker-build docker-shell docker-cp docker-release
+.PHONY: help build build-release release build-linux build-all run dev info list check test clean install link link-release docker-build docker-shell docker-cp docker-release wasm-example
 
 LINUX_TARGET := x86_64-unknown-linux-gnu
+
+# Example WASM security-check guest. Excluded from the workspace, so it builds
+# into its own target dir under the crate.
+WASM_EXAMPLE_DIR       := examples/wasm-check-sshd
+WASM_EXAMPLE_MODULE    := $(WASM_EXAMPLE_DIR)/target/wasm32-unknown-unknown/release/postlab_check_sshd.wasm
+WASM_EXAMPLE_COMPONENT := $(WASM_EXAMPLE_DIR)/postlab_check_sshd.component.wasm
 
 # ---------------------------------------------------------------------------
 # Help
@@ -64,6 +70,13 @@ link: ## Symlink dev binary → binaries/<triple>/postlab
 link-release: ## Symlink release binary → binaries/<triple>/postlab
 	@mkdir -p binaries/$(TARGET)
 	@ln -sf ../../$(RELEASE_DIR)/postlab binaries/$(TARGET)/postlab
+
+wasm-example: ## Build example WASM check component (requires: rustup target add wasm32-unknown-unknown; cargo install wasm-tools)
+	cargo build --release --manifest-path $(WASM_EXAMPLE_DIR)/Cargo.toml --target wasm32-unknown-unknown
+	wasm-tools component new $(WASM_EXAMPLE_MODULE) -o $(WASM_EXAMPLE_COMPONENT)
+	@echo "  Component: $(WASM_EXAMPLE_COMPONENT)"
+	@echo "  Install:   sudo cp $(WASM_EXAMPLE_COMPONENT) /etc/postlab/plugins/"
+	@ls -lh $(WASM_EXAMPLE_COMPONENT)
 
 # ---------------------------------------------------------------------------
 # Run

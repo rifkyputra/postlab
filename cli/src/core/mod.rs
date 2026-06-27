@@ -7,6 +7,8 @@ pub mod models;
 pub mod nats;
 pub mod packages;
 pub mod platform;
+#[cfg(feature = "wasm-plugins")]
+pub mod plugins;
 pub mod portcheck;
 pub mod processes;
 pub mod security;

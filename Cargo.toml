@@ -3,6 +3,10 @@ resolver = "2"
 members = [
     "cli",
 ]
+# Guest builds for wasm32; keep it out of the host workspace/target matrix.
+exclude = [
+    "examples/wasm-check-sshd",
+]
 
 [profile.release]
 strip = true
