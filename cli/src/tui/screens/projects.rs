@@ -6,7 +6,10 @@ use ratatui::{
     Frame,
 };
 
-use crate::tui::app::{App, InputMode, ProjectsTab};
+use crate::tui::app::{
+    App, InputMode, ProjectsTab, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_FRONTENDS,
+    BTS_ORMS,
+};
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
@@ -60,10 +63,23 @@ fn render_list(f: &mut Frame, app: &App, area: Rect) {
                 .modified
                 .map(format_age)
                 .unwrap_or_else(|| "—".to_string());
+            let stack_color = match p.stack.as_str() {
+                "Node" => Color::Green,
+                "Rust" => Color::Red,
+                "Go" => Color::Cyan,
+                "Python" => Color::Blue,
+                "Docker" => Color::LightBlue,
+                "WasmCloud" => Color::Magenta,
+                _ => Color::DarkGray,
+            };
             let line = Line::from(vec![
                 Span::styled(
                     format!("{:<30}", truncate(&p.name, 28)),
                     Style::default().fg(Color::Cyan),
+                ),
+                Span::styled(
+                    format!("{:<10}", &p.stack),
+                    Style::default().fg(stack_color),
                 ),
                 Span::raw("  "),
                 Span::styled(modified, Style::default().fg(Color::DarkGray)),
@@ -93,6 +109,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // name input
+            Constraint::Length(8), // config form (6 fields + 2 borders)
             Constraint::Min(0),    // output
             Constraint::Length(1), // hint
         ])
@@ -110,38 +127,87 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .border_style(name_border)
-            .title(" Project name (better-t-stack) "),
+            .title(" Project name "),
     );
     f.render_widget(name_para, chunks[0]);
 
-    let running_label = if app.projects.new_running { " (running…)" } else { "" };
-    let out_lines: Vec<Line> = app
-        .projects
-        .new_output
+    // Config form — 6 rows, one per field
+    let fields: &[(&str, &[&str], usize)] = &[
+        ("Frontend", BTS_FRONTENDS, app.projects.new_frontend_idx),
+        ("Database", BTS_DATABASES, app.projects.new_database_idx),
+        ("ORM",      BTS_ORMS,      app.projects.new_orm_idx),
+        ("Auth",     BTS_AUTHS,     app.projects.new_auth_idx),
+        ("Backend",  BTS_BACKENDS,  app.projects.new_backend_idx),
+        ("API",      BTS_APIS,      app.projects.new_api_idx),
+    ];
+    let form_lines: Vec<Line> = fields
         .iter()
-        .rev()
-        .take(chunks[1].height.saturating_sub(2) as usize)
-        .rev()
+        .enumerate()
+        .map(|(i, (label, opts, sel))| {
+            let focused = i == app.projects.new_form_focus && !app.projects.new_running;
+            let prefix = Span::styled(
+                if focused { "> " } else { "  " },
+                Style::default().fg(Color::Yellow),
+            );
+            let label_span = Span::styled(
+                format!("{:<10}", label),
+                if focused {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                },
+            );
+            let mut spans = vec![prefix, label_span];
+            for (j, &opt) in opts.iter().enumerate() {
+                spans.push(Span::raw(" "));
+                spans.push(if j == *sel {
+                    Span::styled(
+                        format!("[{}]", opt),
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(opt, Style::default().fg(Color::DarkGray))
+                });
+            }
+            Line::from(spans)
+        })
+        .collect();
+    let form_para = Paragraph::new(form_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Stack  [j/k] field  [ ] option "),
+    );
+    f.render_widget(form_para, chunks[1]);
+
+    let running_label = if app.projects.new_running { " (running…)" } else { "" };
+    let total = app.projects.new_output.len();
+    let visible_h = chunks[2].height.saturating_sub(2) as usize;
+    let scroll = app.projects.new_output_scroll.min(total.saturating_sub(visible_h));
+    let bottom = total.saturating_sub(scroll);
+    let top = bottom.saturating_sub(visible_h);
+    let out_lines: Vec<Line> = app.projects.new_output[top..bottom]
+        .iter()
         .map(|l| Line::from(Span::raw(l.as_str())))
         .collect();
+    let scroll_label = if scroll > 0 { format!(" ↑{} ", scroll) } else { String::new() };
     let out_para = Paragraph::new(out_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!(" Output{} ", running_label)),
+                .title(format!(" Output{}{} ", running_label, scroll_label)),
         )
         .wrap(Wrap { trim: false });
-    f.render_widget(out_para, chunks[1]);
+    f.render_widget(out_para, chunks[2]);
 
     let hint = if editing {
-        "[Esc] cancel  [Enter] run scaffold"
+        "[Esc] cancel  [Enter] confirm name"
     } else if app.projects.new_running {
-        "scaffolding in progress…"
+        "scaffolding in progress…  [PgUp/PgDn] scroll"
     } else {
-        "[i] edit name  [Enter] run scaffold  (requires Node.js / npx)"
+        "[i] name  [j/k] field  [ ] option  [Enter] scaffold"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
-    f.render_widget(hint_p, chunks[1 + 1]);
+    f.render_widget(hint_p, chunks[3]);
 }
 
 fn render_clone(f: &mut Frame, app: &App, area: Rect) {
@@ -171,20 +237,21 @@ fn render_clone(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(url_para, chunks[0]);
 
     let running_label = if app.projects.clone_running { " (running…)" } else { "" };
-    let out_lines: Vec<Line> = app
-        .projects
-        .clone_output
+    let total = app.projects.clone_output.len();
+    let visible_h = chunks[1].height.saturating_sub(2) as usize;
+    let scroll = app.projects.clone_output_scroll.min(total.saturating_sub(visible_h));
+    let bottom = total.saturating_sub(scroll);
+    let top = bottom.saturating_sub(visible_h);
+    let out_lines: Vec<Line> = app.projects.clone_output[top..bottom]
         .iter()
-        .rev()
-        .take(chunks[1].height.saturating_sub(2) as usize)
-        .rev()
         .map(|l| Line::from(Span::raw(l.as_str())))
         .collect();
+    let scroll_label = if scroll > 0 { format!(" ↑{} ", scroll) } else { String::new() };
     let out_para = Paragraph::new(out_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!(" Output{} ", running_label)),
+                .title(format!(" Output{}{} ", running_label, scroll_label)),
         )
         .wrap(Wrap { trim: false });
     f.render_widget(out_para, chunks[1]);
@@ -192,9 +259,9 @@ fn render_clone(f: &mut Frame, app: &App, area: Rect) {
     let hint = if editing {
         "[Esc] cancel  [Enter] clone"
     } else if app.projects.clone_running {
-        "cloning in progress…"
+        "[↑/↓] scroll output  cloning in progress…"
     } else {
-        "[i] edit URL  [Enter] clone  (shorthand: user/repo → github.com)"
+        "[i] edit URL  [Enter] clone  [↑/↓] scroll  (user/repo → github.com)"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(hint_p, chunks[2]);
