@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::tui::app::{
     App, InputMode, ProjectsTab, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES,
-    BTS_FRONTENDS, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES,
+    BTS_FRONTENDS, BTS_GIT, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES, BTS_SERVER_DEPLOY, BTS_WEB_DEPLOY,
 };
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
@@ -109,7 +109,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // name input
-            Constraint::Length(11), // config form (9 fields + 2 borders)
+            Constraint::Length(14), // config form (12 fields + 2 borders)
             Constraint::Min(0),     // output
             Constraint::Length(1),  // hint
         ])
@@ -131,17 +131,19 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     );
     f.render_widget(name_para, chunks[0]);
 
-    // Config form — 6 rows, one per field
     let fields: &[(&str, &[&str], usize)] = &[
-        ("Frontend", BTS_FRONTENDS, app.projects.new_frontend_idx),
-        ("Database", BTS_DATABASES, app.projects.new_database_idx),
-        ("ORM",      BTS_ORMS,      app.projects.new_orm_idx),
-        ("Auth",     BTS_AUTHS,     app.projects.new_auth_idx),
-        ("Backend",  BTS_BACKENDS,  app.projects.new_backend_idx),
-        ("API",      BTS_APIS,      app.projects.new_api_idx),
-        ("Runtime",  BTS_RUNTIMES,  app.projects.new_runtime_idx),
-        ("Payments", BTS_PAYMENTS,  app.projects.new_payments_idx),
-        ("Examples", BTS_EXAMPLES,  app.projects.new_examples_idx),
+        ("Frontend",   BTS_FRONTENDS,     app.projects.new_frontend_idx),
+        ("Database",   BTS_DATABASES,     app.projects.new_database_idx),
+        ("ORM",        BTS_ORMS,          app.projects.new_orm_idx),
+        ("Auth",       BTS_AUTHS,         app.projects.new_auth_idx),
+        ("Backend",    BTS_BACKENDS,      app.projects.new_backend_idx),
+        ("API",        BTS_APIS,          app.projects.new_api_idx),
+        ("Runtime",    BTS_RUNTIMES,      app.projects.new_runtime_idx),
+        ("Payments",   BTS_PAYMENTS,      app.projects.new_payments_idx),
+        ("Examples",   BTS_EXAMPLES,      app.projects.new_examples_idx),
+        ("Git",        BTS_GIT,           app.projects.new_git_idx),
+        ("Web Deploy", BTS_WEB_DEPLOY,    app.projects.new_web_deploy_idx),
+        ("Srv Deploy", BTS_SERVER_DEPLOY, app.projects.new_server_deploy_idx),
     ];
     let form_lines: Vec<Line> = fields
         .iter()

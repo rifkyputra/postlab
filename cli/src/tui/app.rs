@@ -258,7 +258,7 @@ impl AgentTab {
 
 pub const BTS_FRONTENDS: &[&str] = &[
     "tanstack-router", "react-router", "tanstack-start", "next", "nuxt", "svelte", "solid",
-    "astro", "native-bare", "native-nativewind", "native-unistyles", "none",
+    "astro", "native-bare", "native-uniwind", "native-unistyles", "none",
 ];
 pub const BTS_DATABASES: &[&str] = &["sqlite", "postgres", "mysql", "mongodb", "none"];
 pub const BTS_ORMS: &[&str] = &["drizzle", "prisma", "mongoose", "none"];
@@ -268,6 +268,9 @@ pub const BTS_APIS: &[&str] = &["trpc", "orpc", "none"];
 pub const BTS_RUNTIMES: &[&str] = &["bun", "node", "workers", "none"];
 pub const BTS_PAYMENTS: &[&str] = &["none", "polar"];
 pub const BTS_EXAMPLES: &[&str] = &["none", "todo", "ai"];
+pub const BTS_GIT: &[&str] = &["yes", "no"];
+pub const BTS_WEB_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
+pub const BTS_SERVER_DEPLOY: &[&str] = &["none", "cloudflare", "docker"];
 
 // ── Projects tabs ─────────────────────────────────────────────────────────
 
@@ -1424,7 +1427,7 @@ pub struct ProjectsState {
     pub loading: bool,
     // New tab
     pub new_name: String,
-    pub new_form_focus: usize,  // 0-8 = Frontend..Examples
+    pub new_form_focus: usize,  // 0-11 = Frontend..ServerDeploy
     pub new_frontend_idx: usize,
     pub new_database_idx: usize,
     pub new_orm_idx: usize,
@@ -1434,6 +1437,9 @@ pub struct ProjectsState {
     pub new_runtime_idx: usize,
     pub new_payments_idx: usize,
     pub new_examples_idx: usize,
+    pub new_git_idx: usize,
+    pub new_web_deploy_idx: usize,
+    pub new_server_deploy_idx: usize,
     pub new_output: Vec<String>,
     pub new_output_scroll: usize,
     pub new_running: bool,
@@ -1468,6 +1474,9 @@ impl Default for ProjectsState {
             new_runtime_idx: 0,
             new_payments_idx: 0,
             new_examples_idx: 0,
+            new_git_idx: 0,
+            new_web_deploy_idx: 0,
+            new_server_deploy_idx: 0,
             new_output: Vec::new(),
             new_output_scroll: 0,
             new_running: false,
@@ -3438,8 +3447,9 @@ impl App {
     pub fn spawn_projects_scaffold(&mut self, name: String) {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
+        let git_flag = if BTS_GIT[self.projects.new_git_idx] == "yes" { "--git" } else { "--no-git" };
         let flags = format!(
-            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {}",
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} {} --web-deploy {} --server-deploy {}",
             BTS_FRONTENDS[self.projects.new_frontend_idx],
             BTS_DATABASES[self.projects.new_database_idx],
             BTS_ORMS[self.projects.new_orm_idx],
@@ -3449,6 +3459,9 @@ impl App {
             BTS_RUNTIMES[self.projects.new_runtime_idx],
             BTS_PAYMENTS[self.projects.new_payments_idx],
             BTS_EXAMPLES[self.projects.new_examples_idx],
+            git_flag,
+            BTS_WEB_DEPLOY[self.projects.new_web_deploy_idx],
+            BTS_SERVER_DEPLOY[self.projects.new_server_deploy_idx],
         );
         self.projects.new_running = true;
         self.projects.new_output.clear();
