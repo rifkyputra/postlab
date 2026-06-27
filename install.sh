@@ -2,9 +2,8 @@
 set -euo pipefail
 
 REPO="rifkyputra/postlab"
-BRANCH="main"
 DEST="${DEST:-/usr/local/bin/postlab}"
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/binaries"
+VERSION="${VERSION:-latest}"
 
 # ── Detect OS + arch ────────────────────────────────────────────────────────
 
@@ -12,33 +11,40 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "${OS}-${ARCH}" in
-  Linux-x86_64)   TRIPLE="x86_64-unknown-linux-gnu" ;;
-  Darwin-arm64)   TRIPLE="macos_arm64" ;;
-  Darwin-x86_64)  TRIPLE="macos_arm64" ;;   # Rosetta
+  Linux-x86_64)              TRIPLE="x86_64-unknown-linux-gnu" ;;
+  Linux-aarch64|Linux-arm64) TRIPLE="aarch64-unknown-linux-gnu" ;;
+  Darwin-arm64)              TRIPLE="aarch64-apple-darwin" ;;
+  Darwin-x86_64)             TRIPLE="aarch64-apple-darwin" ;;   # Rosetta
   *)
     echo "Unsupported platform: ${OS} ${ARCH}" >&2
     exit 1
     ;;
 esac
 
-URL="${BASE_URL}/${TRIPLE}/postlab"
+ASSET="postlab-${TRIPLE}.tar.gz"
+if [ "${VERSION}" = "latest" ]; then
+  URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+else
+  URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+fi
 
-echo "Downloading postlab (${TRIPLE})…"
-curl -fsSL --progress-bar "${URL}" -o /tmp/postlab_download
-
-chmod +x /tmp/postlab_download
+echo "Downloading postlab ${VERSION} (${TRIPLE})…"
+TMP="$(mktemp -d)"
+trap 'rm -rf "${TMP}"' EXIT
+curl -fsSL --progress-bar "${URL}" -o "${TMP}/postlab.tar.gz"
+tar -xzf "${TMP}/postlab.tar.gz" -C "${TMP}"
+chmod +x "${TMP}/postlab"
 
 # ── Install (replace any existing binary) ───────────────────────────────────
 
 # `install -m 0755` atomically replaces the destination regardless of whether
 # it already exists. Fall back to sudo when the path isn't writable.
-if install -m 0755 /tmp/postlab_download "${DEST}" 2>/dev/null; then
+if install -m 0755 "${TMP}/postlab" "${DEST}" 2>/dev/null; then
   :
 else
   echo "Need sudo to install to ${DEST}"
-  sudo install -m 0755 /tmp/postlab_download "${DEST}"
+  sudo install -m 0755 "${TMP}/postlab" "${DEST}"
 fi
-rm -f /tmp/postlab_download
 
 echo "Installed → ${DEST}"
 "${DEST}" --version 2>/dev/null || true
