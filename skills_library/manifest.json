@@ -1,6 +1,11 @@
 {
   "skills": [
     {
+      "name": "postlab",
+      "description": "Postlab bare-metal server manager. Use when the user wants to manage services, install packages, configure firewalls, manage Docker containers, set up reverse proxies or tunnels, audit security, manage users, create swap, browse projects, or interact with the pi agent — all through Postlab's TUI or CLI. Covers all 9 screens and one-shot CLI commands.",
+      "path": "postlab"
+    },
+    {
       "name": "ubuntu-sysadmin",
       "description": "Ubuntu Linux system administration: manage services, install packages, configure networking, inspect logs, manage users, tune kernel parameters, secure a server, or diagnose system issues. Covers systemd, apt, ufw, netplan, journalctl, SSH hardening, and performance tuning.",
       "path": "ubuntu-sysadmin"

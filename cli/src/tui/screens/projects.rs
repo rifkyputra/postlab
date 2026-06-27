@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap},
     Frame,
 };
 
@@ -99,7 +99,7 @@ fn render_list(f: &mut Frame, app: &App, area: Rect) {
     let hint = if app.projects.list.is_empty() && !app.projects.loading {
         "[r] refresh  (no projects found — check Settings tab for directory)"
     } else {
-        "[↑/↓] navigate  [Enter] show path  [r] refresh"
+        "[↑/↓] navigate  [Enter] show path  [p] git pull  [r] refresh"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(hint_p, chunks[1]);
@@ -109,10 +109,10 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // name input
-            Constraint::Length(15), // config form (13 fields + 2 borders)
-            Constraint::Min(0),     // output
-            Constraint::Length(1),  // hint
+            Constraint::Length(3), // name input
+            Constraint::Length(4), // stack summary (2 lines + 2 borders)
+            Constraint::Min(0),    // output
+            Constraint::Length(1), // hint
         ])
         .split(area);
 
@@ -132,97 +132,46 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     );
     f.render_widget(name_para, chunks[0]);
 
-    let fields: &[(&str, &[&str], usize)] = &[
-        ("Frontend",   BTS_FRONTENDS,     app.projects.new_frontend_idx),
-        ("Database",   BTS_DATABASES,     app.projects.new_database_idx),
-        ("ORM",        BTS_ORMS,          app.projects.new_orm_idx),
-        ("Auth",       BTS_AUTHS,         app.projects.new_auth_idx),
-        ("Backend",    BTS_BACKENDS,      app.projects.new_backend_idx),
-        ("API",        BTS_APIS,          app.projects.new_api_idx),
-        ("Runtime",    BTS_RUNTIMES,      app.projects.new_runtime_idx),
-        ("Payments",   BTS_PAYMENTS,      app.projects.new_payments_idx),
-        ("Examples",   BTS_EXAMPLES,      app.projects.new_examples_idx),
-        ("Git",        BTS_GIT,           app.projects.new_git_idx),
-        ("Web Deploy", BTS_WEB_DEPLOY,    app.projects.new_web_deploy_idx),
-        ("Srv Deploy", BTS_SERVER_DEPLOY, app.projects.new_server_deploy_idx),
+    // Compact summary of the current stack; the full editor opens in a popup on [s].
+    let addons_count = app.projects.new_addons_selected.iter().filter(|&&s| s).count();
+    let cyan = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let dim = Style::default().fg(Color::DarkGray);
+    let summary_lines = vec![
+        Line::from(vec![
+            Span::styled("frontend ", dim),
+            Span::styled(BTS_FRONTENDS[app.projects.new_frontend_idx], cyan),
+            Span::styled("  backend ", dim),
+            Span::styled(BTS_BACKENDS[app.projects.new_backend_idx], cyan),
+            Span::styled("  db ", dim),
+            Span::styled(BTS_DATABASES[app.projects.new_database_idx], cyan),
+            Span::styled("/", dim),
+            Span::styled(BTS_ORMS[app.projects.new_orm_idx], cyan),
+            Span::styled("  api ", dim),
+            Span::styled(BTS_APIS[app.projects.new_api_idx], cyan),
+            Span::styled("  runtime ", dim),
+            Span::styled(BTS_RUNTIMES[app.projects.new_runtime_idx], cyan),
+        ]),
+        Line::from(vec![
+            Span::styled("auth ", dim),
+            Span::styled(BTS_AUTHS[app.projects.new_auth_idx], cyan),
+            Span::styled("  payments ", dim),
+            Span::styled(BTS_PAYMENTS[app.projects.new_payments_idx], cyan),
+            Span::styled("  git ", dim),
+            Span::styled(BTS_GIT[app.projects.new_git_idx], cyan),
+            Span::styled("  deploy ", dim),
+            Span::styled(BTS_WEB_DEPLOY[app.projects.new_web_deploy_idx], cyan),
+            Span::styled("/", dim),
+            Span::styled(BTS_SERVER_DEPLOY[app.projects.new_server_deploy_idx], cyan),
+            Span::styled("  addons ", dim),
+            Span::styled(addons_count.to_string(), cyan),
+        ]),
     ];
-    let mut form_lines: Vec<Line> = fields
-        .iter()
-        .enumerate()
-        .map(|(i, (label, opts, sel))| {
-            let focused = i == app.projects.new_form_focus && !app.projects.new_running;
-            let prefix = Span::styled(
-                if focused { "> " } else { "  " },
-                Style::default().fg(Color::Yellow),
-            );
-            let label_span = Span::styled(
-                format!("{:<10}", label),
-                if focused {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                },
-            );
-            let mut spans = vec![prefix, label_span];
-            for (j, &opt) in opts.iter().enumerate() {
-                spans.push(Span::raw(" "));
-                spans.push(if j == *sel {
-                    Span::styled(
-                        format!("[{}]", opt),
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                    )
-                } else {
-                    Span::styled(opt, Style::default().fg(Color::DarkGray))
-                });
-            }
-            Line::from(spans)
-        })
-        .collect();
-
-    // Addons row — multi-select: ● selected, ○ unselected, [name] = cursor
-    {
-        const ADDONS_FIELD: usize = 12;
-        let focused = app.projects.new_form_focus == ADDONS_FIELD && !app.projects.new_running;
-        let prefix = Span::styled(
-            if focused { "> " } else { "  " },
-            Style::default().fg(Color::Yellow),
-        );
-        let label_span = Span::styled(
-            format!("{:<10}", "Addons"),
-            if focused {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            },
-        );
-        let mut spans = vec![prefix, label_span];
-        for (j, &addon) in BTS_ADDONS.iter().enumerate() {
-            let selected = app.projects.new_addons_selected[j];
-            let is_cursor = focused && j == app.projects.new_addons_cursor;
-            spans.push(Span::raw(" "));
-            let bullet = if selected { "●" } else { "○" };
-            let text = if is_cursor {
-                format!("[{}{}]", bullet, addon)
-            } else {
-                format!("{}{}", bullet, addon)
-            };
-            spans.push(if selected {
-                Span::styled(text, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-            } else if is_cursor {
-                Span::styled(text, Style::default().fg(Color::Yellow))
-            } else {
-                Span::styled(text, Style::default().fg(Color::DarkGray))
-            });
-        }
-        form_lines.push(Line::from(spans));
-    }
-
-    let form_para = Paragraph::new(form_lines).block(
+    let summary_para = Paragraph::new(summary_lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Stack  [j/k] field  [h/l] option/cursor  [Space] toggle addon "),
+            .title(" Stack  [c] configure "),
     );
-    f.render_widget(form_para, chunks[1]);
+    f.render_widget(summary_para, chunks[1]);
 
     let running_label = if app.projects.new_running { " (running…)" } else { "" };
     let total = app.projects.new_output.len();
@@ -249,10 +198,169 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     } else if app.projects.new_running {
         "scaffolding in progress…  [PgUp/PgDn] scroll"
     } else {
-        "[i] name  [j/k] field  [h/l] option/cursor  [Space] addon  [Enter] scaffold"
+        "[i] name  [c] configure stack  [Enter] scaffold"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(hint_p, chunks[3]);
+
+    // Overlay popups last so they sit above the form and output panels.
+    // Stack first, then addons on top of it (addons opens from within the stack popup).
+    if app.projects.new_stack_popup {
+        render_stack_popup(f, app, area);
+    }
+    if app.projects.new_addons_popup {
+        render_addons_popup(f, app, area);
+    }
+}
+
+fn render_stack_popup(f: &mut Frame, app: &App, area: Rect) {
+    let fields: &[(&str, &[&str], usize)] = &[
+        ("Frontend",   BTS_FRONTENDS,     app.projects.new_frontend_idx),
+        ("Database",   BTS_DATABASES,     app.projects.new_database_idx),
+        ("ORM",        BTS_ORMS,          app.projects.new_orm_idx),
+        ("Auth",       BTS_AUTHS,         app.projects.new_auth_idx),
+        ("Backend",    BTS_BACKENDS,      app.projects.new_backend_idx),
+        ("API",        BTS_APIS,          app.projects.new_api_idx),
+        ("Runtime",    BTS_RUNTIMES,      app.projects.new_runtime_idx),
+        ("Payments",   BTS_PAYMENTS,      app.projects.new_payments_idx),
+        ("Examples",   BTS_EXAMPLES,      app.projects.new_examples_idx),
+        ("Git",        BTS_GIT,           app.projects.new_git_idx),
+        ("Web Deploy", BTS_WEB_DEPLOY,    app.projects.new_web_deploy_idx),
+        ("Srv Deploy", BTS_SERVER_DEPLOY, app.projects.new_server_deploy_idx),
+    ];
+    const ADDONS_FIELD: usize = 12;
+
+    let height = (fields.len() as u16 + 4).min(area.height.saturating_sub(2));
+    let popup = centered_rect(54, height, area);
+    f.render_widget(Clear, popup);
+
+    let mut lines: Vec<Line> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (label, opts, sel))| {
+            let focused = i == app.projects.new_form_focus;
+            let prefix = Span::styled(
+                if focused { "> " } else { "  " },
+                Style::default().fg(Color::Yellow),
+            );
+            let label_span = Span::styled(
+                format!("{:<11}", label),
+                if focused {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                },
+            );
+            let value = Span::styled(
+                opts[*sel],
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            );
+            let nav = if focused {
+                Span::styled("  ‹ h/l ›", Style::default().fg(Color::DarkGray))
+            } else {
+                Span::raw("")
+            };
+            Line::from(vec![prefix, label_span, value, nav])
+        })
+        .collect();
+
+    // Addons row — opens the nested multi-select popup.
+    {
+        let focused = app.projects.new_form_focus == ADDONS_FIELD;
+        let count = app.projects.new_addons_selected.iter().filter(|&&s| s).count();
+        let prefix = Span::styled(
+            if focused { "> " } else { "  " },
+            Style::default().fg(Color::Yellow),
+        );
+        let label_span = Span::styled(
+            format!("{:<11}", "Addons"),
+            if focused {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        );
+        let value = Span::styled(
+            format!("{} selected", count),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        );
+        let nav = if focused {
+            Span::styled("  ‹ Enter ›", Style::default().fg(Color::DarkGray))
+        } else {
+            Span::raw("")
+        };
+        lines.push(Line::from(vec![prefix, label_span, value, nav]));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "[j/k] field  [h/l] change  [Enter] addons/done  [Esc] close",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let para = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(" Configure stack "),
+    );
+    f.render_widget(para, popup);
+}
+
+fn render_addons_popup(f: &mut Frame, app: &App, area: Rect) {
+    let height = (BTS_ADDONS.len() as u16 + 3).min(area.height.saturating_sub(2));
+    let popup = centered_rect(46, height, area);
+    f.render_widget(Clear, popup);
+
+    let selected_count = app.projects.new_addons_selected.iter().filter(|&&s| s).count();
+    let items: Vec<ListItem> = BTS_ADDONS
+        .iter()
+        .enumerate()
+        .map(|(i, &addon)| {
+            let checked = app.projects.new_addons_selected[i];
+            let mark = if checked { "[x]" } else { "[ ]" };
+            let style = if checked {
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{} ", mark), style),
+                Span::styled(addon, style),
+            ]))
+        })
+        .collect();
+
+    let mut state = ListState::default();
+    state.select(Some(app.projects.new_addons_cursor));
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .title(format!(" Addons ({} selected) ", selected_count)),
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
+    f.render_stateful_widget(list, popup, &mut state);
+
+    let hint_area = Rect {
+        x: popup.x + 1,
+        y: popup.y + popup.height.saturating_sub(2),
+        width: popup.width.saturating_sub(2),
+        height: 1,
+    };
+    let hint = Paragraph::new(Span::styled(
+        "[j/k] move  [Space] toggle  [Enter/Esc] done",
+        Style::default().fg(Color::DarkGray),
+    ));
+    f.render_widget(hint, hint_area);
+}
+
+fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
+    let w = r.width * percent_x / 100;
+    let x = r.x + (r.width.saturating_sub(w)) / 2;
+    let y = r.y + (r.height.saturating_sub(height)) / 2;
+    Rect { x, y, width: w, height }
 }
 
 fn render_clone(f: &mut Frame, app: &App, area: Rect) {
@@ -317,27 +425,71 @@ fn render_settings(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // dir input
-            Constraint::Length(3), // editor info
-            Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(4), // git status
+            Constraint::Length(3), // git name
+            Constraint::Length(3), // git email
+            Constraint::Length(3), // github token
+            Constraint::Min(0),    // editor info
+            Constraint::Length(1), // hint
         ])
         .split(area);
 
-    let editing = app.projects.dir_input_mode == InputMode::Editing;
-    let dir_border = if editing {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
+    let editing = app.projects.settings_edit_mode == InputMode::Editing;
+    let focus = app.projects.settings_focus;
+
+    let field = |f: &mut Frame, area: Rect, idx: usize, title: &str, value: &str, mask: bool| {
+        let focused = focus == idx;
+        let active = focused && editing;
+        let border = if focused {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+        let shown = if mask && !value.is_empty() {
+            "•".repeat(value.chars().count())
+        } else {
+            value.to_string()
+        };
+        let cursor = if active { "█" } else { "" };
+        let marker = if focused { "› " } else { "  " };
+        let para = Paragraph::new(format!("{}{}{}", marker, shown, cursor)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(border)
+                .title(format!(" {} ", title)),
+        );
+        f.render_widget(para, area);
     };
-    let cursor = if editing { "█" } else { "" };
-    let dir_text = format!("{}{}", app.projects.dir_input, cursor);
-    let dir_para = Paragraph::new(dir_text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(dir_border)
-            .title(" Projects directory "),
-    );
-    f.render_widget(dir_para, chunks[0]);
+
+    field(f, chunks[0], 0, "Projects directory", &app.projects.dir_input, false);
+
+    let git = &app.projects.git;
+    let status_line = if git.installed {
+        let helper = if git.credential_helper.is_empty() {
+            "none".to_string()
+        } else {
+            git.credential_helper.clone()
+        };
+        format!(
+            "git {}\nidentity: {} <{}>\ncredential.helper: {}",
+            if git.version.is_empty() { "(installed)" } else { &git.version },
+            if git.name.is_empty() { "(unset)" } else { &git.name },
+            if git.email.is_empty() { "(unset)" } else { &git.email },
+            helper,
+        )
+    } else {
+        "git not found — install git to clone/scaffold".to_string()
+    };
+    let status_para = Paragraph::new(Span::styled(
+        status_line,
+        Style::default().fg(if git.installed { Color::DarkGray } else { Color::Red }),
+    ))
+    .block(Block::default().borders(Borders::ALL).title(" Git status "));
+    f.render_widget(status_para, chunks[1]);
+
+    field(f, chunks[2], 1, "Git user.name", &app.projects.git_name_input, false);
+    field(f, chunks[3], 2, "Git user.email", &app.projects.git_email_input, false);
+    field(f, chunks[4], 3, "GitHub token (HTTPS)", &app.projects.git_token_input, true);
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "(not set)".to_string());
     let editor_para = Paragraph::new(Span::styled(
@@ -345,15 +497,15 @@ fn render_settings(f: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(Color::DarkGray),
     ))
     .block(Block::default().borders(Borders::ALL).title(" Editor "));
-    f.render_widget(editor_para, chunks[1]);
+    f.render_widget(editor_para, chunks[5]);
 
     let hint = if editing {
-        "[Esc] cancel  [Enter] save"
+        "[Esc] cancel  [Enter] save field"
     } else {
-        "[i] edit directory  [Enter] save"
+        "[j/k] field  [i] edit  [Enter] save/apply"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
-    f.render_widget(hint_p, chunks[3]);
+    f.render_widget(hint_p, chunks[6]);
 }
 
 fn truncate(s: &str, max: usize) -> &str {

@@ -49,6 +49,8 @@ const ARCH_SYSADMIN_SKILL: &str =
     include_str!("../../../../skills_library/arch-sysadmin/SKILL.md");
 const FEDORA_SYSADMIN_SKILL: &str =
     include_str!("../../../../skills_library/fedora-sysadmin/SKILL.md");
+const POSTLAB_SKILL: &str =
+    include_str!("../../../../skills_library/postlab/SKILL.md");
 
 // ── Path helpers ──────────────────────────────────────────────────────────
 
@@ -539,6 +541,7 @@ fn get_skill_content(name: &str) -> Option<&'static str> {
         "ubuntu-sysadmin" => Some(UBUNTU_SYSADMIN_SKILL),
         "arch-sysadmin" => Some(ARCH_SYSADMIN_SKILL),
         "fedora-sysadmin" => Some(FEDORA_SYSADMIN_SKILL),
+        "postlab" => Some(POSTLAB_SKILL),
         _ => None,
     }
 }

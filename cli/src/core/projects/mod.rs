@@ -29,6 +29,15 @@ fn detect_stack(path: &std::path::Path) -> String {
     "—".to_string()
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct GitStatus {
+    pub installed: bool,
+    pub version: String,
+    pub name: String,
+    pub email: String,
+    pub credential_helper: String,
+}
+
 pub struct ProjectsManager;
 
 pub fn expand_home(path: &str) -> String {
@@ -41,6 +50,54 @@ pub fn expand_home(path: &str) -> String {
     } else {
         path.to_string()
     }
+}
+
+/// Inline env for git over SSH in a non-interactive (piped) context: auto-accept a
+/// first-seen host key instead of blocking on the yes/no prompt, and fail fast rather
+/// than hang if a key needs a passphrase and no agent is available.
+const GIT_SSH: &str =
+    "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes'";
+
+/// Build a command that runs `run_cmd` as the invoking (`SUDO_USER`) user via a login
+/// shell, falling back to a plain bash shell when not running under sudo. Used so git
+/// operations use the user's keys, credentials and identity instead of root's.
+fn user_shell_cmd(run_cmd: &str) -> tokio::process::Command {
+    let user = std::env::var("SUDO_USER").unwrap_or_default();
+    if user.is_empty() {
+        let mut c = tokio::process::Command::new("bash");
+        c.args(["-c", run_cmd]);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("su");
+        c.args(["-l", &user, "-s", "/bin/bash", "-c", run_cmd]);
+        c
+    }
+}
+
+fn stream_to<R>(pipe: Option<R>, tx: &UnboundedSender<String>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    if let Some(pipe) = pipe {
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(pipe).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = tx.send(line);
+            }
+        });
+    }
+}
+
+/// Run a command as the invoking user and return trimmed stdout, or empty on failure.
+async fn user_capture(run_cmd: &str) -> String {
+    user_shell_cmd(run_cmd)
+        .output()
+        .await
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
 }
 
 impl ProjectsManager {
@@ -84,7 +141,6 @@ impl ProjectsManager {
         tx: UnboundedSender<String>,
     ) -> Result<String> {
         let expanded = expand_home(dir);
-        tokio::fs::create_dir_all(&expanded).await?;
 
         let full_url = if url.starts_with("http://")
             || url.starts_with("https://")
@@ -95,22 +151,17 @@ impl ProjectsManager {
             format!("https://github.com/{}", url)
         };
 
-        let mut child = tokio::process::Command::new("git")
-            .args(["clone", "--progress", &full_url])
-            .current_dir(&expanded)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
+        // Run as the invoking user so the clone uses their SSH keys, credential
+        // helper and git identity (root has none), and the result is user-owned.
+        let mut child = user_shell_cmd(&format!(
+            "mkdir -p '{expanded}' && cd '{expanded}' && {GIT_SSH} git clone --progress '{full_url}'"
+        ))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
 
-        if let Some(stderr) = child.stderr.take() {
-            let tx2 = tx.clone();
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let _ = tx2.send(line);
-                }
-            });
-        }
+        stream_to(child.stdout.take(), &tx);
+        stream_to(child.stderr.take(), &tx);
 
         let status = child.wait().await?;
         if !status.success() {
@@ -123,6 +174,71 @@ impl ProjectsManager {
             .map(|n| n.trim_end_matches(".git").to_string())
             .unwrap_or_default();
         Ok(name)
+    }
+
+    pub async fn pull_project(&self, path: &str, tx: UnboundedSender<String>) -> Result<()> {
+        // Run as the invoking user: as root, git refuses a user-owned repo with
+        // "detected dubious ownership". `-C` makes su --login's CWD reset irrelevant.
+        let mut child = user_shell_cmd(&format!("{GIT_SSH} git -C '{path}' pull --progress"))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        stream_to(child.stdout.take(), &tx);
+        stream_to(child.stderr.take(), &tx);
+
+        let status = child.wait().await?;
+        if !status.success() {
+            anyhow::bail!("git pull failed");
+        }
+        Ok(())
+    }
+
+    pub async fn git_status(&self) -> GitStatus {
+        let version = user_capture("git --version").await;
+        GitStatus {
+            installed: !version.is_empty(),
+            version: version.trim_start_matches("git version ").trim().to_string(),
+            name: user_capture("git config --global user.name").await,
+            email: user_capture("git config --global user.email").await,
+            credential_helper: user_capture("git config --global credential.helper").await,
+        }
+    }
+
+    pub async fn set_git_identity(&self, name: &str, email: &str) -> Result<()> {
+        // Single-quote the values; reject embedded single quotes to keep the shell safe.
+        if name.contains('\'') || email.contains('\'') {
+            anyhow::bail!("name/email cannot contain single quotes");
+        }
+        let status = user_shell_cmd(&format!(
+            "git config --global user.name '{name}' && git config --global user.email '{email}'"
+        ))
+        .status()
+        .await?;
+        if !status.success() {
+            anyhow::bail!("git config failed");
+        }
+        Ok(())
+    }
+
+    /// Configure the `store` credential helper and persist a GitHub token in
+    /// `~/.git-credentials` (mode 600, user-owned) so HTTPS clones don't prompt.
+    pub async fn set_github_token(&self, token: &str) -> Result<()> {
+        if token.contains('\'') || token.contains('\n') {
+            anyhow::bail!("invalid token");
+        }
+        let run = format!(
+            "git config --global credential.helper store && \
+             touch ~/.git-credentials && chmod 600 ~/.git-credentials && \
+             grep -v 'github.com' ~/.git-credentials > ~/.git-credentials.tmp 2>/dev/null; \
+             mv ~/.git-credentials.tmp ~/.git-credentials 2>/dev/null; \
+             printf 'https://%s@github.com\\n' '{token}' >> ~/.git-credentials"
+        );
+        let status = user_shell_cmd(&run).status().await?;
+        if !status.success() {
+            anyhow::bail!("failed to store credentials");
+        }
+        Ok(())
     }
 
     /// `flags` is appended verbatim after the project name, e.g.
@@ -192,7 +308,9 @@ impl ProjectsManager {
         }
 
         // su --login resets CWD to the user's home; cd into the configured dir explicitly.
-        let run_cmd = format!("cd '{expanded}' && {shell_init}npx -y create-better-t-stack@latest '{name}' {flags} --yes");
+        // No `--yes`: create-better-t-stack rejects it alongside explicit stack flags
+        // ("use defaults" mode). Providing every flag already makes the run non-interactive.
+        let run_cmd = format!("cd '{expanded}' && {shell_init}npx -y create-better-t-stack@latest '{name}' {flags}");
         let mut cmd = if user.is_empty() {
             let mut c = tokio::process::Command::new("bash");
             c.args(["-c", &run_cmd]);

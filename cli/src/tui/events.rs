@@ -133,6 +133,14 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.screen == Screen::Projects {
         match app.projects.active_tab {
+            ProjectsTab::New if app.projects.new_addons_popup => {
+                handle_projects_addons_popup_key(app, key);
+                return false;
+            }
+            ProjectsTab::New if app.projects.new_stack_popup => {
+                handle_projects_stack_popup_key(app, key);
+                return false;
+            }
             ProjectsTab::New if app.projects.new_input_mode == InputMode::Editing => {
                 handle_projects_new_input(app, key);
                 return false;
@@ -141,7 +149,7 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
                 handle_projects_clone_input(app, key);
                 return false;
             }
-            ProjectsTab::Settings if app.projects.dir_input_mode == InputMode::Editing => {
+            ProjectsTab::Settings if app.projects.settings_edit_mode == InputMode::Editing => {
                 handle_projects_settings_input(app, key);
                 return false;
             }
@@ -3476,8 +3484,10 @@ fn handle_projects_key(app: &mut App, key: KeyEvent) {
         KeyCode::Right | KeyCode::Char('L') => {
             let idx = (app.projects.active_tab.index() + 1) % ProjectsTab::all().len();
             app.projects.active_tab = ProjectsTab::all()[idx].clone();
-            if app.projects.active_tab == ProjectsTab::Projects {
-                app.spawn_load_projects();
+            match app.projects.active_tab {
+                ProjectsTab::Projects => app.spawn_load_projects(),
+                ProjectsTab::Settings => app.spawn_projects_load_git(),
+                _ => {}
             }
             return;
         }
@@ -3485,8 +3495,10 @@ fn handle_projects_key(app: &mut App, key: KeyEvent) {
             let idx = app.projects.active_tab.index();
             let prev = if idx == 0 { ProjectsTab::all().len() - 1 } else { idx - 1 };
             app.projects.active_tab = ProjectsTab::all()[prev].clone();
-            if app.projects.active_tab == ProjectsTab::Projects {
-                app.spawn_load_projects();
+            match app.projects.active_tab {
+                ProjectsTab::Projects => app.spawn_load_projects(),
+                ProjectsTab::Settings => app.spawn_projects_load_git(),
+                _ => {}
             }
             return;
         }
@@ -3506,6 +3518,14 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
         KeyCode::Down => list_next(&mut app.projects.list_state, app.projects.list.len()),
         KeyCode::Up => list_prev(&mut app.projects.list_state),
         KeyCode::Char('r') => app.spawn_load_projects(),
+        KeyCode::Char('p') => {
+            if let Some(idx) = app.projects.list_state.selected() {
+                if let Some(p) = app.projects.list.get(idx) {
+                    let (path, name) = (p.path.clone(), p.name.clone());
+                    app.spawn_projects_pull(path, name);
+                }
+            }
+        }
         KeyCode::Enter => {
             if let Some(idx) = app.projects.list_state.selected() {
                 if let Some(p) = app.projects.list.get(idx) {
@@ -3518,16 +3538,35 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
-    use crate::tui::app::BTS_ADDONS;
-    const NUM_FIELDS: usize = 13;
-    const ADDONS_FIELD: usize = 12;
-    let on_addons = app.projects.new_form_focus == ADDONS_FIELD;
     match key.code {
         KeyCode::Char('i') => app.projects.new_input_mode = InputMode::Editing,
+        KeyCode::Char('c') if !app.projects.new_running => {
+            app.projects.new_stack_popup = true;
+        }
         KeyCode::Enter if !app.projects.new_running && !app.projects.new_name.is_empty() => {
             let name = app.projects.new_name.clone();
             app.spawn_projects_scaffold(name);
         }
+        KeyCode::PageUp => {
+            app.projects.new_output_scroll =
+                app.projects.new_output_scroll.saturating_add(5);
+        }
+        KeyCode::PageDown => {
+            app.projects.new_output_scroll =
+                app.projects.new_output_scroll.saturating_sub(5);
+        }
+        _ => {}
+    }
+}
+
+fn handle_projects_stack_popup_key(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 13;
+    const ADDONS_FIELD: usize = 12;
+    let on_addons = app.projects.new_form_focus == ADDONS_FIELD;
+    match key.code {
+        KeyCode::Esc => app.projects.new_stack_popup = false,
+        KeyCode::Enter if on_addons => app.projects.new_addons_popup = true,
+        KeyCode::Enter => app.projects.new_stack_popup = false,
         KeyCode::Char('j') | KeyCode::Down => {
             if app.projects.new_form_focus + 1 < NUM_FIELDS {
                 app.projects.new_form_focus += 1;
@@ -3537,34 +3576,28 @@ fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
             app.projects.new_form_focus =
                 app.projects.new_form_focus.saturating_sub(1);
         }
-        KeyCode::Char('l') => {
-            if on_addons {
-                if app.projects.new_addons_cursor + 1 < BTS_ADDONS.len() {
-                    app.projects.new_addons_cursor += 1;
-                }
-            } else {
-                cycle_bts_field(app, true);
+        KeyCode::Char('l') if !on_addons => cycle_bts_field(app, true),
+        KeyCode::Char('h') if !on_addons => cycle_bts_field(app, false),
+        _ => {}
+    }
+}
+
+fn handle_projects_addons_popup_key(app: &mut App, key: KeyEvent) {
+    use crate::tui::app::BTS_ADDONS;
+    match key.code {
+        KeyCode::Esc | KeyCode::Enter => app.projects.new_addons_popup = false,
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.projects.new_addons_cursor + 1 < BTS_ADDONS.len() {
+                app.projects.new_addons_cursor += 1;
             }
         }
-        KeyCode::Char('h') => {
-            if on_addons {
-                app.projects.new_addons_cursor =
-                    app.projects.new_addons_cursor.saturating_sub(1);
-            } else {
-                cycle_bts_field(app, false);
-            }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.projects.new_addons_cursor =
+                app.projects.new_addons_cursor.saturating_sub(1);
         }
-        KeyCode::Char(' ') if on_addons => {
+        KeyCode::Char(' ') => {
             let cur = app.projects.new_addons_cursor;
             app.projects.new_addons_selected[cur] = !app.projects.new_addons_selected[cur];
-        }
-        KeyCode::PageUp => {
-            app.projects.new_output_scroll =
-                app.projects.new_output_scroll.saturating_add(5);
-        }
-        KeyCode::PageDown => {
-            app.projects.new_output_scroll =
-                app.projects.new_output_scroll.saturating_sub(5);
         }
         _ => {}
     }
@@ -3626,13 +3659,46 @@ fn handle_projects_clone_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_settings_key(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 4; // dir, git name, git email, github token
     match key.code {
-        KeyCode::Char('i') => {
-            app.projects.dir_input_mode = InputMode::Editing;
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.projects.settings_focus + 1 < NUM_FIELDS {
+                app.projects.settings_focus += 1;
+            }
         }
-        KeyCode::Enter if !app.projects.dir_input.is_empty() => {
-            let dir = app.projects.dir_input.clone();
-            app.spawn_projects_save_dir(dir);
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.projects.settings_focus = app.projects.settings_focus.saturating_sub(1);
+        }
+        KeyCode::Char('i') => app.projects.settings_edit_mode = InputMode::Editing,
+        KeyCode::Enter => save_settings_field(app),
+        _ => {}
+    }
+}
+
+fn save_settings_field(app: &mut App) {
+    match app.projects.settings_focus {
+        0 => {
+            if !app.projects.dir_input.is_empty() {
+                let dir = app.projects.dir_input.clone();
+                app.spawn_projects_save_dir(dir);
+            }
+        }
+        1 | 2 => {
+            let (name, email) = (
+                app.projects.git_name_input.clone(),
+                app.projects.git_email_input.clone(),
+            );
+            if !name.is_empty() && !email.is_empty() {
+                app.spawn_projects_save_git_identity(name, email);
+            } else {
+                app.status_msg = Some("Set both git name and email first".to_string());
+            }
+        }
+        3 => {
+            let token = app.projects.git_token_input.clone();
+            if !token.is_empty() {
+                app.spawn_projects_save_github_token(token);
+            }
         }
         _ => {}
     }
@@ -3675,18 +3741,21 @@ fn handle_projects_clone_input(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_settings_input(app: &mut App, key: KeyEvent) {
+    let buf = match app.projects.settings_focus {
+        0 => &mut app.projects.dir_input,
+        1 => &mut app.projects.git_name_input,
+        2 => &mut app.projects.git_email_input,
+        _ => &mut app.projects.git_token_input,
+    };
     match key.code {
-        KeyCode::Esc => app.projects.dir_input_mode = InputMode::Normal,
+        KeyCode::Esc => app.projects.settings_edit_mode = InputMode::Normal,
         KeyCode::Enter => {
-            app.projects.dir_input_mode = InputMode::Normal;
-            if !app.projects.dir_input.is_empty() {
-                let dir = app.projects.dir_input.clone();
-                app.spawn_projects_save_dir(dir);
-            }
+            app.projects.settings_edit_mode = InputMode::Normal;
+            save_settings_field(app);
         }
-        KeyCode::Char(c) => app.projects.dir_input.push(c),
+        KeyCode::Char(c) => buf.push(c),
         KeyCode::Backspace => {
-            app.projects.dir_input.pop();
+            buf.pop();
         }
         _ => {}
     }

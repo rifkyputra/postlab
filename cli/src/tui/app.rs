@@ -488,6 +488,8 @@ pub enum TaskResult {
     ProjectsOpProgress { op: String, line: String },
     ProjectsOpDone { op: String, name: String, success: bool },
     ProjectsDirLoaded(String),
+    ProjectsGitLoaded(crate::core::projects::GitStatus),
+    ProjectsGitSaved { what: String, success: bool },
     Status(String),
     Error(String),
 }
@@ -1447,6 +1449,8 @@ pub struct ProjectsState {
     pub new_server_deploy_idx: usize,
     pub new_addons_selected: Vec<bool>,
     pub new_addons_cursor: usize,
+    pub new_addons_popup: bool,
+    pub new_stack_popup: bool,
     pub new_output: Vec<String>,
     pub new_output_scroll: usize,
     pub new_running: bool,
@@ -1460,7 +1464,12 @@ pub struct ProjectsState {
     // Settings tab
     pub dir: String,
     pub dir_input: String,
-    pub dir_input_mode: InputMode,
+    pub settings_focus: usize, // 0=dir, 1=git name, 2=git email, 3=github token
+    pub settings_edit_mode: InputMode,
+    pub git: crate::core::projects::GitStatus,
+    pub git_name_input: String,
+    pub git_email_input: String,
+    pub git_token_input: String,
 }
 
 impl Default for ProjectsState {
@@ -1486,6 +1495,8 @@ impl Default for ProjectsState {
             new_server_deploy_idx: 0,
             new_addons_selected: vec![false; BTS_ADDONS.len()],
             new_addons_cursor: 0,
+            new_addons_popup: false,
+            new_stack_popup: false,
             new_output: Vec::new(),
             new_output_scroll: 0,
             new_running: false,
@@ -1497,7 +1508,12 @@ impl Default for ProjectsState {
             clone_input_mode: InputMode::Normal,
             dir: String::new(),
             dir_input: String::new(),
-            dir_input_mode: InputMode::Normal,
+            settings_focus: 0,
+            settings_edit_mode: InputMode::Normal,
+            git: crate::core::projects::GitStatus::default(),
+            git_name_input: String::new(),
+            git_email_input: String::new(),
+            git_token_input: String::new(),
         }
     }
 }
@@ -3436,6 +3452,42 @@ impl App {
         });
     }
 
+    pub fn spawn_projects_load_git(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let status = crate::core::projects::ProjectsManager.git_status().await;
+            let _ = tx.send(TaskResult::ProjectsGitLoaded(status));
+        });
+    }
+
+    pub fn spawn_projects_save_git_identity(&mut self, name: String, email: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let ok = crate::core::projects::ProjectsManager
+                .set_git_identity(&name, &email)
+                .await
+                .is_ok();
+            let _ = tx.send(TaskResult::ProjectsGitSaved {
+                what: "identity".to_string(),
+                success: ok,
+            });
+        });
+    }
+
+    pub fn spawn_projects_save_github_token(&mut self, token: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let ok = crate::core::projects::ProjectsManager
+                .set_github_token(&token)
+                .await
+                .is_ok();
+            let _ = tx.send(TaskResult::ProjectsGitSaved {
+                what: "token".to_string(),
+                success: ok,
+            });
+        });
+    }
+
     pub fn spawn_load_projects(&mut self) {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
@@ -3464,7 +3516,7 @@ impl App {
             .collect::<Vec<_>>()
             .join(" ");
         let flags = format!(
-            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} {} --web-deploy {} --server-deploy {} {}",
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {} --runtime {} --payments {} --examples {} --db-setup none {} --web-deploy {} --server-deploy {} {}",
             BTS_FRONTENDS[self.projects.new_frontend_idx],
             BTS_DATABASES[self.projects.new_database_idx],
             BTS_ORMS[self.projects.new_orm_idx],
@@ -3543,6 +3595,38 @@ impl App {
             };
             let _ = tx.send(TaskResult::ProjectsOpDone {
                 op: "clone".to_string(),
+                name,
+                success,
+            });
+        });
+    }
+
+    pub fn spawn_projects_pull(&mut self, path: String, name: String) {
+        let tx = self.task_tx.clone();
+        self.status_msg = Some(format!("Pulling '{}'…", name));
+        tokio::spawn(async move {
+            let mgr = crate::core::projects::ProjectsManager;
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::ProjectsOpProgress {
+                        op: "pull".to_string(),
+                        line,
+                    });
+                }
+            });
+            let result = mgr.pull_project(&path, ptx).await;
+            let _ = fwd.await;
+            let success = result.is_ok();
+            if let Err(ref e) = result {
+                let _ = tx.send(TaskResult::ProjectsOpProgress {
+                    op: "pull".to_string(),
+                    line: format!("Error: {}", e),
+                });
+            }
+            let _ = tx.send(TaskResult::ProjectsOpDone {
+                op: "pull".to_string(),
                 name,
                 success,
             });
@@ -4764,6 +4848,7 @@ impl App {
                     match op.as_str() {
                         "new" => self.projects.new_output.push(clean),
                         "clone" => self.projects.clone_output.push(clean),
+                        "pull" => self.status_msg = Some(clean),
                         _ => {}
                     }
                 }
@@ -4792,6 +4877,16 @@ impl App {
                             self.spawn_load_projects();
                         }
                     }
+                    "pull" => {
+                        self.status_msg = Some(if success {
+                            format!("Pulled '{}'", name)
+                        } else {
+                            format!("Pull failed for '{}'", name)
+                        });
+                        if success {
+                            self.spawn_load_projects();
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -4803,6 +4898,22 @@ impl App {
                 {
                     self.spawn_load_projects();
                 }
+            }
+            TaskResult::ProjectsGitLoaded(status) => {
+                self.projects.git_name_input = status.name.clone();
+                self.projects.git_email_input = status.email.clone();
+                self.projects.git = status;
+            }
+            TaskResult::ProjectsGitSaved { what, success } => {
+                self.status_msg = Some(if success {
+                    format!("Git {} saved", what)
+                } else {
+                    format!("Failed to save git {}", what)
+                });
+                if what == "token" {
+                    self.projects.git_token_input.clear();
+                }
+                self.spawn_projects_load_git();
             }
             TaskResult::Error(e) => {
                 self.portchecker.ip_loading = false;
