@@ -109,7 +109,7 @@ sudo postlab --database /var/lib/postlab/data.db
 | --- | ------ |
 | `1`–`9` | Switch screens |
 | `a` | Jump to Agent (global, except on Agent screen) |
-| `s` | Jump to System (global, except on Agent screen) |
+| `s` | Jump to System (global, except on System screen) |
 | `Tab` / `Shift+Tab` | Next / previous screen |
 | `H` / `L` or `←` `→` | Switch tabs within a screen |
 | `↑` `↓` | Navigate lists or tables |
@@ -122,12 +122,11 @@ sudo postlab --database /var/lib/postlab/data.db
 | --- | ------- | ------ |
 | `Space` | Lists | Toggle selection |
 | `/` | Packages, Services, Config | Search / filter |
-| `r` / `R` | Global | Refresh current screen/tab data (context-specific) |
+| `r` / `R` | Global | Refresh current screen/tab data |
 | `k` | Processes / Ghosts | Kill selected process |
 | `a` | Gateway / Tunnel / Workloads | Add route / create tunnel / create workload |
 | `D` | Gateway / Tunnel | Delete selected route / ingress entry |
 | `f` | Tunnel | Toggle focus between Tunnels and Ingress panels |
-| — | Security → Findings | Auto-scans on first visit; re-scan after applying fixes |
 | `s` / `k` / `r` | System → Services | Start / stop / restart selected unit |
 | `e` / `d` | System → Services | Enable / disable selected unit |
 
@@ -144,7 +143,7 @@ The **Agent** screen manages pi agent directly from Postlab:
 - Install skills from the curated Library with a single keypress
 - Tail the most recent session log
 
-Implementation lives in `cli/src/core/pi_agent/` and `cli/src/tui/screens/agent.rs`. Postlab shells out to the pi agent CLI — it does not embed pi agent source code.
+Postlab shells out to the pi agent CLI via a JSONL-over-stdin/stdout RPC protocol — it does not embed pi agent source code. The agent process is spawned under the original user's UID/GID (via `$SUDO_UID`/`$SUDO_GID`) so it never runs as root.
 
 ---
 
@@ -152,7 +151,8 @@ Implementation lives in `cli/src/core/pi_agent/` and `cli/src/tui/screens/agent.
 
 Postlab is built with a clean separation between the core logic and the TUI. The `core/` layer can be used independently (e.g., by an API or a future web interface).
 
-> 📖 **TUI layout & mouse capture** — see [`docs/tui.md`](docs/tui.md) for details on screen layout, tab bar positions, and how mouse clicks are dispatched.
+> 📖 **TUI layout & mouse capture** — see [`docs/tui.md`](docs/tui.md) for screen layout, tab bar positions, and mouse click dispatch.
+> 📖 **Full architecture** — see [`docs/architecture.md`](docs/architecture.md) for platform detection, data flow, background tasks, and design decisions.
 
 ```
 cli/src/
@@ -178,11 +178,14 @@ cli/src/
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
 │   ├── tailscale/           # Tailscale CLI integration
+│   ├── deploy/              # Git-based deployment runner
 │   ├── projects/            # Local project browser and scaffolder
 │   └── pi_agent/            # Pi Agent CLI integration
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
-│   └── audit.rs             # Log actions for audit history
+│   ├── audit.rs             # Log actions for audit history
+│   ├── deployments.rs       # Deployment record CRUD
+│   └── agent_tasks.rs       # Scheduled agent task CRUD
 └── tui/
     ├── mod.rs               # Terminal init + main event loop
     ├── app.rs               # App state machine and background task management
