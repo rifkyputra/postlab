@@ -3719,17 +3719,15 @@ fn save_settings_field(app: &mut App) {
 
 fn handle_projects_new_input(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Esc => app.projects.new_input_mode = InputMode::Normal,
-        KeyCode::Enter => {
-            app.projects.new_input_mode = InputMode::Normal;
-            if !app.projects.new_running && !app.projects.new_name.is_empty() {
-                let name = app.projects.new_name.clone();
-                app.spawn_projects_scaffold(name);
-            }
+        // Enter only confirms the name; configure stack with [c], scaffold with [Enter].
+        KeyCode::Esc | KeyCode::Enter => app.projects.new_input_mode = InputMode::Normal,
+        KeyCode::Char(c) => {
+            app.projects.new_name.push(c);
+            app.refresh_new_name_exists();
         }
-        KeyCode::Char(c) => app.projects.new_name.push(c),
         KeyCode::Backspace => {
             app.projects.new_name.pop();
+            app.refresh_new_name_exists();
         }
         _ => {}
     }
