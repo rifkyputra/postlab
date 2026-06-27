@@ -29,6 +29,14 @@
     {
       "command": "postlab services",
       "description": "Systemd service management: list, start, stop, restart, enable, disable"
+    },
+    {
+      "command": "postlab storage",
+      "description": "Storage diagnostics: list filesystems (device, mount, size, usage, fs type) and physical disks with SMART health"
+    },
+    {
+      "command": "postlab packages list-upgradable",
+      "description": "List available package upgrades with current/new versions and security flagging"
     }
   ],
   "screens": [
@@ -302,12 +310,12 @@
         {
           "id": "projects",
           "name": "Projects",
-          "description": "Browse local projects in the configured directory; shows name and last modified time"
+          "description": "Browse local projects in the configured directory; shows name and last modified time; [p] runs git pull on the selected project"
         },
         {
           "id": "new",
           "name": "New",
-          "description": "Scaffold a new prototype using create-better-t-stack via npx; streams output in real time"
+          "description": "Scaffold a new prototype using create-better-t-stack via npx; [s] opens a stack configurator popup (with a nested addons multi-select popup); streams output in real time"
         },
         {
           "id": "clone",
@@ -317,7 +325,7 @@
         {
           "id": "settings",
           "name": "Settings",
-          "description": "Configure the projects directory (persisted in SQLite); shows the active $EDITOR"
+          "description": "Configure the projects directory (persisted in SQLite); set up git (status, user.name/user.email identity, and a GitHub HTTPS token stored via the credential helper, all applied as the invoking user); shows the active $EDITOR"
         }
       ]
     }

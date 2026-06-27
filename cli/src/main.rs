@@ -6,6 +6,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::core::platform::detect;
+use crate::core::storage;
 use crate::db::init_db;
 
 #[derive(Parser)]
@@ -48,6 +49,11 @@ enum Commands {
     Services {
         #[command(subcommand)]
         cmd: ServicesCmd,
+    },
+    /// Storage: filesystems, physical disks, SMART health
+    Storage {
+        #[command(subcommand)]
+        cmd: StorageCmd,
     },
 }
 
@@ -104,6 +110,12 @@ enum SwapCmd {
 }
 
 #[derive(Subcommand)]
+enum StorageCmd {
+    /// List filesystems and physical disks with SMART health
+    List,
+}
+
+#[derive(Subcommand)]
 enum PackagesCmd {
     /// List installed packages
     List,
@@ -126,6 +138,8 @@ enum PackagesCmd {
     Upgrade,
     /// Clean the package cache
     CacheClean,
+    /// List upgradable packages
+    ListUpgradable,
 }
 
 #[derive(Subcommand)]
@@ -264,6 +278,36 @@ async fn main() -> Result<()> {
                 println!("{}", out);
                 Ok(())
             }
+            PackagesCmd::ListUpgradable => {
+                let updates = platform.packages.list_upgradable().await?;
+                if updates.is_empty() {
+                    println!("System is up to date.");
+                } else {
+                    let sec = updates.iter().filter(|u| u.is_security).count();
+                    println!(
+                        "{} updates available ({} security, {} regular)\n",
+                        updates.len(),
+                        sec,
+                        updates.len() - sec,
+                    );
+                    println!(
+                        "{:<30} {:<24} {:<24} REPOSITORY",
+                        "PACKAGE", "CURRENT", "NEW"
+                    );
+                    for u in &updates {
+                        let tag = if u.is_security { " [sec]" } else { "" };
+                        println!(
+                            "{:<30} {:<24} {:<24} {}{}",
+                            truncate_str(&u.name, 30),
+                            truncate_str(&u.current_version, 24),
+                            truncate_str(&u.new_version, 24),
+                            u.repository,
+                            tag,
+                        );
+                    }
+                }
+                Ok(())
+            }
         },
 
         Some(Commands::Processes { cmd }) => match cmd {
@@ -361,6 +405,62 @@ async fn main() -> Result<()> {
         },
 
         Some(Commands::Tui) | None => tui::run(platform, pool).await,
+
+        Some(Commands::Storage { cmd }) => match cmd {
+            StorageCmd::List => {
+                let filesystems = storage::list_filesystems().await?;
+                println!(
+                    "{:<16} {:<22} {:>10} {:>10} {:>10} {:>6}  FS",
+                    "DEVICE", "MOUNT", "TOTAL", "USED", "AVAIL", "USE%"
+                );
+                for d in &filesystems {
+                    let pct = if d.total_bytes > 0 {
+                        (d.used_bytes as f64 / d.total_bytes as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    println!(
+                        "{:<16} {:<22} {:>9} {:>9} {:>9} {:>5.0}%  {}",
+                        truncate_str(&d.device, 16),
+                        truncate_str(&d.mount, 22),
+                        format_bytes(d.total_bytes),
+                        format_bytes(d.used_bytes),
+                        format_bytes(d.avail_bytes),
+                        pct,
+                        d.fs_type,
+                    );
+                }
+
+                let physical = storage::list_physical().await?;
+                if !physical.is_empty() {
+                    println!("\nPhysical disks:");
+                    for d in &physical {
+                        let health = if d.power_on_hours == 0 && d.temp_celsius == 0 {
+                            "N/A".to_string()
+                        } else if d.healthy {
+                            "PASSED".to_string()
+                        } else {
+                            "FAILED".to_string()
+                        };
+                        let temp = if d.temp_celsius > 0 {
+                            format!("{}°C", d.temp_celsius)
+                        } else {
+                            String::new()
+                        };
+                        let poh = if d.power_on_hours > 0 {
+                            format!("{}h", d.power_on_hours)
+                        } else {
+                            String::new()
+                        };
+                        println!(
+                            "  {:<12} {:<30} HEALTH: {}  {} {}",
+                            d.device, d.model, health, temp, poh,
+                        );
+                    }
+                }
+                Ok(())
+            }
+        },
     }
 }
 
