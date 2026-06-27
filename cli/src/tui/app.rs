@@ -1435,6 +1435,7 @@ pub struct ProjectsState {
     pub loading: bool,
     // New tab
     pub new_name: String,
+    pub new_name_exists: bool,
     pub new_form_focus: usize,  // 0-12 = Frontend..PackageManager, 13 = Addons
     pub new_frontend_idx: usize,
     pub new_database_idx: usize,
@@ -1482,6 +1483,7 @@ impl Default for ProjectsState {
             list_state: ListState::default(),
             loading: false,
             new_name: String::new(),
+            new_name_exists: false,
             new_form_focus: 0,
             new_frontend_idx: 0,
             new_database_idx: 0,
@@ -3681,9 +3683,24 @@ impl App {
         });
     }
 
+    pub fn refresh_new_name_exists(&mut self) {
+        let name = self.projects.new_name.trim();
+        self.projects.new_name_exists = if name.is_empty() {
+            false
+        } else {
+            let target = format!("{}/{}", crate::core::projects::expand_home(&self.projects.dir), name);
+            std::path::Path::new(&target).exists()
+        };
+    }
+
     pub fn spawn_projects_scaffold(&mut self, name: String) {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
+        let target = format!("{}/{}", crate::core::projects::expand_home(&dir), name);
+        if std::path::Path::new(&target).exists() {
+            self.status_msg = Some(format!("'{}' already exists — choose another name", name));
+            return;
+        }
         let git_flag = if BTS_GIT[self.projects.new_git_idx] == "yes" { "--git" } else { "--no-git" };
         // create-better-t-stack prompts for any flag we omit. Emit one --addons per
         // selection, or an explicit `--addons none` so it never prompts when empty.

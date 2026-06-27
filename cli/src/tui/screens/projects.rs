@@ -117,18 +117,26 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let editing = app.projects.new_input_mode == InputMode::Editing;
-    let name_border = if editing {
+    let exists = app.projects.new_name_exists;
+    let name_border = if exists {
+        Style::default().fg(Color::Red)
+    } else if editing {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
     let cursor = if editing { "█" } else { "" };
     let name_text = format!("{}{}", app.projects.new_name, cursor);
+    let name_title = if exists {
+        " Project name — already exists "
+    } else {
+        " Project name "
+    };
     let name_para = Paragraph::new(name_text).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(name_border)
-            .title(" Project name "),
+            .title(name_title),
     );
     f.render_widget(name_para, chunks[0]);
 
