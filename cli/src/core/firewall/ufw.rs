@@ -137,3 +137,73 @@ fn parse_ufw_rules(text: &str) -> Vec<FirewallRule> {
 
     rules
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ufw_rules;
+
+    const SAMPLE: &str = "\
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    Anywhere
+[ 2] 80/tcp                     ALLOW IN    Anywhere
+[ 3] 443                        DENY IN     192.168.1.0/24
+[ 4] 22/tcp (v6)                ALLOW IN    Anywhere (v6)
+[ 5] 80/tcp (v6)                ALLOW IN    Anywhere (v6)";
+
+    #[test]
+    fn parses_correct_rule_count() {
+        assert_eq!(parse_ufw_rules(SAMPLE).len(), 5);
+    }
+
+    #[test]
+    fn first_rule_fields() {
+        let rules = parse_ufw_rules(SAMPLE);
+        let r = &rules[0];
+        assert_eq!(r.num, 1);
+        assert_eq!(r.to, "22/tcp");
+        assert_eq!(r.action, "ALLOW IN");
+        assert_eq!(r.from, "Anywhere");
+    }
+
+    #[test]
+    fn deny_rule_with_source_ip() {
+        let rules = parse_ufw_rules(SAMPLE);
+        let r = &rules[2];
+        assert_eq!(r.num, 3);
+        assert_eq!(r.to, "443");
+        assert_eq!(r.action, "DENY IN");
+        assert_eq!(r.from, "192.168.1.0/24");
+    }
+
+    #[test]
+    fn ipv6_rule_preserves_v6_suffix() {
+        let rules = parse_ufw_rules(SAMPLE);
+        let r = &rules[3];
+        assert_eq!(r.num, 4);
+        assert_eq!(r.to, "22/tcp (v6)");
+        assert_eq!(r.from, "Anywhere (v6)");
+    }
+
+    #[test]
+    fn empty_input_returns_no_rules() {
+        assert!(parse_ufw_rules("").is_empty());
+    }
+
+    #[test]
+    fn header_lines_are_skipped() {
+        let text = "Status: active\n     To                         Action      From";
+        assert!(parse_ufw_rules(text).is_empty());
+    }
+
+    #[test]
+    fn single_rule_no_trailing_whitespace() {
+        let text = "[ 7] 8080/tcp                   ALLOW IN    Anywhere";
+        let rules = parse_ufw_rules(text);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].to, "8080/tcp");
+        assert_eq!(rules[0].action, "ALLOW IN");
+    }
+}

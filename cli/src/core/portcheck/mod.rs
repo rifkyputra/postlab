@@ -165,3 +165,34 @@ pub async fn check_ports_external(ip: &str, ports: &[u16]) -> Result<Vec<(u16, P
 
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{default_entries, PortEntry, PortStatus};
+
+    #[test]
+    fn port_status_labels() {
+        assert_eq!(PortStatus::Unknown.label(), "?");
+        assert_eq!(PortStatus::Checking.label(), "…");
+        assert_eq!(PortStatus::Open.label(), "OPEN");
+        assert_eq!(PortStatus::Closed.label(), "CLOSED");
+        assert_eq!(PortStatus::Error("timeout".to_string()).label(), "ERR");
+    }
+
+    #[test]
+    fn port_entry_new_initialises_to_unknown() {
+        let e = PortEntry::new(443, "HTTPS");
+        assert_eq!(e.port, 443);
+        assert_eq!(e.label, "HTTPS");
+        assert_eq!(e.status, PortStatus::Unknown);
+    }
+
+    #[test]
+    fn default_entries_contains_ssh_and_http() {
+        let entries = default_entries();
+        assert!(!entries.is_empty());
+        assert!(entries.iter().any(|e| e.port == 22 && e.label == "SSH"));
+        assert!(entries.iter().any(|e| e.port == 80 && e.label == "HTTP"));
+        assert!(entries.iter().any(|e| e.port == 443 && e.label == "HTTPS"));
+    }
+}

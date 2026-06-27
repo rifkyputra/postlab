@@ -19,7 +19,6 @@ pub trait PackageManager: Send + Sync {
     async fn search(&self, query: &str) -> Result<Vec<Package>>;
     async fn install(&self, name: &str) -> Result<String>;
     async fn remove(&self, name: &str) -> Result<String>;
-    #[expect(dead_code)]
     async fn upgrade_all(&self) -> Result<String>;
     #[expect(dead_code)]
     async fn update_cache(&self) -> Result<()>;
@@ -225,4 +224,54 @@ pub async fn run_cmd_streaming(
 pub fn which(bin: &str) -> bool {
     let path_var = std::env::var_os("PATH").unwrap_or_default();
     std::env::split_paths(&path_var).any(|dir| dir.join(bin).is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_lock_error, which, CURATED};
+
+    #[test]
+    fn detects_dpkg_lock_messages() {
+        assert!(is_lock_error("Could not get lock /var/lib/dpkg/lock-frontend"));
+        assert!(is_lock_error("Unable to acquire the dpkg frontend lock"));
+        assert!(is_lock_error("dpkg status database is locked by another process"));
+    }
+
+    #[test]
+    fn detects_rpm_lock_messages() {
+        assert!(is_lock_error("Failed to obtain rpm transaction lock"));
+        assert!(is_lock_error("Another transaction is in progress"));
+    }
+
+    #[test]
+    fn does_not_match_unrelated_errors() {
+        assert!(!is_lock_error("Package 'foo' not found"));
+        assert!(!is_lock_error("Permission denied"));
+        assert!(!is_lock_error(""));
+    }
+
+    #[test]
+    fn which_finds_sh() {
+        assert!(which("sh"), "sh must be on PATH in any POSIX environment");
+    }
+
+    #[test]
+    fn which_returns_false_for_missing_binary() {
+        assert!(!which("postlab-no-such-binary-zzzz"));
+    }
+
+    #[test]
+    fn curated_has_expected_categories() {
+        let names: Vec<&str> = CURATED.iter().map(|c| c.name).collect();
+        assert!(names.contains(&"Web Servers"));
+        assert!(names.contains(&"Databases"));
+        assert!(names.contains(&"Security"));
+    }
+
+    #[test]
+    fn curated_categories_are_non_empty() {
+        for cat in CURATED {
+            assert!(!cat.packages.is_empty(), "{} has no packages", cat.name);
+        }
+    }
 }

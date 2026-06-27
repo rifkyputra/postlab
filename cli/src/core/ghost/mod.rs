@@ -158,3 +158,35 @@ fn reason_priority(r: &GhostReason) -> u8 {
         GhostReason::MemLeak => 2,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::reason_priority;
+    use crate::core::models::GhostReason;
+
+    #[test]
+    fn zombie_sorts_before_orphan_before_memleak() {
+        assert!(reason_priority(&GhostReason::Zombie) < reason_priority(&GhostReason::Orphan));
+        assert!(reason_priority(&GhostReason::Orphan) < reason_priority(&GhostReason::MemLeak));
+    }
+
+    #[test]
+    fn same_reason_has_equal_priority() {
+        assert_eq!(
+            reason_priority(&GhostReason::Zombie),
+            reason_priority(&GhostReason::Zombie)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn service_cgroup_detection() {
+        use super::is_service_cgroup;
+        assert!(is_service_cgroup("0::/system.slice/sshd.service/main"));
+        assert!(is_service_cgroup("12:devices:/system.slice/nginx.service"));
+        assert!(!is_service_cgroup(
+            "0::/user.slice/user-1000.slice/session-1.scope"
+        ));
+        assert!(!is_service_cgroup(""));
+    }
+}

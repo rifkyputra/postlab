@@ -149,3 +149,27 @@ fn detect_package_manager() -> Result<Arc<dyn PackageManager>> {
     }
     anyhow::bail!("No supported package manager found (tried apt, dnf/yum, pacman, brew)")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::OsFamily;
+
+    #[test]
+    fn linux_variants_are_linux() {
+        assert!(OsFamily::Debian.is_linux());
+        assert!(OsFamily::Redhat.is_linux());
+        assert!(OsFamily::Arch.is_linux());
+    }
+
+    #[test]
+    fn non_linux_variants_are_not_linux() {
+        assert!(!OsFamily::Macos.is_linux());
+        assert!(!OsFamily::Unknown.is_linux());
+    }
+
+    #[test]
+    fn os_family_eq() {
+        assert_eq!(OsFamily::Debian, OsFamily::Debian);
+        assert_ne!(OsFamily::Debian, OsFamily::Redhat);
+    }
+}
