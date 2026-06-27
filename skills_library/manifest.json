@@ -6,6 +6,11 @@
       "path": "ubuntu-sysadmin"
     },
     {
+      "name": "arch-sysadmin",
+      "description": "Arch Linux system administration: manage services, install packages, configure networking, inspect logs, manage users, tune kernel parameters, secure a server, or diagnose system issues. Covers pacman, AUR helpers (yay/paru), systemd, firewalld/nftables, systemd-networkd, journalctl, mkinitcpio, reflector, SSH hardening, and common diagnostic workflows.",
+      "path": "arch-sysadmin"
+    },
+    {
       "name": "fedora-sysadmin",
       "description": "Fedora Linux system administration: manage services, install packages via dnf, configure networking with NetworkManager/nmcli, manage firewalld, troubleshoot SELinux, inspect logs, manage users, tune kernel parameters, or diagnose system issues. Covers dnf, systemd, firewalld, SELinux, journalctl, SSH hardening, and performance tuning.",
       "path": "fedora-sysadmin"
