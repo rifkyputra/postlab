@@ -3597,7 +3597,16 @@ fn handle_projects_addons_popup_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char(' ') => {
             let cur = app.projects.new_addons_cursor;
-            app.projects.new_addons_selected[cur] = !app.projects.new_addons_selected[cur];
+            let now = !app.projects.new_addons_selected[cur];
+            app.projects.new_addons_selected[cur] = now;
+            // turborepo / nx / vite-plus are mutually exclusive task runners.
+            if now && matches!(BTS_ADDONS[cur], "turborepo" | "nx" | "vite-plus") {
+                for (i, &a) in BTS_ADDONS.iter().enumerate() {
+                    if i != cur && matches!(a, "turborepo" | "nx" | "vite-plus") {
+                        app.projects.new_addons_selected[i] = false;
+                    }
+                }
+            }
         }
         _ => {}
     }
@@ -3633,6 +3642,8 @@ fn cycle_bts_field(app: &mut App, forward: bool) {
         11 => cycle!(app.projects.new_server_deploy_idx, BTS_SERVER_DEPLOY),
         _ => {}
     }
+    // Keep the whole stack mutually consistent; the just-changed field wins.
+    app.projects.normalize_stack(app.projects.new_form_focus);
 }
 
 fn handle_projects_clone_key(app: &mut App, key: KeyEvent) {

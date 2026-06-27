@@ -1518,6 +1518,179 @@ impl Default for ProjectsState {
     }
 }
 
+fn idx_of(arr: &[&str], val: &str) -> usize {
+    arr.iter().position(|&x| x == val).unwrap_or(0)
+}
+
+// Stack-field focus indices, shared by the configurator and normalizer.
+pub const SF_FRONTEND: usize = 0;
+pub const SF_DATABASE: usize = 1;
+pub const SF_ORM: usize = 2;
+pub const SF_AUTH: usize = 3;
+pub const SF_BACKEND: usize = 4;
+pub const SF_API: usize = 5;
+pub const SF_RUNTIME: usize = 6;
+pub const SF_PAYMENTS: usize = 7;
+pub const SF_EXAMPLES: usize = 8;
+pub const SF_WEB_DEPLOY: usize = 10;
+pub const SF_SERVER_DEPLOY: usize = 11;
+
+impl ProjectsState {
+    /// Coerce the stack into a create-better-t-stack-valid combination after the user
+    /// changed field `changed`. The changed field is authoritative; conflicting *other*
+    /// fields are adjusted. Runs to a fixed point so cascading constraints settle.
+    pub fn normalize_stack(&mut self, changed: usize) {
+        let mut frontend = BTS_FRONTENDS[self.new_frontend_idx];
+        let mut database = BTS_DATABASES[self.new_database_idx];
+        let mut orm = BTS_ORMS[self.new_orm_idx];
+        let mut auth = BTS_AUTHS[self.new_auth_idx];
+        let mut backend = BTS_BACKENDS[self.new_backend_idx];
+        let mut api = BTS_APIS[self.new_api_idx];
+        let mut runtime = BTS_RUNTIMES[self.new_runtime_idx];
+        let mut payments = BTS_PAYMENTS[self.new_payments_idx];
+        let mut examples = BTS_EXAMPLES[self.new_examples_idx];
+        let mut web_deploy = BTS_WEB_DEPLOY[self.new_web_deploy_idx];
+        let mut server_deploy = BTS_SERVER_DEPLOY[self.new_server_deploy_idx];
+
+        let is_web = |f: &str| !(f.starts_with("native") || f == "none");
+
+        for _ in 0..8 {
+            let before =
+                [frontend, database, orm, auth, backend, api, runtime, payments, examples, web_deploy, server_deploy];
+
+            // self (fullstack) backend needs a fullstack-capable web frontend
+            if backend == "self"
+                && !matches!(frontend, "next" | "tanstack-start" | "nuxt" | "svelte" | "astro")
+            {
+                if changed == SF_FRONTEND { backend = "hono"; } else { frontend = "next"; }
+            }
+            // convex is incompatible with solid/astro frontends
+            if backend == "convex" && matches!(frontend, "solid" | "astro") {
+                if changed == SF_FRONTEND { backend = "hono"; } else { frontend = "tanstack-router"; }
+            }
+            // convex/none backends force their dependent fields off; if the user changed
+            // one of those dependents, leave the backend instead so their choice sticks.
+            if backend == "convex" {
+                if matches!(changed, SF_RUNTIME | SF_DATABASE | SF_ORM | SF_API | SF_SERVER_DEPLOY) {
+                    backend = "hono";
+                } else {
+                    runtime = "none"; database = "none"; orm = "none"; api = "none"; server_deploy = "none";
+                }
+            } else if backend == "none" {
+                if matches!(
+                    changed,
+                    SF_RUNTIME | SF_DATABASE | SF_ORM | SF_API | SF_AUTH | SF_PAYMENTS | SF_SERVER_DEPLOY
+                ) {
+                    backend = "hono";
+                } else {
+                    runtime = "none"; database = "none"; orm = "none"; api = "none";
+                    auth = "none"; payments = "none"; server_deploy = "none";
+                }
+            }
+
+            // database ↔ orm pairing
+            match database {
+                "none" => orm = "none",
+                "mongodb" if !matches!(orm, "mongoose" | "prisma") => {
+                    if changed == SF_ORM {
+                        database = if orm == "none" { "none" } else { "postgres" };
+                    } else {
+                        orm = "mongoose";
+                    }
+                }
+                "sqlite" | "postgres" | "mysql" if !matches!(orm, "drizzle" | "prisma") => {
+                    if changed == SF_ORM {
+                        database = match orm { "none" => "none", "mongoose" => "mongodb", _ => database };
+                    } else {
+                        orm = "drizzle";
+                    }
+                }
+                _ => {}
+            }
+            if orm != "none" && database == "none" {
+                if changed == SF_ORM {
+                    database = if orm == "mongoose" { "mongodb" } else { "sqlite" };
+                } else {
+                    orm = "none";
+                }
+            }
+
+            // tRPC isn't supported on nuxt/svelte/solid/astro
+            if api == "trpc" && matches!(frontend, "nuxt" | "svelte" | "solid" | "astro") {
+                if changed == SF_API { frontend = "tanstack-router"; } else { api = "orpc"; }
+            }
+
+            // Polar payments require Better Auth
+            if payments == "polar" && auth != "better-auth" {
+                if changed == SF_AUTH { payments = "none"; } else { auth = "better-auth"; }
+            }
+
+            // Cloudflare Workers runtime ⟺ Cloudflare server deploy, Hono only, no MongoDB
+            if runtime == "workers" {
+                if backend != "hono" {
+                    if changed == SF_BACKEND { runtime = "bun"; } else { backend = "hono"; }
+                }
+                if database == "mongodb" {
+                    if changed == SF_DATABASE { runtime = "bun"; } else { database = "sqlite"; }
+                }
+                if server_deploy != "cloudflare" {
+                    if changed == SF_SERVER_DEPLOY { runtime = "bun"; } else { server_deploy = "cloudflare"; }
+                }
+            }
+            if server_deploy == "cloudflare" && runtime != "workers" {
+                if changed == SF_RUNTIME { server_deploy = "none"; } else { runtime = "workers"; }
+            }
+            if server_deploy == "docker" {
+                if matches!(backend, "convex" | "self" | "none") {
+                    if changed == SF_BACKEND { server_deploy = "none"; } else { backend = "hono"; }
+                }
+                if runtime == "workers" {
+                    if changed == SF_RUNTIME { server_deploy = "none"; } else { runtime = "bun"; }
+                }
+            }
+            if server_deploy != "none" && backend == "none" {
+                server_deploy = "none";
+            }
+
+            // Web deploy needs a web frontend
+            if web_deploy != "none" && !is_web(frontend) {
+                if changed == SF_WEB_DEPLOY { frontend = "tanstack-router"; } else { web_deploy = "none"; }
+            }
+
+            // Examples
+            if examples == "todo" && api == "none" {
+                if changed == SF_EXAMPLES && backend != "convex" { api = "trpc"; } else { examples = "none"; }
+            }
+            if examples == "ai" {
+                if matches!(frontend, "solid" | "astro") {
+                    if changed == SF_EXAMPLES { frontend = "tanstack-router"; } else { examples = "none"; }
+                }
+                if backend == "none" {
+                    if changed == SF_EXAMPLES { backend = "hono"; } else { examples = "none"; }
+                }
+            }
+
+            let after =
+                [frontend, database, orm, auth, backend, api, runtime, payments, examples, web_deploy, server_deploy];
+            if before == after {
+                break;
+            }
+        }
+
+        self.new_frontend_idx = idx_of(BTS_FRONTENDS, frontend);
+        self.new_database_idx = idx_of(BTS_DATABASES, database);
+        self.new_orm_idx = idx_of(BTS_ORMS, orm);
+        self.new_auth_idx = idx_of(BTS_AUTHS, auth);
+        self.new_backend_idx = idx_of(BTS_BACKENDS, backend);
+        self.new_api_idx = idx_of(BTS_APIS, api);
+        self.new_runtime_idx = idx_of(BTS_RUNTIMES, runtime);
+        self.new_payments_idx = idx_of(BTS_PAYMENTS, payments);
+        self.new_examples_idx = idx_of(BTS_EXAMPLES, examples);
+        self.new_web_deploy_idx = idx_of(BTS_WEB_DEPLOY, web_deploy);
+        self.new_server_deploy_idx = idx_of(BTS_SERVER_DEPLOY, server_deploy);
+    }
+}
+
 // ── Agent overlay state ───────────────────────────────────────────────────
 
 #[derive(Default)]
@@ -5072,4 +5245,146 @@ fn clean_output_line(raw: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+#[cfg(test)]
+mod stack_tests {
+    use super::*;
+
+    fn set(p: &mut ProjectsState, field: &str, val: &str) {
+        match field {
+            "frontend" => p.new_frontend_idx = idx_of(BTS_FRONTENDS, val),
+            "database" => p.new_database_idx = idx_of(BTS_DATABASES, val),
+            "orm" => p.new_orm_idx = idx_of(BTS_ORMS, val),
+            "auth" => p.new_auth_idx = idx_of(BTS_AUTHS, val),
+            "backend" => p.new_backend_idx = idx_of(BTS_BACKENDS, val),
+            "api" => p.new_api_idx = idx_of(BTS_APIS, val),
+            "runtime" => p.new_runtime_idx = idx_of(BTS_RUNTIMES, val),
+            "payments" => p.new_payments_idx = idx_of(BTS_PAYMENTS, val),
+            "examples" => p.new_examples_idx = idx_of(BTS_EXAMPLES, val),
+            "web_deploy" => p.new_web_deploy_idx = idx_of(BTS_WEB_DEPLOY, val),
+            "server_deploy" => p.new_server_deploy_idx = idx_of(BTS_SERVER_DEPLOY, val),
+            _ => panic!("unknown field {field}"),
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn vals(
+        p: &ProjectsState,
+    ) -> (
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+    ) {
+        (
+            BTS_FRONTENDS[p.new_frontend_idx],
+            BTS_DATABASES[p.new_database_idx],
+            BTS_ORMS[p.new_orm_idx],
+            BTS_AUTHS[p.new_auth_idx],
+            BTS_BACKENDS[p.new_backend_idx],
+            BTS_APIS[p.new_api_idx],
+            BTS_RUNTIMES[p.new_runtime_idx],
+            BTS_PAYMENTS[p.new_payments_idx],
+            BTS_EXAMPLES[p.new_examples_idx],
+            BTS_WEB_DEPLOY[p.new_web_deploy_idx],
+            BTS_SERVER_DEPLOY[p.new_server_deploy_idx],
+        )
+    }
+
+    #[test]
+    fn server_deploy_cloudflare_forces_workers_runtime() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "server_deploy", "cloudflare");
+        p.normalize_stack(SF_SERVER_DEPLOY);
+        let v = vals(&p);
+        assert_eq!(v.6, "workers", "runtime");
+        assert_eq!(v.4, "hono", "backend");
+        assert_eq!(v.10, "cloudflare", "server_deploy stays");
+    }
+
+    #[test]
+    fn workers_runtime_forces_cloudflare_server_deploy() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "runtime", "workers");
+        p.normalize_stack(SF_RUNTIME);
+        let v = vals(&p);
+        assert_eq!(v.10, "cloudflare", "server_deploy");
+        assert_eq!(v.4, "hono", "backend");
+        assert_ne!(v.1, "mongodb", "no mongodb on workers");
+    }
+
+    #[test]
+    fn dropping_cloudflare_drops_workers() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "runtime", "workers");
+        p.normalize_stack(SF_RUNTIME);
+        // user now turns server deploy back off
+        set(&mut p, "server_deploy", "none");
+        p.normalize_stack(SF_SERVER_DEPLOY);
+        assert_ne!(BTS_RUNTIMES[p.new_runtime_idx], "workers");
+        assert_eq!(BTS_SERVER_DEPLOY[p.new_server_deploy_idx], "none");
+    }
+
+    #[test]
+    fn convex_backend_clears_dependents() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "backend", "convex");
+        p.normalize_stack(SF_BACKEND);
+        let v = vals(&p);
+        assert_eq!(v.1, "none", "database");
+        assert_eq!(v.2, "none", "orm");
+        assert_eq!(v.5, "none", "api");
+        assert_eq!(v.6, "none", "runtime");
+        assert_eq!(v.10, "none", "server_deploy");
+    }
+
+    #[test]
+    fn database_none_forces_orm_none() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "database", "none");
+        p.normalize_stack(SF_DATABASE);
+        assert_eq!(BTS_ORMS[p.new_orm_idx], "none");
+    }
+
+    #[test]
+    fn mongoose_orm_forces_mongodb() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "orm", "mongoose");
+        p.normalize_stack(SF_ORM);
+        assert_eq!(BTS_DATABASES[p.new_database_idx], "mongodb");
+    }
+
+    #[test]
+    fn polar_payments_force_better_auth() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "auth", "clerk");
+        set(&mut p, "payments", "polar");
+        p.normalize_stack(SF_PAYMENTS);
+        assert_eq!(BTS_AUTHS[p.new_auth_idx], "better-auth");
+    }
+
+    #[test]
+    fn trpc_incompatible_frontend_switches_api() {
+        let mut p = ProjectsState::default();
+        set(&mut p, "api", "trpc");
+        set(&mut p, "frontend", "nuxt");
+        p.normalize_stack(SF_FRONTEND);
+        assert_eq!(BTS_APIS[p.new_api_idx], "orpc");
+    }
+
+    #[test]
+    fn defaults_are_already_valid() {
+        let mut p = ProjectsState::default();
+        let before = vals(&p);
+        p.normalize_stack(SF_FRONTEND);
+        assert_eq!(before, vals(&p), "default stack must be unchanged by normalize");
+    }
 }
