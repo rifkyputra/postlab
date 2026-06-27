@@ -63,18 +63,24 @@ Every destructive change to config files creates a timestamped `.bak` backup fir
 
 ### Installation
 
-**One-liner (Linux x86_64 / macOS arm64):**
+**One-liner (Linux x86_64 / Linux arm64 / macOS arm64):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | bash
 ```
 
-The script detects your OS and architecture, downloads the right binary, and installs it to `/usr/local/bin/postlab`. Running it again upgrades an existing installation.
+The script detects your OS and architecture, downloads the matching binary from the latest [GitHub release](https://github.com/rifkyputra/postlab/releases), and installs it to `/usr/local/bin/postlab`. Running it again upgrades an existing installation.
 
 **Custom install path:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | DEST=~/.local/bin/postlab bash
+```
+
+**Pin a specific version:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | VERSION=v0.3.0 bash
 ```
 
 **Build from source:**
@@ -92,10 +98,33 @@ make install   # builds release binary → /usr/local/bin/postlab
 sudo postlab
 
 # One-shot commands (no TUI)
-sudo postlab info                      # Print system summary
-sudo postlab list                      # List installed packages
-sudo postlab storage list              # Filesystems + physical disks (SMART)
-sudo postlab packages list-upgradable  # Available package updates
+sudo postlab info                       # System summary
+sudo postlab list                       # Installed packages
+sudo postlab system info                # OS, kernel, CPU, memory, uptime
+sudo postlab system cpu                 # Per-core CPU percentages
+sudo postlab system mem                 # Memory usage
+sudo postlab system disks               # Disk usage by mount point
+sudo postlab system net                 # Network RX/TX bytes
+sudo postlab system swap status         # Swap status and entries
+sudo postlab system swap create PATH M  # Create swap file (size in MiB)
+sudo postlab system swap delete PATH    # Remove swap file
+sudo postlab packages list              # Installed packages
+sudo postlab packages search QUERY      # Search package index
+sudo postlab packages install NAME      # Install a package
+sudo postlab packages remove NAME       # Remove a package
+sudo postlab packages upgrade           # Upgrade all packages
+sudo postlab packages cache-clean       # Clean package caches
+sudo postlab packages list-upgradable   # Available updates with security flags
+sudo postlab processes list             # Running processes (sort: -s cpu|mem|pid|name)
+sudo postlab processes kill PID         # Kill process (SIGTERM)
+sudo postlab processes kill PID -f      # Kill process (SIGKILL)
+sudo postlab services list              # Systemd services
+sudo postlab services start NAME        # Start a service
+sudo postlab services stop NAME         # Stop a service
+sudo postlab services restart NAME      # Restart a service
+sudo postlab services enable NAME       # Enable at boot
+sudo postlab services disable NAME      # Disable at boot
+sudo postlab storage list               # Filesystems + physical disks (SMART)
 
 # Custom SQLite database path (default: ~/.postlab/data.db)
 sudo postlab --database /var/lib/postlab/data.db
@@ -110,12 +139,13 @@ sudo postlab --database /var/lib/postlab/data.db
 | Key | Action |
 | --- | ------ |
 | `1`–`9` | Switch screens |
-| `a` | Jump to Agent (global, except on Agent screen) |
+| `a` | Open Agent overlay (global) |
 | `s` | Jump to System (global, except on System screen) |
 | `Tab` / `Shift+Tab` | Next / previous screen |
 | `H` / `L` or `←` `→` | Switch tabs within a screen |
 | `↑` `↓` | Navigate lists or tables |
 | `Enter` | Confirm / execute / drill-down |
+| `Esc` | Clear filter / cancel input / return focus |
 | `q` | Quit |
 
 ### Actions
@@ -123,14 +153,64 @@ sudo postlab --database /var/lib/postlab/data.db
 | Key | Context | Action |
 | --- | ------- | ------ |
 | `Space` | Lists | Toggle selection |
-| `/` | Packages, Services, Config | Search / filter |
-| `r` / `R` | Global | Refresh current screen/tab data |
-| `k` | Processes / Ghosts | Kill selected process |
-| `a` | Gateway / Tunnel / Workloads | Add route / create tunnel / create workload |
-| `D` | Gateway / Tunnel | Delete selected route / ingress entry |
-| `f` | Tunnel | Toggle focus between Tunnels and Ingress panels |
-| `s` / `k` / `r` | System → Services | Start / stop / restart selected unit |
-| `e` / `d` | System → Services | Enable / disable selected unit |
+| `r` / `R` | Most screens | Refresh current data |
+| `/` | Packages, Services, Agent Config | Search / filter |
+| `Esc` | Search/filter mode | Clear filter |
+| **Dashboard → Processes** |||
+| `c` / `m` / `p` | Process list | Sort by CPU / memory / PID |
+| `k` | Process list | Kill selected process (with confirm) |
+| **Packages** |||
+| `d` | Installed tab | Remove selected package(s) |
+| `i` | Search tab | Install selected package(s) |
+| `u` | Updates tab | Install selected update(s) |
+| `U` | Updates tab | Upgrade all packages |
+| **Security → Findings** |||
+| `s` | Findings tab | Run security scan |
+| `Enter` | Findings tab | Apply selected fix (with confirm) |
+| **Security → Firewall** |||
+| `a` | Firewall tab | Add new firewall rule |
+| `D` | Firewall tab | Delete selected rule |
+| **Security → SSH** |||
+| `g` | SSH tab | Generate new key pair |
+| **Security → Fail2Ban** |||
+| `f` | Jailed list | Forgive (unban) selected IP |
+| `b` | Jailed list | Banish (permanent block) selected IP |
+| **Networking → Gateway** |||
+| `a` | Gateway tab | Add route (domain → port) |
+| `D` | Gateway tab | Delete selected route |
+| `i` | Gateway tab | Install Caddy |
+| **Networking → Tunnel** |||
+| `a` | Tunnel tab | Create new tunnel |
+| `d` | Tunnel tab | Add domain to selected tunnel config |
+| `D` | Ingress panel | Delete selected ingress entry |
+| `e` | Ingress panel | Edit selected ingress service |
+| `f` | Tunnel tab | Toggle focus between Tunnels/Ingress |
+| `s` | Tunnel tab | Install cloudflared system service |
+| `c` | Tunnel tab | Refresh config + service status |
+| `i` | Tunnel tab | Install cloudflared |
+| `Enter` | Tunnel list | Select active tunnel (shows config + status) |
+| **Networking → Tailscale** |||
+| `i` | Tailscale tab | Install Tailscale |
+| `u` | Tailscale tab | Bring Tailscale up |
+| `d` | Tailscale tab | Take Tailscale down |
+| **Docker** |||
+| `s` | Containers tab | Start selected container |
+| `k` | Containers tab | Stop selected container (with confirm) |
+| `D` | Containers / Images | Remove container or image (with confirm) |
+| **wasmCloud** |||
+| `i` | wasmCloud tab | Install wash CLI |
+| `Enter` | Inspector | Inspect component (paste WIT path) |
+| **System → Ghosts** |||
+| `k` | Ghost list | Kill selected ghost process |
+| `r` | Ghost list | Re-scan for ghost processes |
+| **System → Services** |||
+| `s` / `k` / `r` | Service list | Start / stop / restart selected unit |
+| `e` / `d` | Service list | Enable / disable selected unit |
+| `c` | Janitor tab | Clean package manager caches |
+| **Projects** |||
+| `p` | Projects tab | git pull in selected project |
+| `c` | Clone tab | Clone (after entering repo URL) |
+| `s` | New tab | Open stack configurator popup |
 
 ---
 
@@ -158,32 +238,32 @@ Postlab is built with a clean separation between the core logic and the TUI. The
 
 ```
 cli/src/
-├── main.rs                  # clap entry: info | list | tui (default)
+├── main.rs                  # clap entry: 8 subcommands + TUI (default)
 ├── core/
 │   ├── platform.rs          # Platform { system, packages, processes, ... }
 │   │                        # detect() — auto-selects right impls at runtime
-│   ├── models.rs            # Shared data types
-│   ├── system/              # SystemInfo trait + sysinfo impl
+│   ├── models.rs            # Shared data types (30+ structs/enums)
+│   ├── system/              # SystemInfo trait + sysinfo impl (swap, fstab)
 │   ├── packages/            # PackageManager trait + apt / dnf / pacman / brew
 │   ├── processes/           # ProcessManager trait + sysinfo impl
-│   ├── security/            # SecurityAuditor trait + SSH/ASLR checks
+│   ├── security/            # SecurityAuditor trait + SSH/ASLR/firewall checks
 │   ├── firewall/            # FirewallManager trait + ufw / firewalld / pf
-│   ├── portcheck/           # External port reachability checker
+│   ├── portcheck/           # External port reachability checker (portchecker.co)
 │   ├── ssh/                 # SshKeyManager trait + authorized_keys / ssh-keygen
 │   ├── services/            # ServiceManager trait + systemd / launchd
-│   ├── users/               # Unix user management
+│   ├── users/               # Unix user CRUD + group management
+│   ├── storage/             # lsblk + SMART health, mount/umount, fstab viewer
 │   ├── docker/              # DockerManager trait + docker / podman CLI
 │   ├── workloads/           # Host-managed single-service workloads
-│   ├── wasm_cloud/          # wasmCloud CLI management
+│   ├── wasm_cloud/          # wasmCloud CLI management (wash)
 │   ├── nats/                # NATS backbone health for wasmCloud
-│   ├── ghost/               # Ghost service detection logic
-│   ├── storage/              # Filesystem listing, SMART health, mount/umount
+│   ├── ghost/               # Ghost/zombie/orphan process detection
 │   ├── gateway/             # GatewayManager trait + Caddy impl
 │   ├── tunnel/              # TunnelManager trait + cloudflared impl
-│   ├── tailscale/           # Tailscale CLI integration
-│   ├── deploy/              # Git-based deployment runner
-│   ├── projects/            # Local project browser and scaffolder
-│   └── pi_agent/            # Pi Agent CLI integration
+│   ├── tailscale/           # Tailscale VPN status, peers, up/down
+│   ├── deploy/              # Git-based deployment runner + detector
+│   ├── projects/            # Local project browser, scaffold (create-better-t-stack), clone
+│   └── pi_agent/            # Pi Agent CLI integration (install, chat, sessions, skills)
 ├── db/
 │   ├── mod.rs               # init_db (SQLite, auto-create ~/.postlab/data.db)
 │   ├── audit.rs             # Log actions for audit history
@@ -237,19 +317,10 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 
 ## Roadmap
 
-- [x] **Docker** — Containers, images, Compose, managed dev services, and host workloads.
-- [x] **wasmCloud** — Host, component, and app management with NATS health and inspector.
-- [x] **SSH Keys** — Interactive authorized_keys manager.
-- [x] **Firewall** — UFW / firewalld / pf rule management.
-- [x] **Ghost Hunter** — Detect abandoned services and processes.
-- [x] **Services** — systemd / launchd start, stop, restart, enable, disable.
-- [x] **Users & Swap** — Unix account management and swap file control.
-- [x] **Storage** — Filesystem browser, SMART disk health, mount/umount.
-- [x] **Pi Agent** — Full Agent screen: chat, tasks, sessions, skills library, config, auth, and logs.
-- [x] **Tailscale** — VPN status, peer list, and connection control.
-- [x] **Projects** — Browse, scaffold, and clone local projects.
 - [ ] **Snapshots** — Btrfs/ZFS snapshot management.
 - [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
+- [ ] **Multi-service workloads** — Compose-level service graphs in the Workloads tab.
+- [ ] **SSH config hardening** — Full sshd_config audit, key rotation, and MFA setup.
 
 ---
 
