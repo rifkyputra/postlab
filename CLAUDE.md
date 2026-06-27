@@ -54,6 +54,7 @@ migrations/            Append-only SQL schema files
 - **`install.sh`** — runs with elevated privileges on user machines. Confirm before modifying.
 - **`binaries/`** — pre-built release artifacts. Do not edit directly; use `make build-linux` or `make build-all`.
 - **No new external services** (databases, queues, APIs) without explicit discussion.
+- **`[release]` in commit message** — triggers CD artifact build. Only include this when the full matrix (linux/macOS, x86_64/ARM64) should build binaries. Use sparingly.
 
 ## Code style
 

@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     # Trigger on tag push OR commit message containing #build
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '#build')
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[release]')
     strategy:
       matrix:
         include:
