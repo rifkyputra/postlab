@@ -324,6 +324,24 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 
 ---
 
+## Changelog
+
+### v0.3.0 — 2026-06-28
+
+First feature release since v0.2.0. Highlights:
+
+- **User management** — list, create, and delete users with password and sudoers handling.
+- **WasmCloud + NATS** — service management, backbone provisioning, and a component inspector.
+- **Managed Docker services** — managed workloads, Podman support, and Firewalld/pf managers.
+- **Pi Agent** (formerly Zeroclaw) — chat, tools, tasks, sessions, skills, auth, and logs.
+- **Networking** — Gateway (Caddy), Tunnel (Cloudflare), and Tailscale tabs.
+- **Projects** and **Automation/Agent** screens, plus swap management, a Storage tab, and an Updates tab.
+- Installer now pulls per-platform tarballs from GitHub Releases (Linux x86_64/arm64, macOS arm64).
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history and the [v0.3.0 release](https://github.com/rifkyputra/postlab/releases/tag/v0.3.0) for downloads.
+
+---
+
 ## Development
 
 ### Requirements
