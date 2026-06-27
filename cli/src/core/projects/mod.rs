@@ -174,11 +174,9 @@ impl ProjectsManager {
             anyhow::bail!("npx not found — install Node.js to use scaffolding");
         }
 
-        // Pass the full project path so the result lands in the configured directory
-        // regardless of what working directory `su --login` sets.  For the su case we
-        // also create the parent directory as the user so it isn't root-owned.
-        let project_path = format!("{expanded}/{name}");
-        let run_cmd = format!("mkdir -p '{expanded}' && {shell_init}npx -y create-better-t-stack@latest '{project_path}' {flags} --yes");
+        // su --login resets CWD to the user's home. We override by cd-ing into the
+        // configured projects dir after mkdir (both run as the user, so no root-owned dirs).
+        let run_cmd = format!("mkdir -p '{expanded}' && cd '{expanded}' && {shell_init}npx -y create-better-t-stack@latest '{name}' {flags} --yes");
         let mut cmd = if user.is_empty() {
             let mut c = tokio::process::Command::new("bash");
             c.args(["-c", &run_cmd]);

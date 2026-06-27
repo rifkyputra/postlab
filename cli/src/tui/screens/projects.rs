@@ -7,8 +7,8 @@ use ratatui::{
 };
 
 use crate::tui::app::{
-    App, InputMode, ProjectsTab, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_FRONTENDS,
-    BTS_ORMS,
+    App, InputMode, ProjectsTab, BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_EXAMPLES,
+    BTS_FRONTENDS, BTS_ORMS, BTS_PAYMENTS, BTS_RUNTIMES,
 };
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
@@ -108,10 +108,10 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // name input
-            Constraint::Length(8), // config form (6 fields + 2 borders)
-            Constraint::Min(0),    // output
-            Constraint::Length(1), // hint
+            Constraint::Length(3),  // name input
+            Constraint::Length(11), // config form (9 fields + 2 borders)
+            Constraint::Min(0),     // output
+            Constraint::Length(1),  // hint
         ])
         .split(area);
 
@@ -139,6 +139,9 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
         ("Auth",     BTS_AUTHS,     app.projects.new_auth_idx),
         ("Backend",  BTS_BACKENDS,  app.projects.new_backend_idx),
         ("API",      BTS_APIS,      app.projects.new_api_idx),
+        ("Runtime",  BTS_RUNTIMES,  app.projects.new_runtime_idx),
+        ("Payments", BTS_PAYMENTS,  app.projects.new_payments_idx),
+        ("Examples", BTS_EXAMPLES,  app.projects.new_examples_idx),
     ];
     let form_lines: Vec<Line> = fields
         .iter()
@@ -175,7 +178,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     let form_para = Paragraph::new(form_lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Stack  [j/k] field  [ ] option "),
+            .title(" Stack  [j/k] field  [h/l] option "),
     );
     f.render_widget(form_para, chunks[1]);
 
@@ -204,7 +207,7 @@ fn render_new(f: &mut Frame, app: &App, area: Rect) {
     } else if app.projects.new_running {
         "scaffolding in progress…  [PgUp/PgDn] scroll"
     } else {
-        "[i] name  [j/k] field  [ ] option  [Enter] scaffold"
+        "[i] name  [j/k] field  [h/l] option  [Enter] scaffold"
     };
     let hint_p = Paragraph::new(Span::styled(hint, Style::default().fg(Color::DarkGray)));
     f.render_widget(hint_p, chunks[3]);
