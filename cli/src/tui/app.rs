@@ -77,6 +77,7 @@ pub enum SystemTab {
     Services,
     Users,
     Swap,
+    Storage,
 }
 
 impl SystemTab {
@@ -87,6 +88,7 @@ impl SystemTab {
             SystemTab::Services,
             SystemTab::Users,
             SystemTab::Swap,
+            SystemTab::Storage,
         ]
     }
 
@@ -97,6 +99,7 @@ impl SystemTab {
             SystemTab::Services => "Services",
             SystemTab::Users => "Users",
             SystemTab::Swap => "Swap",
+            SystemTab::Storage => "Storage",
         }
     }
 
@@ -252,6 +255,15 @@ impl AgentTab {
         AgentTab::all().iter().position(|t| t == self).unwrap_or(0)
     }
 }
+
+pub const BTS_FRONTENDS: &[&str] = &[
+    "tanstack-router", "react-router", "next", "nuxt", "svelte", "solid", "astro", "none",
+];
+pub const BTS_DATABASES: &[&str] = &["sqlite", "postgres", "mysql", "mongodb", "none"];
+pub const BTS_ORMS: &[&str] = &["drizzle", "prisma", "mongoose", "none"];
+pub const BTS_AUTHS: &[&str] = &["better-auth", "clerk", "none"];
+pub const BTS_BACKENDS: &[&str] = &["hono", "express", "fastify", "elysia", "self", "none"];
+pub const BTS_APIS: &[&str] = &["trpc", "orpc", "none"];
 
 // ── Projects tabs ─────────────────────────────────────────────────────────
 
@@ -452,6 +464,10 @@ pub enum TaskResult {
     PiAgentToolEnd { name: String, is_error: bool },
     PiAgentRpcStderr(String),
     PiAgentRpcError(String),
+    StorageLoaded(Vec<crate::core::models::StorageDevice>),
+    SmartLoaded(Vec<crate::core::models::SmartInfo>),
+    StorageOpDone { op: String, success: bool },
+    StorageFstabLoaded(String),
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
     ProjectsList(Vec<crate::core::projects::ProjectEntry>),
@@ -486,6 +502,7 @@ pub enum ConfirmAction {
     ServiceAction { name: String, op: String },
     MaintenanceAction { op: String },
     DeleteSwap { path: String },
+    Umount { target: String },
 }
 
 #[derive(Debug)]
@@ -1178,6 +1195,41 @@ impl Default for SwapState {
     }
 }
 
+// ── Storage state ───────────────────────────────────────────────────────────
+pub struct StorageState {
+    pub devices: Vec<crate::core::models::StorageDevice>,
+    pub table_state: TableState,
+    pub physical: Vec<crate::core::models::SmartInfo>,
+    pub loading: bool,
+    pub smart_loading: bool,
+    pub input_mode: InputMode,
+    pub input_device: String,
+    pub input_mountpoint: String,
+    pub input_focus: usize, // 0 = device, 1 = mountpoint
+    pub show_fstab: bool,
+    pub fstab_scroll: u16,
+    pub fstab_content: String,
+}
+
+impl Default for StorageState {
+    fn default() -> Self {
+        Self {
+            devices: Vec::new(),
+            table_state: TableState::default(),
+            physical: Vec::new(),
+            loading: false,
+            smart_loading: false,
+            input_mode: InputMode::Normal,
+            input_device: String::new(),
+            input_mountpoint: String::new(),
+            input_focus: 0,
+            show_fstab: false,
+            fstab_scroll: 0,
+            fstab_content: String::new(),
+        }
+    }
+}
+
 // ── Users state ─────────────────────────────────────────────────────────────
 pub struct UsersState {
     pub users: Vec<UserInfo>,
@@ -1354,12 +1406,21 @@ pub struct ProjectsState {
     pub loading: bool,
     // New tab
     pub new_name: String,
+    pub new_form_focus: usize,  // 0-5 = Frontend..API
+    pub new_frontend_idx: usize,
+    pub new_database_idx: usize,
+    pub new_orm_idx: usize,
+    pub new_auth_idx: usize,
+    pub new_backend_idx: usize,
+    pub new_api_idx: usize,
     pub new_output: Vec<String>,
+    pub new_output_scroll: usize,
     pub new_running: bool,
     pub new_input_mode: InputMode,
     // Clone tab
     pub clone_url: String,
     pub clone_output: Vec<String>,
+    pub clone_output_scroll: usize,
     pub clone_running: bool,
     pub clone_input_mode: InputMode,
     // Settings tab
@@ -1376,11 +1437,20 @@ impl Default for ProjectsState {
             list_state: ListState::default(),
             loading: false,
             new_name: String::new(),
+            new_form_focus: 0,
+            new_frontend_idx: 0,
+            new_database_idx: 0,
+            new_orm_idx: 0,
+            new_auth_idx: 0,
+            new_backend_idx: 0,
+            new_api_idx: 0,
             new_output: Vec::new(),
+            new_output_scroll: 0,
             new_running: false,
             new_input_mode: InputMode::Normal,
             clone_url: String::new(),
             clone_output: Vec::new(),
+            clone_output_scroll: 0,
             clone_running: false,
             clone_input_mode: InputMode::Normal,
             dir: String::new(),
@@ -1431,6 +1501,7 @@ pub struct App {
     pub maintenance: MaintenanceState,
     pub agent: AgentState,
     pub swap: SwapState,
+    pub storage: StorageState,
     pub projects: ProjectsState,
 
     pub terminal_width: u16,
@@ -1476,6 +1547,7 @@ impl App {
             maintenance: MaintenanceState::default(),
             agent: AgentState::default(),
             swap: SwapState::default(),
+            storage: StorageState::default(),
             projects: ProjectsState::default(),
             task_tx,
             task_rx,
@@ -1594,6 +1666,28 @@ impl App {
             SystemTab::Services => self.spawn_load_services(),
             SystemTab::Users => self.spawn_load_users(),
             SystemTab::Swap => self.spawn_load_swap(),
+            SystemTab::Storage => self.spawn_load_storage(),
+        }
+    }
+
+    pub fn spawn_load_networking_tab(&mut self, tab: NetworkingTab) {
+        match tab {
+            NetworkingTab::Gateway => self.spawn_load_gateway(),
+            NetworkingTab::Tunnel => {
+                self.spawn_load_tunnels();
+                let id = self.tunnel.active_tunnel_id.clone();
+                self.spawn_tunnel_extras(id);
+            }
+            NetworkingTab::Tailscale => self.spawn_load_tailscale(),
+        }
+    }
+
+    pub fn spawn_load_docker_tab(&mut self, tab: &DockerTab) {
+        match tab {
+            DockerTab::Containers | DockerTab::Images => self.spawn_load_docker(),
+            DockerTab::Compose => self.spawn_load_compose(),
+            DockerTab::Workloads => self.spawn_load_workloads(),
+            DockerTab::Managed => self.spawn_load_managed_services(),
         }
     }
 
@@ -3142,6 +3236,79 @@ impl App {
         });
     }
 
+    // ── Storage spawn methods ────────────────────────────────────────────
+
+    pub fn spawn_load_storage(&mut self) {
+        let tx = self.task_tx.clone();
+        self.storage.loading = true;
+        self.storage.smart_loading = true;
+        tokio::spawn(async move {
+            match crate::core::storage::list_filesystems().await {
+                Ok(devices) => {
+                    let _ = tx.send(TaskResult::StorageLoaded(devices));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+        let tx2 = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::storage::list_physical().await {
+                Ok(physical) => {
+                    let _ = tx2.send(TaskResult::SmartLoaded(physical));
+                }
+                Err(e) => {
+                    let _ = tx2.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub fn spawn_storage_mount(&mut self, device: String, mountpoint: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::storage::mount(&device, &mountpoint).await {
+                Ok(_) => {
+                    let _ = tx.send(TaskResult::StorageOpDone { op: "mount".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::StorageOpDone { op: "mount".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_storage_umount(&mut self, target: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::storage::umount(&target).await {
+                Ok(_) => {
+                    let _ = tx.send(TaskResult::StorageOpDone { op: "umount".into(), success: true });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::StorageOpDone { op: "umount".into(), success: false });
+                }
+            }
+        });
+    }
+
+    pub fn spawn_storage_read_fstab(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::storage::read_fstab().await {
+                Ok(content) => {
+                    let _ = tx.send(TaskResult::StorageFstabLoaded(content));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
     // ── Projects spawn methods ────────────────────────────────────────────
 
     pub fn spawn_projects_load_dir(&mut self) {
@@ -3197,8 +3364,18 @@ impl App {
     pub fn spawn_projects_scaffold(&mut self, name: String) {
         let tx = self.task_tx.clone();
         let dir = self.projects.dir.clone();
+        let flags = format!(
+            "--frontend {} --database {} --orm {} --auth {} --backend {} --api {}",
+            BTS_FRONTENDS[self.projects.new_frontend_idx],
+            BTS_DATABASES[self.projects.new_database_idx],
+            BTS_ORMS[self.projects.new_orm_idx],
+            BTS_AUTHS[self.projects.new_auth_idx],
+            BTS_BACKENDS[self.projects.new_backend_idx],
+            BTS_APIS[self.projects.new_api_idx],
+        );
         self.projects.new_running = true;
         self.projects.new_output.clear();
+        self.projects.new_output_scroll = 0;
         tokio::spawn(async move {
             let mgr = crate::core::projects::ProjectsManager;
             let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -3211,7 +3388,7 @@ impl App {
                     });
                 }
             });
-            let result = mgr.scaffold_new(&name, &dir, ptx).await;
+            let result = mgr.scaffold_new(&name, &dir, &flags, ptx).await;
             let _ = fwd.await;
             let success = result.is_ok();
             if let Err(ref e) = result {
@@ -3233,6 +3410,7 @@ impl App {
         let dir = self.projects.dir.clone();
         self.projects.clone_running = true;
         self.projects.clone_output.clear();
+        self.projects.clone_output_scroll = 0;
         tokio::spawn(async move {
             let mgr = crate::core::projects::ProjectsManager;
             let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -4420,6 +4598,28 @@ impl App {
                     content: format!("[stderr] {}", line),
                 });
             }
+            TaskResult::StorageLoaded(devices) => {
+                if self.storage.table_state.selected().is_none() && !devices.is_empty() {
+                    self.storage.table_state.select(Some(0));
+                }
+                self.storage.devices = devices;
+                self.storage.loading = false;
+            }
+            TaskResult::SmartLoaded(physical) => {
+                self.storage.physical = physical;
+                self.storage.smart_loading = false;
+            }
+            TaskResult::StorageOpDone { op, success } => {
+                self.status_msg = Some(if success {
+                    format!("{} succeeded", op)
+                } else {
+                    format!("{} FAILED", op)
+                });
+                self.spawn_load_storage();
+            }
+            TaskResult::StorageFstabLoaded(content) => {
+                self.storage.fstab_content = content;
+            }
             TaskResult::SwapLoaded(status) => {
                 if self.swap.table_state.selected().is_none() && !status.entries.is_empty() {
                     self.swap.table_state.select(Some(0));
@@ -4442,11 +4642,16 @@ impl App {
                     self.projects.list_state.select(Some(0));
                 }
             }
-            TaskResult::ProjectsOpProgress { op, line } => match op.as_str() {
-                "new" => self.projects.new_output.push(line),
-                "clone" => self.projects.clone_output.push(line),
-                _ => {}
-            },
+            TaskResult::ProjectsOpProgress { op, line } => {
+                let clean = clean_output_line(&line);
+                if !clean.is_empty() {
+                    match op.as_str() {
+                        "new" => self.projects.new_output.push(clean),
+                        "clone" => self.projects.clone_output.push(clean),
+                        _ => {}
+                    }
+                }
+            }
             TaskResult::ProjectsOpDone { op, name, success } => {
                 match op.as_str() {
                     "new" => {
@@ -4618,4 +4823,26 @@ pub fn parse_ingress_entries(content: &str) -> Vec<(String, String)> {
         }
     }
     entries
+}
+
+/// Strip ANSI CSI escape sequences and handle carriage returns from process output.
+/// `\r` mid-line is a terminal cursor-to-col-0 overwrite; we keep only the last segment.
+fn clean_output_line(raw: &str) -> String {
+    let segment = raw.rsplit('\r').next().unwrap_or(raw);
+    let mut out = String::with_capacity(segment.len());
+    let mut chars = segment.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if let Some('[') = chars.next() {
+                for nc in chars.by_ref() {
+                    if nc.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
 }

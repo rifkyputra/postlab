@@ -89,6 +89,20 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         handle_swap_key(app, key);
         return false;
     }
+    if app.screen == Screen::System
+        && app.system_tab == SystemTab::Storage
+        && app.storage.show_fstab
+    {
+        handle_storage_fstab_key(app, key);
+        return false;
+    }
+    if app.screen == Screen::System
+        && app.system_tab == SystemTab::Storage
+        && app.storage.input_mode == InputMode::Editing
+    {
+        handle_storage_key(app, key);
+        return false;
+    }
     if app.screen == Screen::Agent && app.agent.input_mode == InputMode::Editing {
         handle_agent_input(app, key);
         return false;
@@ -325,6 +339,7 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
         ConfirmAction::ServiceAction { name, op } => app.spawn_service_action(name, op),
         ConfirmAction::MaintenanceAction { op } => app.spawn_maintenance_action(op),
         ConfirmAction::DeleteSwap { path } => app.spawn_swap_delete(path),
+        ConfirmAction::Umount { target } => app.spawn_storage_umount(target),
     }
 }
 
@@ -401,6 +416,7 @@ fn handle_system_key(app: &mut App, key: KeyEvent) {
         SystemTab::Services => handle_services_key(app, key),
         SystemTab::Users => handle_users_key(app, key),
         SystemTab::Swap => handle_swap_key(app, key),
+        SystemTab::Storage => handle_storage_key(app, key),
     }
 }
 
@@ -868,12 +884,16 @@ fn handle_networking_key(app: &mut App, key: KeyEvent) {
         KeyCode::Left => {
             let idx = app.networking_tab.index();
             let all = NetworkingTab::all();
-            app.networking_tab = all[(idx + all.len() - 1) % all.len()].clone();
+            let new_tab = all[(idx + all.len() - 1) % all.len()].clone();
+            app.networking_tab = new_tab.clone();
+            app.spawn_load_networking_tab(new_tab);
         }
         KeyCode::Right => {
             let idx = app.networking_tab.index();
             let all = NetworkingTab::all();
-            app.networking_tab = all[(idx + 1) % all.len()].clone();
+            let new_tab = all[(idx + 1) % all.len()].clone();
+            app.networking_tab = new_tab.clone();
+            app.spawn_load_networking_tab(new_tab);
         }
         _ => match app.networking_tab {
             NetworkingTab::Gateway => handle_gateway_key(app, key),
@@ -1614,7 +1634,11 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 3 {
                 let titles: Vec<&str> = DashboardTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 0, 3) {
-                    app.dashboard.active_tab = DashboardTab::all()[idx].clone();
+                    let new_tab = DashboardTab::all()[idx].clone();
+                    app.dashboard.active_tab = new_tab.clone();
+                    if new_tab == DashboardTab::Processes {
+                        app.spawn_load_processes();
+                    }
                 }
             }
         }
@@ -1632,7 +1656,9 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 4 {
                 let titles: Vec<&str> = SecurityTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 3) {
-                    app.security.active_tab = SecurityTab::all()[idx].clone();
+                    let new_tab = SecurityTab::all()[idx].clone();
+                    app.security.active_tab = new_tab.clone();
+                    app.spawn_load_security_tab(new_tab);
                 }
             }
         }
@@ -1641,7 +1667,9 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 4 {
                 let titles: Vec<&str> = NetworkingTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
-                    app.networking_tab = NetworkingTab::all()[idx].clone();
+                    let new_tab = NetworkingTab::all()[idx].clone();
+                    app.networking_tab = new_tab.clone();
+                    app.spawn_load_networking_tab(new_tab);
                 }
             }
         }
@@ -1650,7 +1678,9 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 4 {
                 let titles: Vec<&str> = DockerTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
-                    app.docker.active_tab = DockerTab::all()[idx].clone();
+                    let new_tab = DockerTab::all()[idx].clone();
+                    app.docker.active_tab = new_tab.clone();
+                    app.spawn_load_docker_tab(&new_tab);
                 }
             }
         }
@@ -1659,7 +1689,9 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 3 {
                 let titles: Vec<&str> = SystemTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 0, 3) {
-                    app.system_tab = SystemTab::all()[idx].clone();
+                    let new_tab = SystemTab::all()[idx].clone();
+                    app.system_tab = new_tab.clone();
+                    app.spawn_load_system_tab(new_tab);
                 }
             }
         }
@@ -1684,7 +1716,11 @@ pub fn handle_click(app: &mut App, col: u16, row: u16) {
             if row == 4 {
                 let titles: Vec<&str> = ProjectsTab::all().iter().map(|t| t.title()).collect();
                 if let Some(idx) = tab_at_col(col, &titles, 1, 1) {
-                    app.projects.active_tab = ProjectsTab::all()[idx].clone();
+                    let new_tab = ProjectsTab::all()[idx].clone();
+                    app.projects.active_tab = new_tab.clone();
+                    if new_tab == ProjectsTab::Projects {
+                        app.spawn_load_projects();
+                    }
                 }
             }
         }
@@ -3064,6 +3100,112 @@ fn handle_swap_key(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn handle_storage_key(app: &mut App, key: KeyEvent) {
+    if app.storage.input_mode == InputMode::Editing {
+        match key.code {
+            KeyCode::Esc => {
+                app.storage.input_mode = InputMode::Normal;
+            }
+            KeyCode::Tab => {
+                app.storage.input_focus = 1 - app.storage.input_focus;
+            }
+            KeyCode::Enter => {
+                let dev = app.storage.input_device.clone();
+                let mnt = app.storage.input_mountpoint.clone();
+                if dev.is_empty() || mnt.is_empty() {
+                    app.status_msg = Some("Device and mountpoint are required".to_string());
+                    return;
+                }
+                app.storage.input_mode = InputMode::Normal;
+                app.spawn_storage_mount(dev, mnt);
+            }
+            KeyCode::Backspace => {
+                if app.storage.input_focus == 0 {
+                    app.storage.input_device.pop();
+                } else {
+                    app.storage.input_mountpoint.pop();
+                }
+            }
+            KeyCode::Char(c) => {
+                if app.storage.input_focus == 0 {
+                    app.storage.input_device.push(c);
+                } else {
+                    app.storage.input_mountpoint.push(c);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            let len = app.storage.devices.len();
+            if len > 0 {
+                let next = app
+                    .storage
+                    .table_state
+                    .selected()
+                    .map(|i| (i + 1).min(len - 1))
+                    .unwrap_or(0);
+                app.storage.table_state.select(Some(next));
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if let Some(i) = app.storage.table_state.selected() {
+                if i > 0 {
+                    app.storage.table_state.select(Some(i - 1));
+                }
+            }
+        }
+        KeyCode::Char('m') => {
+            app.storage.input_mode = InputMode::Editing;
+            app.storage.input_device.clear();
+            app.storage.input_mountpoint.clear();
+            app.storage.input_focus = 0;
+        }
+        KeyCode::Char('u') => {
+            if let Some(idx) = app.storage.table_state.selected() {
+                if let Some(dev) = app.storage.devices.get(idx) {
+                    let target = dev.mount.clone();
+                    app.confirm = Some(ConfirmDialog {
+                        message: format!("Unmount {}? [y/N]", target),
+                        action: ConfirmAction::Umount { target },
+                    });
+                }
+            }
+        }
+        KeyCode::Char('f') => {
+            app.storage.show_fstab = true;
+            app.storage.fstab_scroll = 0;
+            app.spawn_storage_read_fstab();
+        }
+        KeyCode::Char('R') => {
+            app.spawn_load_storage();
+        }
+        _ => {}
+    }
+}
+
+fn handle_storage_fstab_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.storage.show_fstab = false;
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let line_count = app.storage.fstab_content.lines().count().saturating_sub(1);
+            let visible = line_count.saturating_sub(app.storage.fstab_scroll as usize);
+            if visible > 0 {
+                app.storage.fstab_scroll = app.storage.fstab_scroll.saturating_add(1);
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.storage.fstab_scroll = app.storage.fstab_scroll.saturating_sub(1);
+        }
+        _ => {}
+    }
+}
+
 // ── Agent overlay ─────────────────────────────────────────────────────────
 
 fn handle_overlay_input(app: &mut App, key: KeyEvent) {
@@ -3290,16 +3432,57 @@ fn handle_projects_list_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_projects_new_key(app: &mut App, key: KeyEvent) {
+    const NUM_FIELDS: usize = 6;
     match key.code {
-        KeyCode::Char('i') => {
-            app.projects.new_input_mode = InputMode::Editing;
-        }
-        KeyCode::Enter
-            if !app.projects.new_running && !app.projects.new_name.is_empty() =>
-        {
+        KeyCode::Char('i') => app.projects.new_input_mode = InputMode::Editing,
+        KeyCode::Enter if !app.projects.new_running && !app.projects.new_name.is_empty() => {
             let name = app.projects.new_name.clone();
             app.spawn_projects_scaffold(name);
         }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.projects.new_form_focus + 1 < NUM_FIELDS {
+                app.projects.new_form_focus += 1;
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.projects.new_form_focus =
+                app.projects.new_form_focus.saturating_sub(1);
+        }
+        KeyCode::Char(']') => cycle_bts_field(app, true),
+        KeyCode::Char('[') => cycle_bts_field(app, false),
+        KeyCode::PageUp => {
+            app.projects.new_output_scroll =
+                app.projects.new_output_scroll.saturating_add(5);
+        }
+        KeyCode::PageDown => {
+            app.projects.new_output_scroll =
+                app.projects.new_output_scroll.saturating_sub(5);
+        }
+        _ => {}
+    }
+}
+
+fn cycle_bts_field(app: &mut App, forward: bool) {
+    use crate::tui::app::{
+        BTS_APIS, BTS_AUTHS, BTS_BACKENDS, BTS_DATABASES, BTS_FRONTENDS, BTS_ORMS,
+    };
+    macro_rules! cycle {
+        ($idx:expr, $opts:expr) => {{
+            let n = $opts.len();
+            $idx = if forward {
+                ($idx + 1) % n
+            } else {
+                ($idx + n - 1) % n
+            };
+        }};
+    }
+    match app.projects.new_form_focus {
+        0 => cycle!(app.projects.new_frontend_idx, BTS_FRONTENDS),
+        1 => cycle!(app.projects.new_database_idx, BTS_DATABASES),
+        2 => cycle!(app.projects.new_orm_idx, BTS_ORMS),
+        3 => cycle!(app.projects.new_auth_idx, BTS_AUTHS),
+        4 => cycle!(app.projects.new_backend_idx, BTS_BACKENDS),
+        5 => cycle!(app.projects.new_api_idx, BTS_APIS),
         _ => {}
     }
 }
@@ -3314,6 +3497,14 @@ fn handle_projects_clone_key(app: &mut App, key: KeyEvent) {
         {
             let url = app.projects.clone_url.clone();
             app.spawn_projects_clone(url);
+        }
+        KeyCode::PageUp | KeyCode::Up => {
+            app.projects.clone_output_scroll =
+                app.projects.clone_output_scroll.saturating_add(5);
+        }
+        KeyCode::PageDown | KeyCode::Down => {
+            app.projects.clone_output_scroll =
+                app.projects.clone_output_scroll.saturating_sub(5);
         }
         _ => {}
     }

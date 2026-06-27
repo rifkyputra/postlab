@@ -8,11 +8,27 @@
     },
     {
       "command": "postlab info",
-      "description": "Print OS, kernel, CPU, memory, and uptime"
+      "description": "Print OS, kernel, CPU, memory, and uptime (alias for postlab system info)"
     },
     {
       "command": "postlab list",
-      "description": "List all installed packages"
+      "description": "List all installed packages (alias for postlab packages list)"
+    },
+    {
+      "command": "postlab system",
+      "description": "System diagnostics: info, cpu, mem, disks, net, swap (status/create/delete/enable/disable/resize)"
+    },
+    {
+      "command": "postlab packages",
+      "description": "Package management: list, search, install, remove, upgrade, cache-clean"
+    },
+    {
+      "command": "postlab processes",
+      "description": "Process management: list (sortable by cpu/mem/pid/name), kill (with --force for SIGKILL)"
+    },
+    {
+      "command": "postlab services",
+      "description": "Systemd service management: list, start, stop, restart, enable, disable"
     }
   ],
   "screens": [
@@ -265,6 +281,11 @@
           "id": "swap",
           "name": "Swap",
           "description": "View swap usage and manage swap files"
+        },
+        {
+          "id": "storage",
+          "name": "Storage",
+          "description": "Browse mounted filesystems, view disk health (SMART), mount/unmount volumes, inspect /etc/fstab"
         }
       ]
     },

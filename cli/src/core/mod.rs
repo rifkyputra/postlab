@@ -12,6 +12,7 @@ pub mod processes;
 pub mod security;
 pub mod services;
 pub mod ssh;
+pub mod storage;
 pub mod system;
 pub mod tailscale;
 pub mod tunnel;

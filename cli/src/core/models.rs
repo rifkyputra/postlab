@@ -300,9 +300,28 @@ pub struct WasmCloudApp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageDevice {
+    pub device: String,
+    pub mount: String,
+    pub fs_type: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub avail_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartInfo {
+    pub device: String,
+    pub model: String,
+    pub healthy: bool,
+    pub temp_celsius: u32,
+    pub power_on_hours: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapEntry {
-    pub path: String,      // e.g. "/swapfile" or "/dev/sda2"
-    pub kind: String,      // "file" or "partition"
+    pub path: String,
+    pub kind: String,
     pub size_bytes: u64,
     pub used_bytes: u64,
     pub priority: i32,
@@ -426,4 +445,58 @@ pub struct Deployment {
     pub deploy_type: DeploymentType,
     pub status: DeploymentStatus,
     pub last_updated: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DeploymentStatus, DeploymentType, GhostReason, ManagedWorkloadState, Severity};
+
+    #[test]
+    fn severity_labels_are_uppercase() {
+        assert_eq!(Severity::Critical.label(), "CRITICAL");
+        assert_eq!(Severity::High.label(), "HIGH");
+        assert_eq!(Severity::Medium.label(), "MEDIUM");
+        assert_eq!(Severity::Low.label(), "LOW");
+        assert_eq!(Severity::Info.label(), "INFO");
+    }
+
+    #[test]
+    fn severity_ordering_critical_is_highest() {
+        assert!(Severity::Critical < Severity::High);
+        assert!(Severity::High < Severity::Medium);
+        assert!(Severity::Medium < Severity::Low);
+        assert!(Severity::Low < Severity::Info);
+    }
+
+    #[test]
+    fn ghost_reason_labels() {
+        assert_eq!(GhostReason::Orphan.label(), "ORPHAN");
+        assert_eq!(GhostReason::MemLeak.label(), "MEM-LEAK");
+        assert_eq!(GhostReason::Zombie.label(), "ZOMBIE");
+    }
+
+    #[test]
+    fn workload_state_labels() {
+        assert_eq!(ManagedWorkloadState::Running.label(), "Running");
+        assert_eq!(ManagedWorkloadState::Stopped.label(), "Stopped");
+        assert_eq!(ManagedWorkloadState::Failed.label(), "Failed");
+        assert_eq!(ManagedWorkloadState::NotInstalled.label(), "Not installed");
+        assert_eq!(ManagedWorkloadState::Unknown.label(), "Unknown");
+    }
+
+    #[test]
+    fn deployment_type_labels() {
+        assert_eq!(DeploymentType::DockerCompose.label(), "Docker Compose");
+        assert_eq!(DeploymentType::WasmCloud.label(), "wasmCloud");
+        assert_eq!(DeploymentType::Unknown.label(), "Unknown");
+    }
+
+    #[test]
+    fn deployment_status_labels() {
+        assert_eq!(DeploymentStatus::Cloning.label(), "Cloning");
+        assert_eq!(DeploymentStatus::Deploying.label(), "Deploying");
+        assert_eq!(DeploymentStatus::Running.label(), "Running");
+        assert_eq!(DeploymentStatus::Stopped.label(), "Stopped");
+        assert_eq!(DeploymentStatus::Failed("oops".to_string()).label(), "Failed");
+    }
 }
