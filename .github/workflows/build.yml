@@ -23,7 +23,7 @@ jobs:
             use-cross: true
           - name: macos-x86_64
             target: x86_64-apple-darwin
-            runs-on: macos-latest
+            runs-on: macos-13
             use-cross: false
           - name: macos-aarch64
             target: aarch64-apple-darwin
@@ -34,35 +34,29 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
+          targets: ${{ matrix.target }}
 
-      - name: Show rustc version
-        run: rustc --version
-
-      - name: Add target
-        run: rustup target add ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.use-cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
       - name: Build (cross)
         if: matrix.use-cross
-        run: |
-          cargo install cross --locked || true
-          cross build --release --target ${{ matrix.target }}
+        run: cross build --release -p postlab --target ${{ matrix.target }}
 
       - name: Build (native)
-        if: !matrix.use-cross
-        run: cargo build --release --target ${{ matrix.target }}
+        if: ${{ !matrix.use-cross }}
+        run: cargo build --release -p postlab --target ${{ matrix.target }}
 
       - name: Package artifact
         run: |
           BIN=target/${{ matrix.target }}/release/postlab
           if [ -f "$BIN" ]; then
-            mkdir -p release
-            cp "$BIN" release/postlab-${{ matrix.target }}
-            tar -czf postlab-${{ matrix.target }}.tar.gz -C release postlab-${{ matrix.target }}
+            tar -czf postlab-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release postlab
             ls -lh postlab-${{ matrix.target }}.tar.gz
           else
             echo "Binary not found at $BIN"
@@ -76,7 +70,6 @@ jobs:
           path: postlab-${{ matrix.target }}.tar.gz
 
   release:
-    # Only publish to GitHub release on tag pushes
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
@@ -104,4 +97,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
