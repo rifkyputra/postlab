@@ -37,31 +37,27 @@ impl FirewallManager for FirewalldManager {
     }
 
     async fn add_rule(&self, port: &str, proto: &str, _from: &str, action: &str) -> Result<()> {
-        if action.to_lowercase() == "deny" {
-            // Rich rule for reject
-            let rule = format!(
-                "rule family=ipv4 port port=\"{}\" protocol=\"{}\" reject",
-                port, proto
-            );
-            tokio::process::Command::new("firewall-cmd")
-                .args(["--add-rich-rule", &rule, "--permanent"])
-                .output()
-                .await?;
+        // firewalld requires an explicit protocol; "any" maps to both tcp and udp.
+        let single = [proto];
+        let protos: &[&str] = if proto == "any" || proto.is_empty() {
+            &["tcp", "udp"]
         } else {
-            let spec = if proto == "any" || proto.is_empty() {
-                port.to_string()
+            &single
+        };
+        let deny = action.to_lowercase() == "deny";
+        for p in protos {
+            if deny {
+                let rule = format!(
+                    "rule family=\"ipv4\" port port=\"{}\" protocol=\"{}\" reject",
+                    port, p
+                );
+                run_firewall_cmd(&["--add-rich-rule", rule.as_str(), "--permanent"]).await?;
             } else {
-                format!("{}/{}", port, proto)
-            };
-            tokio::process::Command::new("firewall-cmd")
-                .args(["--add-port", &spec, "--permanent"])
-                .output()
-                .await?;
+                let spec = format!("{}/{}", port, p);
+                run_firewall_cmd(&["--add-port", spec.as_str(), "--permanent"]).await?;
+            }
         }
-        tokio::process::Command::new("firewall-cmd")
-            .arg("--reload")
-            .output()
-            .await?;
+        run_firewall_cmd(&["--reload"]).await?;
         Ok(())
     }
 
@@ -72,47 +68,47 @@ impl FirewallManager for FirewalldManager {
             .find(|r| r.num == num)
             .ok_or_else(|| anyhow::anyhow!("Rule {} not found", num))?;
 
-        if rule.action.to_lowercase().contains("deny")
-            || rule.action.to_lowercase().contains("reject")
-        {
-            let (port, proto) = split_port_proto(&rule.to);
-            let rich = format!(
-                "rule family=ipv4 port port=\"{}\" protocol=\"{}\" reject",
-                port, proto
-            );
-            tokio::process::Command::new("firewall-cmd")
-                .args(["--remove-rich-rule", &rich, "--permanent"])
-                .output()
-                .await?;
+        // Rich rules are stored verbatim as firewalld reports them (they start
+        // with "rule "); remove them as-is. Simple ports are stored as "port/proto".
+        if rule.to.starts_with("rule ") {
+            run_firewall_cmd(&["--remove-rich-rule", rule.to.as_str(), "--permanent"]).await?;
         } else {
-            tokio::process::Command::new("firewall-cmd")
-                .args(["--remove-port", &rule.to, "--permanent"])
-                .output()
-                .await?;
+            run_firewall_cmd(&["--remove-port", rule.to.as_str(), "--permanent"]).await?;
         }
-        tokio::process::Command::new("firewall-cmd")
-            .arg("--reload")
-            .output()
-            .await?;
+        run_firewall_cmd(&["--reload"]).await?;
         Ok(())
     }
 
     async fn set_enabled(&self, enabled: bool) -> Result<()> {
         let action = if enabled { "start" } else { "stop" };
-        tokio::process::Command::new("systemctl")
+        let out = tokio::process::Command::new("systemctl")
             .args([action, "firewalld"])
             .output()
             .await?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "systemctl {} firewalld: {}",
+                action,
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
         Ok(())
     }
 }
 
-fn split_port_proto(spec: &str) -> (&str, &str) {
-    if let Some(idx) = spec.find('/') {
-        (&spec[..idx], &spec[idx + 1..])
-    } else {
-        (spec, "tcp")
+async fn run_firewall_cmd(args: &[&str]) -> Result<()> {
+    let out = tokio::process::Command::new("firewall-cmd")
+        .args(args)
+        .output()
+        .await?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "firewall-cmd {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
+    Ok(())
 }
 
 fn parse_firewalld_rules(ports_text: &str, rich_text: &str) -> Vec<FirewallRule> {

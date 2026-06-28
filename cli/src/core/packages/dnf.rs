@@ -85,9 +85,17 @@ impl PackageManager for DnfManager {
     }
 
     async fn list_upgradable(&self) -> Result<Vec<UpgradablePackage>> {
-        let out = run_cmd(self.bin, &["check-update"])
-            .await
-            .unwrap_or_default();
+        // `dnf check-update` exits 100 when updates are available, 0 when none,
+        // and anything else on a real error — so we can't route it through run_cmd.
+        let output = tokio::process::Command::new(self.bin)
+            .arg("check-update")
+            .output()
+            .await?;
+        let code = output.status.code().unwrap_or(-1);
+        if code != 0 && code != 100 {
+            return Ok(Vec::new());
+        }
+        let out = String::from_utf8_lossy(&output.stdout);
         Ok(out
             .lines()
             .filter_map(|line| {
@@ -97,6 +105,10 @@ impl PackageManager for DnfManager {
                     return None;
                 }
                 let name_arch = parts[0];
+                // Skip header/status lines ("Last metadata…", "Obsoleting Packages").
+                if !name_arch.contains('.') {
+                    return None;
+                }
                 let name = name_arch.split('.').next()?.to_string();
                 let new_ver = parts[1].to_string();
                 let repo = parts[2].to_string();
