@@ -78,6 +78,7 @@ pub enum SystemTab {
     Users,
     Swap,
     Storage,
+    Hardware,
 }
 
 impl SystemTab {
@@ -89,6 +90,7 @@ impl SystemTab {
             SystemTab::Users,
             SystemTab::Swap,
             SystemTab::Storage,
+            SystemTab::Hardware,
         ]
     }
 
@@ -100,6 +102,7 @@ impl SystemTab {
             SystemTab::Users => "Users",
             SystemTab::Swap => "Swap",
             SystemTab::Storage => "Storage",
+            SystemTab::Hardware => "Hardware",
         }
     }
 
@@ -485,6 +488,10 @@ pub enum TaskResult {
     UpdatesOpDone { success: bool },
     SwapLoaded(SwapStatus),
     SwapOpDone { op: String, success: bool },
+    SensorsLoaded(crate::core::models::SensorReadings),
+    LoadLoaded(crate::core::models::LoadAvg),
+    BootLoaded(crate::core::models::BootAnalysis),
+    HardwareOpDone { op: String, success: bool },
     ProjectsList(Vec<crate::core::projects::ProjectEntry>),
     ProjectsOpProgress { op: String, line: String },
     ProjectsOpDone { op: String, name: String, success: bool },
@@ -1259,6 +1266,20 @@ impl Default for StorageState {
     }
 }
 
+// ── Hardware state ───────────────────────────────────────────────────────────
+#[derive(Default)]
+pub struct HardwareState {
+    pub sensors: Option<crate::core::models::SensorReadings>,
+    pub load: Option<crate::core::models::LoadAvg>,
+    pub load_history: std::collections::VecDeque<f64>,
+    pub boot: Option<crate::core::models::BootAnalysis>,
+    pub sensors_loading: bool,
+    pub load_loading: bool,
+    pub boot_loading: bool,
+    pub installing: bool,
+    pub poll_counter: u8,
+}
+
 // ── Users state ─────────────────────────────────────────────────────────────
 pub struct UsersState {
     pub users: Vec<UserInfo>,
@@ -1738,6 +1759,7 @@ pub struct App {
     pub agent: AgentState,
     pub swap: SwapState,
     pub storage: StorageState,
+    pub hardware: HardwareState,
     pub projects: ProjectsState,
 
     pub terminal_width: u16,
@@ -1785,6 +1807,7 @@ impl App {
             agent: AgentState::default(),
             swap: SwapState::default(),
             storage: StorageState::default(),
+            hardware: HardwareState::default(),
             projects: ProjectsState::default(),
             task_tx,
             task_rx,
@@ -1905,6 +1928,7 @@ impl App {
             SystemTab::Users => self.spawn_load_users(),
             SystemTab::Swap => self.spawn_load_swap(),
             SystemTab::Storage => self.spawn_load_storage(),
+            SystemTab::Hardware => self.spawn_load_hardware(),
         }
     }
 
@@ -3503,6 +3527,77 @@ impl App {
         });
     }
 
+    // ── Hardware spawn methods ───────────────────────────────────────────
+
+    pub fn spawn_load_hardware(&mut self) {
+        self.hardware.sensors_loading = true;
+        self.hardware.load_loading = true;
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::hardware::read_sensors().await {
+                Ok(s) => {
+                    let _ = tx.send(TaskResult::SensorsLoaded(s));
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+        let tx2 = self.task_tx.clone();
+        tokio::spawn(async move {
+            match crate::core::hardware::read_load().await {
+                Ok(l) => {
+                    let _ = tx2.send(TaskResult::LoadLoaded(l));
+                }
+                Err(e) => {
+                    let _ = tx2.send(TaskResult::Error(e.to_string()));
+                }
+            }
+        });
+        // Boot timing is fixed for the session — fetch it only once.
+        if self.hardware.boot.is_none() {
+            self.hardware.boot_loading = true;
+            let tx3 = self.task_tx.clone();
+            tokio::spawn(async move {
+                match crate::core::hardware::read_boot().await {
+                    Ok(b) => {
+                        let _ = tx3.send(TaskResult::BootLoaded(b));
+                    }
+                    Err(e) => {
+                        let _ = tx3.send(TaskResult::Error(e.to_string()));
+                    }
+                }
+            });
+        }
+    }
+
+    pub fn spawn_install_sensors(&mut self) {
+        let platform = Arc::clone(&self.platform);
+        let tx = self.task_tx.clone();
+        self.hardware.installing = true;
+        tokio::spawn(async move {
+            let pkg = match crate::core::platform::OsFamily::detect() {
+                crate::core::platform::OsFamily::Debian => "lm-sensors",
+                _ => "lm_sensors",
+            };
+            match platform.packages.install(pkg).await {
+                Ok(_) => {
+                    let _ = tx.send(TaskResult::HardwareOpDone {
+                        op: "install lm-sensors".into(),
+                        success: true,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(TaskResult::Error(e.to_string()));
+                    let _ = tx.send(TaskResult::HardwareOpDone {
+                        op: "install lm-sensors".into(),
+                        success: false,
+                    });
+                }
+            }
+        });
+    }
+
     pub fn spawn_storage_mount(&mut self, device: String, mountpoint: String) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
@@ -5037,6 +5132,33 @@ impl App {
                 });
                 self.spawn_load_swap();
             }
+            TaskResult::SensorsLoaded(sensors) => {
+                self.hardware.sensors = Some(sensors);
+                self.hardware.sensors_loading = false;
+            }
+            TaskResult::LoadLoaded(load) => {
+                self.hardware.load_history.push_back(load.one);
+                while self.hardware.load_history.len() > 60 {
+                    self.hardware.load_history.pop_front();
+                }
+                self.hardware.load = Some(load);
+                self.hardware.load_loading = false;
+            }
+            TaskResult::BootLoaded(boot) => {
+                self.hardware.boot = Some(boot);
+                self.hardware.boot_loading = false;
+            }
+            TaskResult::HardwareOpDone { op, success } => {
+                self.hardware.installing = false;
+                self.status_msg = Some(if success {
+                    format!("{} succeeded", op)
+                } else {
+                    format!("{} FAILED", op)
+                });
+                if success {
+                    self.spawn_load_hardware();
+                }
+            }
             TaskResult::ProjectsList(list) => {
                 self.projects.list = list;
                 self.projects.loading = false;
@@ -5206,6 +5328,13 @@ impl App {
                 self.agent.poll_counter = self.agent.poll_counter.wrapping_add(1);
                 if self.agent.poll_counter.is_multiple_of(40) {
                     self.spawn_load_pi_agent_status();
+                }
+            }
+            Screen::System if self.system_tab == SystemTab::Hardware => {
+                // Re-sample sensors + load average ~every second for the sparkline.
+                self.hardware.poll_counter = self.hardware.poll_counter.wrapping_add(1);
+                if self.hardware.poll_counter.is_multiple_of(4) {
+                    self.spawn_load_hardware();
                 }
             }
             _ => {}
