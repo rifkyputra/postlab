@@ -1749,6 +1749,7 @@ pub struct App {
 
     pub overlay: AgentOverlayState,
     pub confirm: Option<ConfirmDialog>,
+    pub help_open: bool,
     pub status_msg: Option<String>,
     pub last_tick: Instant,
     /// Set to true to suspend the TUI and run `cloudflared tunnel login` in the foreground.
@@ -1790,6 +1791,7 @@ impl App {
             scheduler_tick: 0,
             overlay: AgentOverlayState::default(),
             confirm: None,
+            help_open: false,
             status_msg: None,
             last_tick: Instant::now(),
             terminal_width: 0,

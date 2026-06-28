@@ -92,6 +92,10 @@ async fn run_loop(
             if let Some(confirm) = &app.confirm {
                 render_confirm_dialog(f, confirm, area);
             }
+
+            if app.help_open {
+                render_help_overlay(f, area);
+            }
         })?;
 
         // Poll for events
@@ -180,7 +184,7 @@ fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     let msg = app
         .status_msg
         .as_deref()
-        .unwrap_or("[q] quit  [1-9] screens  [Tab] next  [←/→] switch tabs");
+        .unwrap_or("[q] quit  [1-9] screens  [Tab] next  [←/→] tabs  [?] help");
     let style = if app.status_msg.is_some() {
         Style::default().fg(Color::Yellow)
     } else {
@@ -276,5 +280,88 @@ fn render_confirm_dialog(
     let p = Paragraph::new(dialog.message.as_str())
         .style(Style::default().fg(Color::Yellow))
         .block(Block::default().borders(Borders::ALL).title(" Confirm "));
+    f.render_widget(p, popup);
+}
+
+#[rustfmt::skip]
+fn render_help_overlay(f: &mut ratatui::Frame, area: Rect) {
+    let help: &[(&str, &[(&str, &str)])] = &[
+        ("Global", &[
+            ("q", "Quit"),
+            ("1…9", "Jump to screen"),
+            ("Tab / Shift+Tab", "Next / previous screen"),
+            ("a", "Ask Pi Agent (overlay)"),
+            ("s", "Jump to System screen"),
+            ("←/→ or H/L", "Switch tabs within screen"),
+            ("r / R", "Refresh current screen"),
+            ("?", "Toggle this help"),
+            ("Esc", "Close overlay / cancel input"),
+        ]),
+        ("Lists & Tables", &[
+            ("↑/↓", "Navigate items"),
+            ("Space", "Toggle selection"),
+            ("Enter", "Confirm action"),
+            ("PageUp/PageDown", "Scroll output"),
+        ]),
+        ("Screen-specific", &[
+            ("Dashboard → Processes:  c m p", "Sort by CPU / Memory / PID"),
+            ("Dashboard → Processes:  k", "Kill selected process"),
+            ("Packages:  /", "Search / filter"),
+            ("Packages → Queue:  d", "Remove selected packages"),
+            ("Packages → Updates:  u U", "Upgrade selected / all"),
+            ("Security → Findings:  s", "Re-scan"),
+            ("Security → Firewall:  a D", "Add / Delete rule"),
+            ("Security → Fail2Ban:  f b", "Forgive / Banish IP"),
+            ("Networking → Gateway:  a D", "Add / Delete route"),
+            ("Networking → Tunnel:  a D d f e", "Add/Del tunnel, Add/Del ingress, Toggle focus, Edit"),
+            ("Docker → Containers:  s x r", "Start / Stop / Remove"),
+            ("Docker → Workloads:  a e D", "Create / Edit / Delete"),
+            ("System → Services:  s k r e d", "Start / Stop / Restart / Enable / Disable"),
+            ("System → Ghosts:  k", "Kill ghost process"),
+            ("System → Users:  a p r", "Add user / Set password / Remove"),
+            ("System → Storage:  m u", "Mount / Unmount"),
+            ("System → Storage:  t", "Toggle fstab view"),
+        ]),
+    ];
+
+    let max_w = help.iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .map(|(key, desc)| format!("  {}  {}", key, desc).len())
+        .max()
+        .unwrap_or(40) as u16;
+    let w = (max_w + 6).min(area.width.saturating_sub(4)).max(40);
+    let mut h = 2u16; // top + bottom border
+    for (_, rows) in help {
+        h += 1; // section header
+        h += rows.len() as u16;
+    }
+    let h = h.min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    let popup = Rect { x, y, width: w, height: h };
+
+    f.render_widget(Clear, popup);
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (section, rows) in help {
+        lines.push(Line::from(vec![
+            Span::styled(*section, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ]));
+        for (key, desc) in *rows {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(*key, Style::default().fg(Color::Cyan)),
+                Span::raw("  "),
+                Span::raw(*desc),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("Press ? or Esc to close", Style::default().fg(Color::DarkGray)),
+    ]));
+
+    let p = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(" Help "));
     f.render_widget(p, popup);
 }

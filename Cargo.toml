@@ -24,6 +24,7 @@ axum               = { version = "0.7", features = ["macros"] }
 tower              = "0.4"
 tower-http         = { version = "0.5", features = ["cors", "trace"] }
 clap               = { version = "4", features = ["derive"] }
+clap_complete      = "4"
 dialoguer          = "0.11"
 indicatif          = "0.17"
 console            = "0.15"
