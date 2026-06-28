@@ -10,8 +10,12 @@ use crate::core::storage;
 use crate::db::init_db;
 
 #[derive(Parser)]
-#[command(name = "postlab")]
-#[command(about = "Interactive bare metal server manager", long_about = None)]
+#[command(name = "postlab", version)]
+#[command(
+    about = "Interactive bare-metal server manager — launch the TUI or run one-shot commands",
+    after_help = "Examples:\n  sudo postlab                     Launch interactive TUI\n  sudo postlab info                Quick system summary\n  sudo postlab packages search nginx\n  sudo postlab completions bash    Generate shell completions",
+    long_about = None,
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -54,6 +58,11 @@ enum Commands {
     Storage {
         #[command(subcommand)]
         cmd: StorageCmd,
+    },
+    /// Generate shell completion script for the given shell
+    Completions {
+        /// Shell to generate completions for (bash, zsh, fish, elvish, powershell)
+        shell: String,
     },
 }
 
@@ -189,12 +198,34 @@ enum ServicesCmd {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // Commands that don't need root
+    if let Some(Commands::Completions { shell }) = &cli.command {
+        use clap_complete::Shell;
+        let sh = match shell.as_str() {
+            "bash" => Shell::Bash,
+            "zsh" => Shell::Zsh,
+            "fish" => Shell::Fish,
+            "elvish" => Shell::Elvish,
+            "powershell" => Shell::PowerShell,
+            other => {
+                eprintln!(
+                    "Unknown shell: {}. Supported: bash, zsh, fish, elvish, powershell",
+                    other
+                );
+                std::process::exit(1);
+            }
+        };
+        let mut cmd = <Cli as clap::CommandFactory>::command();
+        clap_complete::generate(sh, &mut cmd, "postlab", &mut std::io::stdout());
+        return Ok(());
+    }
+
     if !nix::unistd::Uid::effective().is_root() {
         eprintln!("postlab must run as root. Try: sudo postlab");
         std::process::exit(1);
     }
-
-    let cli = Cli::parse();
 
     let db_path = expand_tilde(&cli.database);
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
@@ -404,6 +435,9 @@ async fn main() -> Result<()> {
             }
         },
 
+        Some(Commands::Completions { .. }) => {
+            unreachable!("handled before root check")
+        }
         Some(Commands::Tui) | None => tui::run(platform, pool).await,
 
         Some(Commands::Storage { cmd }) => match cmd {

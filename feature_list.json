@@ -11,6 +11,10 @@
       "description": "Launch interactive TUI explicitly"
     },
     {
+      "command": "postlab completions <shell>",
+      "description": "Generate shell completion script (bash, zsh, fish, elvish, powershell)"
+    },
+    {
       "command": "postlab info",
       "description": "Print OS, kernel, CPU, memory, and uptime (alias for postlab system info)"
     },

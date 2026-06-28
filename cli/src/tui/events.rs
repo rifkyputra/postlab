@@ -15,6 +15,18 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         return handle_confirm(app, key);
     }
 
+    // 1a. Help overlay toggle (works alongside confirm but before other input modes)
+    if key.code == KeyCode::Char('?') {
+        app.help_open = !app.help_open;
+        return false;
+    }
+    if app.help_open {
+        if key.code == KeyCode::Esc {
+            app.help_open = false;
+        }
+        return false;
+    }
+
     // 1b. Agent overlay takes priority when open
     if app.overlay.open {
         handle_overlay_input(app, key);
