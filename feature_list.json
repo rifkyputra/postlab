@@ -1,10 +1,14 @@
 {
   "project": "postlab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "cli_commands": [
     {
       "command": "postlab",
       "description": "Launch interactive TUI (default)"
+    },
+    {
+      "command": "postlab tui",
+      "description": "Launch interactive TUI explicitly"
     },
     {
       "command": "postlab info",
@@ -20,7 +24,7 @@
     },
     {
       "command": "postlab packages",
-      "description": "Package management: list, search, install, remove, upgrade, cache-clean"
+      "description": "Package management: list, search, install, remove, upgrade, cache-clean, list-upgradable"
     },
     {
       "command": "postlab processes",
@@ -33,10 +37,6 @@
     {
       "command": "postlab storage",
       "description": "Storage diagnostics: list filesystems (device, mount, size, usage, fs type) and physical disks with SMART health"
-    },
-    {
-      "command": "postlab packages list-upgradable",
-      "description": "List available package upgrades with current/new versions and security flagging"
     }
   ],
   "screens": [
@@ -331,7 +331,7 @@
     }
   ],
   "deployments": {
-    "description": "Git-based deployment manager accessible from the automation screen",
+    "description": "Git-based deployment manager (not yet wired into a TUI screen)",
     "actions": ["add", "reload", "update", "teardown", "delete"]
   }
 }
