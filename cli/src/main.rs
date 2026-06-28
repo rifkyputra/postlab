@@ -78,6 +78,12 @@ enum SystemCmd {
     Disks,
     /// Network RX/TX bytes
     Net,
+    /// CPU temperatures and fan speeds
+    Sensors,
+    /// Load average (1/5/15 min)
+    Load,
+    /// Boot-time breakdown (systemd-analyze)
+    Boot,
     /// Swap management
     #[command(subcommand)]
     Swap(SwapCmd),
@@ -245,6 +251,9 @@ async fn main() -> Result<()> {
             SystemCmd::Mem => cmd_mem(&platform).await,
             SystemCmd::Disks => cmd_disks(&platform).await,
             SystemCmd::Net => cmd_net(&platform).await,
+            SystemCmd::Sensors => cmd_sensors().await,
+            SystemCmd::Load => cmd_load().await,
+            SystemCmd::Boot => cmd_boot().await,
             SystemCmd::Swap(swap_cmd) => match swap_cmd {
                 SwapCmd::Status => cmd_swap_status(&platform).await,
                 SwapCmd::Create { path, size_mb } => {
@@ -600,6 +609,59 @@ async fn cmd_swap_status(platform: &crate::core::Platform) -> Result<()> {
                 format_bytes(e.used_bytes),
                 e.priority,
             );
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_sensors() -> Result<()> {
+    use crate::core::models::SensorKind;
+    let s = crate::core::hardware::read_sensors().await?;
+    if s.readings.is_empty() {
+        println!("No sensors found.");
+        if !s.sensors_tool {
+            println!("Install lm-sensors and run sensors-detect to expose more sensors.");
+        }
+        return Ok(());
+    }
+    println!("{:<20} {:<16} {:>10}", "CHIP", "LABEL", "VALUE");
+    for r in &s.readings {
+        let value = match r.kind {
+            SensorKind::Temp => format!("{:.1} {}", r.value, r.unit),
+            SensorKind::Fan => format!("{:.0} {}", r.value, r.unit),
+        };
+        println!(
+            "{:<20} {:<16} {:>10}",
+            truncate_str(&r.chip, 20),
+            truncate_str(&r.label, 16),
+            value,
+        );
+    }
+    Ok(())
+}
+
+async fn cmd_load() -> Result<()> {
+    let l = crate::core::hardware::read_load().await?;
+    println!("Load average: {:.2} {:.2} {:.2} (1/5/15 min)", l.one, l.five, l.fifteen);
+    println!("Processes:    {} running / {} total", l.running, l.total);
+    Ok(())
+}
+
+async fn cmd_boot() -> Result<()> {
+    let b = crate::core::hardware::read_boot().await?;
+    println!("Total boot:   {:.3}s", b.total_secs);
+    if b.firmware_secs > 0.0 {
+        println!("  firmware:   {:.3}s", b.firmware_secs);
+    }
+    if b.loader_secs > 0.0 {
+        println!("  loader:     {:.3}s", b.loader_secs);
+    }
+    println!("  kernel:     {:.3}s", b.kernel_secs);
+    println!("  userspace:  {:.3}s", b.userspace_secs);
+    if !b.units.is_empty() {
+        println!("\n{:>10}  UNIT", "TIME");
+        for u in &b.units {
+            println!("{:>9.3}s  {}", u.secs, u.name);
         }
     }
     Ok(())

@@ -443,6 +443,17 @@ fn handle_system_key(app: &mut App, key: KeyEvent) {
         SystemTab::Users => handle_users_key(app, key),
         SystemTab::Swap => handle_swap_key(app, key),
         SystemTab::Storage => handle_storage_key(app, key),
+        SystemTab::Hardware => handle_hardware_key(app, key),
+    }
+}
+
+fn handle_hardware_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('r') | KeyCode::Char('R') => app.spawn_load_hardware(),
+        KeyCode::Char('i') if !app.hardware.installing => {
+            app.spawn_install_sensors();
+        }
+        _ => {}
     }
 }
 

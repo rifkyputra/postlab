@@ -24,7 +24,7 @@
     },
     {
       "command": "postlab system",
-      "description": "System diagnostics: info, cpu, mem, disks, net, swap (status/create/delete/enable/disable/resize)"
+      "description": "System diagnostics: info, cpu, mem, disks, net, sensors, load, boot, swap (status/create/delete/enable/disable/resize); [planned] gpu, hardware inventory"
     },
     {
       "command": "postlab packages",
@@ -303,6 +303,11 @@
           "id": "storage",
           "name": "Storage",
           "description": "Browse mounted filesystems, view disk health (SMART), mount/unmount volumes, inspect /etc/fstab"
+        },
+        {
+          "id": "hardware",
+          "name": "Hardware",
+          "description": "Sensors (CPU temps, fan speeds via /sys/class/hwmon or lm-sensors), load average history sparkline, and boot-time breakdown (systemd-analyze); [i] one-click installs lm-sensors. [planned] GPU info (nvidia-smi / lspci) and hardware inventory (motherboard, BIOS, RAM, PCI)"
         }
       ]
     },

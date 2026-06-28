@@ -4,6 +4,7 @@ pub mod docker;
 pub mod firewall;
 pub mod gateway;
 pub mod ghost;
+pub mod hardware;
 pub mod maintenance;
 pub mod networking;
 pub mod packages;

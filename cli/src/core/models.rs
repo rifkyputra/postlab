@@ -344,6 +344,54 @@ pub struct SwapStatus {
     pub entries: Vec<SwapEntry>,
 }
 
+// ── Hardware / extended system info ────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SensorKind {
+    Temp,
+    Fan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensorReading {
+    pub chip: String,
+    pub label: String,
+    pub kind: SensorKind,
+    pub value: f64,
+    pub unit: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SensorReadings {
+    pub readings: Vec<SensorReading>,
+    pub sensors_tool: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LoadAvg {
+    pub one: f64,
+    pub five: f64,
+    pub fifteen: f64,
+    pub running: u32,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BootUnit {
+    pub name: String,
+    pub secs: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BootAnalysis {
+    pub total_secs: f64,
+    pub firmware_secs: f64,
+    pub loader_secs: f64,
+    pub kernel_secs: f64,
+    pub userspace_secs: f64,
+    pub units: Vec<BootUnit>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,

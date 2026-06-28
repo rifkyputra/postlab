@@ -47,7 +47,7 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 | **5. Docker** | Containers, Images, Compose, Workloads, Managed | Manage Docker or Podman lifecycle, view image sizes, control Compose stacks, host-managed workloads, and one-click dev services (PostgreSQL, Redis, RabbitMQ, etc.). |
 | **6. wasmCloud** | Hosts, Components, Apps, Inspector | Manage wasmCloud lattices, host nodes, components, and applications. NATS backbone health and interactive inspector. |
 | **7. Agent** | Chat, Tools, Tasks, Status, Sessions, Config, Auth, Skills, Library, Logs | Interactive chat with pi agent; tool execution log; background task scheduler; install/update management; session browser; config/auth viewer; skill library with one-click install; live log tail. |
-| **8. System** | Ghosts, Janitor, Services, Users, Swap, Storage | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable; filesystem browser with mount/unmount, physical disk SMART health, and /etc/fstab viewer. |
+| **8. System** | Ghosts, Janitor, Services, Users, Swap, Storage, Hardware | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable; filesystem browser with mount/unmount, physical disk SMART health, and /etc/fstab viewer; hardware sensors (temps/fans), load-average history, and boot-time breakdown. |
 | **9. Projects** | Projects, New, Clone, Settings | Browse local projects by last modified time; scaffold a new app via create-better-t-stack; clone a GitHub repo by shorthand or URL; configure the projects directory. |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
@@ -221,6 +221,9 @@ sudo postlab --database /var/lib/postlab/data.db
 | `s` / `k` / `r` | Service list | Start / stop / restart selected unit |
 | `e` / `d` | Service list | Enable / disable selected unit |
 | `c` | Janitor tab | Clean package manager caches |
+| **System → Hardware** |||
+| `R` / `r` | Hardware tab | Reload sensors and load average |
+| `i` | Hardware tab | Install lm-sensors |
 | **Projects** |||
 | `p` | Projects tab | git pull in selected project |
 | `c` | Clone tab | Clone (after entering repo URL) |
@@ -337,6 +340,8 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 - [ ] **SSH config hardening** — Full sshd_config audit, key rotation, and MFA setup.
 - [ ] **Audit log** — Expose the SQLite audit trail as a TUI screen with filtering by action, user, and time range.
 - [ ] **Plugin system** — Extensible plugin architecture for custom screens, package adapters, and firewall backends.
+- [x] **System info** — `postlab system sensors / load / boot` subcommands and a new **Hardware** tab in the System TUI screen (8): CPU temps and fan speeds, load average history sparkline, and a `systemd-analyze` boot-time breakdown.
+- [ ] **Hardware inventory & GPU** — Extend the Hardware tab and `postlab system` with GPU details (nvidia-smi / lspci) and motherboard/BIOS/RAM/PCI inventory.
 
 ---
 
