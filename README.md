@@ -335,6 +335,8 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 - [ ] **Web API** (axum) — Expose `core::Platform` over HTTP.
 - [ ] **Multi-service workloads** — Compose-level service graphs in the Workloads tab.
 - [ ] **SSH config hardening** — Full sshd_config audit, key rotation, and MFA setup.
+- [ ] **Audit log** — Expose the SQLite audit trail as a TUI screen with filtering by action, user, and time range.
+- [ ] **Plugin system** — Extensible plugin architecture for custom screens, package adapters, and firewall backends.
 
 ---
 
