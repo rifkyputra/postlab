@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>postlab</title>
+		<link href="./_app/immutable/entry/start.Cty-IJUF.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/Bss-66jh.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/D4Zg10cv.js" rel="modulepreload">
+		<link href="./_app/immutable/entry/app.BX0XgnPI.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/DYl5dUZ5.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/0.DAUXMymP.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/2.CZ860TeZ.js" rel="modulepreload">
+		<!--1uha8ag--><meta name="description" content="Interactive TUI server manager. Single binary. Runs anywhere."/><!----><title>postlab — bare-metal server manager</title>
+		<link href="./_app/immutable/assets/0.Ck3Y-264.css" rel="stylesheet">
+	</head>
+	<body>
+		<div style="display: contents"><!--[--><!--[0--><!--[--><main class="container"><!--[--><section class="hero"><h1>postlab</h1> <p class="tagline">Interactive bare-metal server manager</p> <p class="sub">Single binary. Cross-platform. Runs as root. <code>~8 MB</code>.</p> <div class="hero-buttons"><a href="#install" class="btn">Install</a> <a href="https://github.com/rifkyputra/postlab" class="btn outline">GitHub</a></div></section> <section id="install"><h2>Install</h2> <pre><code>curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | bash</code></pre> <p>Or download a <a href="https://github.com/rifkyputra/postlab/releases">release binary</a>.</p> <p>Launch: <code>sudo postlab</code></p></section> <section id="cli"><h2>CLI</h2> <p>Run one-shot commands without the TUI:</p> <pre><code>sudo postlab info                  # system summary
+sudo postlab packages search nginx
+sudo postlab processes list --sort mem
+sudo postlab services list
+sudo postlab containers list</code></pre></section> <section id="screens"><h2>Screens</h2> <p>Press <kbd>1</kbd>–<kbd>9</kbd> to switch. <kbd>?</kbd> for help.</p> <div class="grid"><!--[--><div class="card"><h3><span class="key">1</span> Dashboard</h3> <p>Live CPU, memory, disk gauges. Process table. Per-core sparklines.</p></div><div class="card"><h3><span class="key">2</span> Packages</h3> <p>Install, remove, search. Batch queue. Security-update flags.</p></div><div class="card"><h3><span class="key">3</span> Security</h3> <p>Auto-scan findings with one-click fixes. Firewall, SSH, Fail2Ban.</p></div><div class="card"><h3><span class="key">4</span> Networking</h3> <p>Caddy reverse proxy. Cloudflare Tunnels. Tailscale VPN.</p></div><div class="card"><h3><span class="key">5</span> Docker</h3> <p>Containers, images, compose. Managed one-click dev services.</p></div><div class="card"><h3><span class="key">6</span> wasmCloud</h3> <p>Hosts, components, apps. Lattice inspector.</p></div><div class="card"><h3><span class="key">7</span> Agent</h3> <p>Interactive pi agent chat. Scheduled tasks. Skill library.</p></div><div class="card"><h3><span class="key">8</span> System</h3> <p>Services, users, swap, storage, ghost process hunter.</p></div><div class="card"><h3><span class="key">9</span> Projects</h3> <p>Clone repos, scaffold apps. Git-backed project browser.</p></div><!--]--></div></section> <section id="features"><h2>Highlights</h2> <div class="grid"><div class="card"><h3>🛡️ Security first</h3> <p>Auto-scan on first visit. One-click fixes. Timestamped <code>.bak</code> backups before every change.</p></div> <div class="card"><h3>⚡ Non-blocking</h3> <p>Every operation runs in the background. The TUI stays responsive while installing packages or pulling images.</p></div> <div class="card"><h3>🌐 Cross-platform</h3> <p>Linux (apt, dnf, pacman) and macOS (brew). Auto-detects package manager, firewall, init system.</p></div> <div class="card"><h3>🧠 AI agent built in</h3> <p>Chat with pi agent from the TUI. Schedule background tasks. Install skills from the library.</p></div> <div class="card"><h3>📦 One-click services</h3> <p>PostgreSQL, Redis, MySQL, MongoDB, MinIO — deploy with a single keypress.</p></div> <div class="card"><h3>🏗️ Project scaffolding</h3> <p>Clone repos by <code>user/repo</code> shorthand. Scaffold full-stack apps with create-better-t-stack.</p></div></div></section> <section id="cli-table"><h2>All CLI commands</h2> <table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>sudo postlab</code></td><td>Launch TUI</td></tr><tr><td><code>postlab info</code></td><td>OS, kernel, CPU, memory, uptime</td></tr><tr><td><code>postlab list</code></td><td>Installed packages</td></tr><tr><td><code>postlab system info|cpu|mem|disks|net|swap</code></td><td>System diagnostics</td></tr><tr><td><code>postlab packages search|install|remove|upgrade</code></td><td>Package management</td></tr><tr><td><code>postlab processes list|kill</code></td><td>Process management</td></tr><tr><td><code>postlab services list|start|stop|restart</code></td><td>Service management</td></tr><tr><td><code>postlab storage list</code></td><td>Filesystems + disk health</td></tr><tr><td><code>postlab completions bash|zsh|fish</code></td><td>Shell completions</td></tr></tbody></table></section><!--]--><!----></main> <footer><p><a href="https://github.com/rifkyputra/postlab">GitHub</a></p></footer><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_1t0g1xz = {
+						base: new URL(".", location).pathname.slice(0, -1),
+						assets: "/postlab"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("./_app/immutable/entry/start.Cty-IJUF.js"),
+						import("./_app/immutable/entry/app.BX0XgnPI.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2],
+							data: [null,null],
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>
