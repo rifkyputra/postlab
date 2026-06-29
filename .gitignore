@@ -53,3 +53,6 @@ id_rsa
 id_ed25519
 
 .omx
+
+# pi-crew runtime state
+.crew/
