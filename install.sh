@@ -5,14 +5,31 @@ REPO="rifkyputra/postlab"
 DEST="${DEST:-/usr/local/bin/postlab}"
 VERSION="${VERSION:-latest}"
 
+# Use the fully static musl variant by default (works on any glibc version,
+# including CentOS Stream 9).  Override with VARIANT=gnu for the glibc-linked
+# binary (slightly smaller, but requires matching or newer glibc).
+VARIANT="${VARIANT:-musl}"
+
 # ── Detect OS + arch ────────────────────────────────────────────────────────
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "${OS}-${ARCH}" in
-  Linux-x86_64)              TRIPLE="x86_64-unknown-linux-gnu" ;;
-  Linux-aarch64|Linux-arm64) TRIPLE="aarch64-unknown-linux-gnu" ;;
+  Linux-x86_64)
+    if [ "${VARIANT}" = "gnu" ]; then
+      TRIPLE="x86_64-unknown-linux-gnu"
+    else
+      TRIPLE="x86_64-unknown-linux-musl"
+    fi
+    ;;
+  Linux-aarch64|Linux-arm64)
+    if [ "${VARIANT}" = "gnu" ]; then
+      TRIPLE="aarch64-unknown-linux-gnu"
+    else
+      TRIPLE="aarch64-unknown-linux-musl"
+    fi
+    ;;
   Darwin-arm64)              TRIPLE="aarch64-apple-darwin" ;;
   Darwin-x86_64)             TRIPLE="aarch64-apple-darwin" ;;   # Rosetta
   *)
