@@ -67,6 +67,13 @@ impl PackageManager for AptManager {
         if name == "claude-code" {
             return run_cmd("npm", &["install", "-g", "@anthropic-ai/claude-code"]).await;
         }
+        if name == "rust" {
+            return run_cmd(
+                "bash",
+                &["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+            )
+            .await;
+        }
         run_cmd("apt-get", &["install", "-y", name]).await
     }
 
@@ -100,6 +107,14 @@ impl PackageManager for AptManager {
         }
         if name == "claude-code" {
             return run_cmd_streaming("npm", &["install", "-g", "@anthropic-ai/claude-code"], tx).await;
+        }
+        if name == "rust" {
+            return run_cmd_streaming(
+                "bash",
+                &["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+                tx,
+            )
+            .await;
         }
         run_cmd_streaming("apt-get", &["install", "-y", name], tx).await
     }

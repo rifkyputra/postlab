@@ -111,7 +111,7 @@ pub const CURATED: &[CuratedCategory] = &[
     },
     CuratedCategory {
         name: "Dev Tools",
-        packages: &["claude-code"],
+        packages: &["claude-code", "rust"],
     },
     CuratedCategory {
         name: "Security",
