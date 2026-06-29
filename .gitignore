@@ -56,3 +56,10 @@ id_ed25519
 
 # pi-crew runtime state
 .crew/
+
+/.crew/
+/.crew
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep
