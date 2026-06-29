@@ -457,6 +457,10 @@ pub enum TaskResult {
     PiAgentSessions(Vec<crate::core::pi_agent::PiSession>),
     PiAgentConfig(String),
     PiAgentAuth(Vec<crate::core::pi_agent::PiAuthEntry>),
+    PiAgentModelLoaded { provider: String, model: String },
+    PiAgentModelSet { success: bool },
+    PiAgentLoginProgress(String),
+    PiAgentLoginDone { provider: String, success: bool },
     PiAgentSkills(Vec<crate::core::pi_agent::PiSkill>),
     PiAgentSkillRemoved { name: String, success: bool },
     PiAgentLibrarySkills(Vec<crate::core::pi_agent::LibrarySkill>),
@@ -1378,6 +1382,12 @@ pub struct AgentState {
     pub config_search_mode: InputMode,
     pub auth_entries: Vec<crate::core::pi_agent::PiAuthEntry>,
     pub auth_state: TableState,
+    pub auth_provider: String,
+    pub auth_model: String,
+    pub auth_model_input: String,
+    pub auth_model_input_mode: InputMode,
+    pub auth_login_output: Vec<String>,
+    pub auth_login_running: bool,
     pub skills: Vec<crate::core::pi_agent::PiSkill>,
     pub skills_state: TableState,
     pub skills_status: Option<String>,
@@ -1428,6 +1438,12 @@ impl Default for AgentState {
             config_search_mode: InputMode::Normal,
             auth_entries: Vec::new(),
             auth_state: TableState::default(),
+            auth_provider: String::new(),
+            auth_model: String::new(),
+            auth_model_input: String::new(),
+            auth_model_input_mode: InputMode::Normal,
+            auth_login_output: Vec::new(),
+            auth_login_running: false,
             skills: Vec::new(),
             skills_state: TableState::default(),
             skills_status: None,
@@ -4016,6 +4032,41 @@ impl App {
         });
     }
 
+    pub fn spawn_load_pi_agent_model(&mut self) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let (provider, model) = crate::core::pi_agent::default_provider_model().await;
+            let _ = tx.send(TaskResult::PiAgentModelLoaded { provider, model });
+        });
+    }
+
+    pub fn spawn_pi_set_model(&mut self, provider: String, model: String) {
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let success = crate::core::pi_agent::set_default_model(&provider, &model).await.is_ok();
+            let _ = tx.send(TaskResult::PiAgentModelSet { success });
+        });
+    }
+
+    pub fn spawn_pi_login(&mut self, provider: String) {
+        let tx = self.task_tx.clone();
+        self.agent.auth_login_running = true;
+        self.agent.auth_login_output.clear();
+        tokio::spawn(async move {
+            let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let tx_fwd = tx.clone();
+            let provider_fwd = provider.clone();
+            let fwd = tokio::spawn(async move {
+                while let Some(line) = prx.recv().await {
+                    let _ = tx_fwd.send(TaskResult::PiAgentLoginProgress(line));
+                }
+            });
+            let success = crate::core::pi_agent::pi_login(&provider, ptx).await.is_ok();
+            let _ = fwd.await;
+            let _ = tx.send(TaskResult::PiAgentLoginDone { provider: provider_fwd, success });
+        });
+    }
+
     pub fn spawn_load_pi_agent_skills(&mut self) {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
@@ -4280,6 +4331,7 @@ impl App {
 
     // ── Context overlay ───────────────────────────────────────────────────
 
+    #[allow(dead_code)]
     pub fn open_agent_overlay(&mut self) {
         let (label, context, question) = self.build_overlay_context();
         self.overlay.open = true;
@@ -4316,6 +4368,7 @@ impl App {
         self.set_screen(Screen::Agent);
     }
 
+    #[allow(dead_code)]
     fn build_overlay_context(&self) -> (String, String, String) {
         match &self.screen {
             Screen::Dashboard => {
@@ -4953,6 +5006,28 @@ impl App {
                 {
                     self.agent.auth_state.select(Some(0));
                 }
+            }
+            TaskResult::PiAgentModelLoaded { provider, model } => {
+                self.agent.auth_provider = provider;
+                self.agent.auth_model = model;
+            }
+            TaskResult::PiAgentModelSet { success } => {
+                let msg = if success { "Model saved.".to_string() } else { "Failed to save model.".to_string() };
+                self.agent.auth_login_output = vec![msg];
+                self.spawn_load_pi_agent_model();
+            }
+            TaskResult::PiAgentLoginProgress(line) => {
+                self.agent.auth_login_output.push(line);
+            }
+            TaskResult::PiAgentLoginDone { provider, success } => {
+                self.agent.auth_login_running = false;
+                let msg = if success {
+                    format!("Logged in to {}.", provider)
+                } else {
+                    format!("Login to {} failed.", provider)
+                };
+                self.agent.auth_login_output.push(msg);
+                self.spawn_load_pi_agent_auth();
             }
             TaskResult::PiAgentSkills(skills) => {
                 self.agent.skills = skills;

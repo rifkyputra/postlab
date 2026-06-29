@@ -52,6 +52,21 @@ impl PackageManager for AptManager {
     }
 
     async fn install(&self, name: &str) -> Result<String> {
+        if name == "nodejs" || name == "nsolid" {
+            let setup = run_cmd(
+                "bash",
+                &["-c", "curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -"],
+            )
+            .await?;
+            let install = run_cmd("apt-get", &["install", "-y", "nsolid"]).await?;
+            return Ok(format!("{setup}\n{install}"));
+        }
+        if name == "bun" {
+            return run_cmd("bash", &["-c", "curl -fsSL https://bun.sh/install | bash"]).await;
+        }
+        if name == "claude-code" {
+            return run_cmd("npm", &["install", "-g", "@anthropic-ai/claude-code"]).await;
+        }
         run_cmd("apt-get", &["install", "-y", name]).await
     }
 
@@ -64,6 +79,28 @@ impl PackageManager for AptManager {
         name: &str,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) -> Result<String> {
+        if name == "nodejs" || name == "nsolid" {
+            return run_cmd_streaming(
+                "bash",
+                &[
+                    "-c",
+                    "curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nsolid",
+                ],
+                tx,
+            )
+            .await;
+        }
+        if name == "bun" {
+            return run_cmd_streaming(
+                "bash",
+                &["-c", "curl -fsSL https://bun.sh/install | bash"],
+                tx,
+            )
+            .await;
+        }
+        if name == "claude-code" {
+            return run_cmd_streaming("npm", &["install", "-g", "@anthropic-ai/claude-code"], tx).await;
+        }
         run_cmd_streaming("apt-get", &["install", "-y", name], tx).await
     }
 

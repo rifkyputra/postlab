@@ -107,7 +107,11 @@ pub const CURATED: &[CuratedCategory] = &[
     },
     CuratedCategory {
         name: "Runtimes",
-        packages: &["podman", "nodejs", "nvm", "pm2", "python3", "golang"],
+        packages: &["podman", "nodejs", "nvm", "bun", "pm2", "python3", "golang"],
+    },
+    CuratedCategory {
+        name: "Dev Tools",
+        packages: &["claude-code"],
     },
     CuratedCategory {
         name: "Security",

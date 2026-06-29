@@ -63,3 +63,5 @@ id_ed25519
 !.crew/graphs/
 !.crew/artifacts/.gitkeep
 !.crew/graphs/.gitkeep
+.skynex/production-gate.json
+.skynex/audit.log

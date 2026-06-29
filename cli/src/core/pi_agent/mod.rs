@@ -273,6 +273,61 @@ pub async fn default_provider_model() -> (String, String) {
     (provider, model)
 }
 
+pub async fn set_default_model(provider: &str, model: &str) -> anyhow::Result<()> {
+    let path = config_path();
+    let mut v: serde_json::Value = if let Ok(content) = tokio::fs::read_to_string(&path).await {
+        serde_json::from_str(&content).unwrap_or(serde_json::Value::Object(Default::default()))
+    } else {
+        serde_json::Value::Object(Default::default())
+    };
+    let obj = v.as_object_mut().ok_or_else(|| anyhow::anyhow!("settings.json is not an object"))?;
+    obj.insert("defaultProvider".to_string(), serde_json::Value::String(provider.to_string()));
+    obj.insert("defaultModel".to_string(), serde_json::Value::String(model.to_string()));
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(&path, serde_json::to_string_pretty(&v)?).await?;
+    Ok(())
+}
+
+pub async fn pi_login(
+    provider: &str,
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> anyhow::Result<()> {
+    let pi = find_pi().await.ok_or_else(|| anyhow::anyhow!("pi not found — install Pi Agent first"))?;
+    let mut child = tokio::process::Command::new(&pi)
+        .args(["login", provider])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    if let Some(stdout) = child.stdout.take() {
+        let tx2 = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = tx2.send(line);
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let tx3 = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = tx3.send(line);
+            }
+        });
+    }
+    let status = child.wait().await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("pi login exited with error"))
+    }
+}
+
 fn mask_secrets(content: &str) -> String {
     // JSON: mask values for lines containing key-like tokens
     content
@@ -485,34 +540,10 @@ pub async fn update_apply() -> Result<String> {
     run(&["update", "--self"]).await
 }
 
-/// Install pi via the official install script.
-/// Streams progress lines into `tx`.
-pub async fn install_pi(tx: tokio::sync::mpsc::UnboundedSender<String>) -> Result<String> {
-    macro_rules! emit {
-        ($msg:expr) => {
-            let _ = tx.send($msg.to_string());
-        };
-    }
-
-    // Pre-flight: curl required
-    let curl_check = Command::new("sh")
-        .args(["-c", "command -v curl"])
-        .output()
-        .await?;
-    if !curl_check.status.success() {
-        return Err(anyhow::anyhow!(
-            "curl is required. Install it: sudo apt install curl"
-        ));
-    }
-
-    emit!("Downloading pi install script from pi.dev…");
-
-    // Run the official installer; stream stderr (install.sh logs there)
-    let home = real_home();
-    let current_path = std::env::var("PATH").unwrap_or_default();
-    let extended_path =
-        format!("{home}/.local/bin:{home}/.npm-global/bin:/usr/local/bin:{current_path}");
-
+async fn run_installer(
+    extended_path: &str,
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> Result<String> {
     let mut child = tokio::process::Command::new("sh")
         .args(["-c", "curl -fsSL https://pi.dev/install.sh | sh"])
         .env("PATH", extended_path)
@@ -520,7 +551,6 @@ pub async fn install_pi(tx: tokio::sync::mpsc::UnboundedSender<String>) -> Resul
         .stderr(std::process::Stdio::piped())
         .spawn()?;
 
-    // Forward stdout lines as progress
     if let Some(stdout) = child.stdout.take() {
         let tx2 = tx.clone();
         tokio::spawn(async move {
@@ -545,12 +575,138 @@ pub async fn install_pi(tx: tokio::sync::mpsc::UnboundedSender<String>) -> Resul
     let status = child.wait().await?;
     if status.success() {
         let version = get_info().await.version.unwrap_or_else(|| "unknown".into());
-        emit!(format!("pi {version} installed successfully."));
+        let _ = tx.send(format!("pi {version} installed successfully."));
         Ok(format!("pi {version} installed"))
     } else {
         Err(anyhow::anyhow!(
             "Install script exited with non-zero status. Check the log above."
         ))
+    }
+}
+
+/// Install pi via the official install script.
+/// Streams progress lines into `tx`.
+pub async fn install_pi(tx: tokio::sync::mpsc::UnboundedSender<String>) -> Result<String> {
+    macro_rules! emit {
+        ($msg:expr) => {
+            let _ = tx.send($msg.to_string());
+        };
+    }
+
+    // Pre-flight: curl required
+    let curl_check = Command::new("sh")
+        .args(["-c", "command -v curl"])
+        .output()
+        .await?;
+    if !curl_check.status.success() {
+        return Err(anyhow::anyhow!(
+            "curl is required. Install it with your package manager (apt, dnf, brew)"
+        ));
+    }
+
+    // Pre-flight: Node.js 22.19+ required.
+    // The pi install script is interactive and tries /dev/tty to ask about
+    // installing Node.js or complains about old versions.  With no TTY
+    // (postlab spawns it via tokio), the script hangs.  Ensure a compatible
+    // node is on PATH upfront so the installer never hits the interactive path.
+    //
+    // Strategy: download the official standalone Node.js 22.x binary, which
+    // works on ALL Linux distros regardless of repo versions (CentOS 9 ships
+    // node 16, Fedora may ship older majors, etc.).
+    let node_ok = Command::new("sh")
+        .args(["-c", r##"
+            v=$(node --version 2>/dev/null) || exit 1
+            v=${v#v}
+            maj=${v%%.*}
+            rest=${v#*.}
+            min=${rest%%.*}
+            [ "$maj" -gt 22 ] || { [ "$maj" -eq 22 ] && [ "$min" -ge 19 ]; }
+        "##])
+        .output()
+        .await?
+        .status
+        .success();
+
+    if !node_ok {
+        emit!("Node.js 22.19+ not found. Downloading standalone Node.js 22.x…");
+
+        let home = real_home();
+        let node_base = PathBuf::from(&home).join(".local").join("share").join("pi-node");
+        tokio::fs::create_dir_all(&node_base).await?;
+
+        // Detect arch
+        let arch = Command::new("sh")
+            .args(["-c", r##"uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/; s/arm64/arm64/; s/armv7l/armv7l/'"##])
+            .output()
+            .await?;
+        let arch = String::from_utf8_lossy(&arch.stdout).trim().to_string();
+        let node_platform = "linux";
+        let node_file = format!("node-v22.x-{node_platform}-{arch}.tar.xz");
+
+        // Resolve the exact version from the directory listing
+        emit!("Resolving Node.js 22.x binary for {node_platform}-{arch}…");
+        let version_out = Command::new("sh")
+            .args(["-c", &format!(
+                "curl -fsSL https://nodejs.org/dist/latest-v22.x/ | sed -n 's/.*node-\\(v22\\.[0-9]*\\.[0-9]*\\)-{node_platform}-{arch}\\.tar\\.xz.*/\\1/p' | head -1"
+            )])
+            .output()
+            .await?;
+        let version_tag = String::from_utf8_lossy(&version_out.stdout).trim().to_string();
+        if version_tag.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Could not resolve Node.js 22.x version for {node_platform}-{arch}"
+            ));
+        }
+
+        let url = format!("https://nodejs.org/dist/latest-v22.x/{version_tag}-{node_platform}-{arch}.tar.xz");
+        let node_dir = node_base.join(format!("{version_tag}-{node_platform}-{arch}"));
+
+        if !node_dir.join("bin").join("node").exists() {
+            emit!("Downloading {node_file}…");
+            let download_ok = Command::new("sh")
+                .args(["-c", &format!(
+                    "curl -fsSL '{url}' -o /tmp/{node_file} && tar -xf /tmp/{node_file} -C {base}",
+                    base = node_base.display()
+                )])
+                .output()
+                .await?;
+            if !download_ok.status.success() {
+                let err = String::from_utf8_lossy(&download_ok.stderr).trim().to_string();
+                return Err(anyhow::anyhow!(
+                    "Failed to download/extract Node.js: {}",
+                    if err.is_empty() { "unknown error" } else { &err }
+                ));
+            }
+            emit!(format!("Node.js extracted to {}.", node_dir.display()));
+        }
+
+        // Symlink current → this version for consistent path
+        let current_link = node_base.join("current");
+        let _ = tokio::fs::remove_file(&current_link).await;
+        let _ = tokio::fs::symlink(&node_dir, &current_link).await;
+
+        // Prepend to PATH so the pi install script finds it
+        let node_bin = current_link.join("bin");
+        let extended_path = format!(
+            "{}:{}:{home}/.local/bin:{home}/.npm-global/bin:/usr/local/bin:{}",
+            node_bin.display(),
+            node_bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+
+        emit!("Node.js installed. Proceeding with pi install…");
+
+        // Use extended PATH with standalone node
+        run_installer(&extended_path, tx).await
+    } else {
+        // Node.js 22.19+ already on PATH — run installer directly
+        let home = real_home();
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let extended_path = format!(
+            "{home}/.local/bin:{home}/.npm-global/bin:/usr/local/bin:{current_path}"
+        );
+        emit!("Downloading pi install script from pi.dev…");
+        run_installer(&extended_path, tx).await
     }
 }
 

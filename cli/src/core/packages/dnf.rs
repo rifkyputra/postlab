@@ -1,4 +1,4 @@
-use super::{run_cmd, PackageManager};
+use super::{run_cmd, run_cmd_streaming, PackageManager};
 use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -65,7 +65,32 @@ impl PackageManager for DnfManager {
     }
 
     async fn install(&self, name: &str) -> Result<String> {
+        if name == "bun" {
+            return run_cmd("bash", &["-c", "curl -fsSL https://bun.sh/install | bash"]).await;
+        }
+        if name == "claude-code" {
+            return run_cmd("npm", &["install", "-g", "@anthropic-ai/claude-code"]).await;
+        }
         run_cmd(self.bin, &["install", "-y", name]).await
+    }
+
+    async fn install_streamed(
+        &self,
+        name: &str,
+        tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<String> {
+        if name == "bun" {
+            return run_cmd_streaming(
+                "bash",
+                &["-c", "curl -fsSL https://bun.sh/install | bash"],
+                tx,
+            )
+            .await;
+        }
+        if name == "claude-code" {
+            return run_cmd_streaming("npm", &["install", "-g", "@anthropic-ai/claude-code"], tx).await;
+        }
+        run_cmd_streaming(self.bin, &["install", "-y", name], tx).await
     }
 
     async fn remove(&self, name: &str) -> Result<String> {

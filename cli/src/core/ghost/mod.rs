@@ -5,10 +5,12 @@ use crate::core::models::{GhostProcess, GhostReason};
 
 /// Memory threshold (bytes) above which an unmanaged process is flagged as a
 /// potential memory leak.  Default: 200 MiB.
+#[allow(dead_code)]
 const MEM_LEAK_THRESHOLD: u64 = 200 * 1024 * 1024;
 
 /// Memory threshold (bytes) above which a reparented-to-init process is
 /// reported as an orphan.  Default: 50 MiB.
+#[allow(dead_code)]
 const ORPHAN_MEM_THRESHOLD: u64 = 50 * 1024 * 1024;
 
 // ── Public entry-point ─────────────────────────────────────────────────────

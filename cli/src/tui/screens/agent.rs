@@ -596,28 +596,58 @@ fn render_config(f: &mut Frame, app: &App, area: Rect) {
 // ── Auth tab ──────────────────────────────────────────────────────────────
 
 fn render_auth(f: &mut Frame, app: &App, area: Rect) {
-    if app.agent.auth_entries.is_empty() {
-        let lines = vec![
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  No providers configured in ~/.pi/auth.json",
-                Style::default().fg(Color::DarkGray),
-            )]),
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  Add API keys via environment variables (e.g. OPENROUTER_API_KEY)",
-                Style::default().fg(Color::DarkGray),
-            )]),
-            Line::from(vec![Span::styled(
-                "  or run pi and use /login inside the agent.",
-                Style::default().fg(Color::DarkGray),
-            )]),
-        ];
-        let p = Paragraph::new(lines).block(Block::default().title(" Auth ").borders(Borders::ALL));
-        f.render_widget(p, area);
-        return;
-    }
+    let log_height = if app.agent.auth_login_output.is_empty() {
+        0
+    } else {
+        (app.agent.auth_login_output.len().min(5) as u16) + 2
+    };
 
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(6),
+            Constraint::Min(0),
+            Constraint::Length(log_height),
+        ])
+        .split(area);
+
+    // ── Model config section ──
+    let editing = app.agent.auth_model_input_mode == InputMode::Editing;
+    let model_display = if editing {
+        format!("{}█", app.agent.auth_model_input)
+    } else {
+        app.agent.auth_model.clone()
+    };
+    let provider_display = app.agent.auth_provider.as_str();
+    let model_lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Provider : ", Style::default().fg(Color::DarkGray)),
+            Span::styled(provider_display, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("  [p] cycle", Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Model    : ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                &model_display,
+                Style::default()
+                    .fg(if editing { Color::Yellow } else { Color::Green })
+                    .add_modifier(if editing { Modifier::BOLD } else { Modifier::empty() }),
+            ),
+            if editing {
+                Span::styled("  Enter to save · Esc to cancel", Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM))
+            } else {
+                Span::styled("  [m] edit", Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM))
+            },
+        ]),
+        Line::from(""),
+    ];
+    let model_title = if editing { " Model Config (editing) " } else { " Model Config " };
+    let model_block = Block::default().title(model_title).borders(Borders::ALL)
+        .border_style(if editing { Style::default().fg(Color::Yellow) } else { Style::default() });
+    f.render_widget(Paragraph::new(model_lines).block(model_block), chunks[0]);
+
+    // ── Provider auth table ──
     let header = Row::new(vec!["Provider", "Status"]).style(
         Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
     );
@@ -634,14 +664,55 @@ fn render_auth(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let title = format!(" Auth ({} providers) ", app.agent.auth_entries.len());
+    let login_hint = if app.agent.auth_login_running { "  logging in…" } else { "  [l] login  [r] refresh" };
+    let provider_title = format!(" Providers ({}) ", app.agent.auth_entries.len());
     let mut state = app.agent.auth_state.clone();
-    let table = Table::new(rows, [Constraint::Length(20), Constraint::Fill(1)])
-        .header(header)
-        .block(Block::default().title(title).borders(Borders::ALL))
-        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-        .highlight_symbol("› ");
-    f.render_stateful_widget(table, area, &mut state);
+
+    if app.agent.auth_entries.is_empty() {
+        let empty = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled("  No providers in ~/.pi/auth.json", Style::default().fg(Color::DarkGray))]),
+            Line::from(vec![Span::styled("  Select a provider row and press [l] to login.", Style::default().fg(Color::DarkGray))]),
+        ];
+        f.render_widget(Paragraph::new(empty).block(Block::default().title(provider_title).borders(Borders::ALL)), chunks[1]);
+    } else {
+        let table = Table::new(rows, [Constraint::Length(20), Constraint::Fill(1)])
+            .header(header)
+            .block(Block::default().title(provider_title).borders(Borders::ALL))
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+            .highlight_symbol("› ");
+        f.render_stateful_widget(table, chunks[1], &mut state);
+    }
+
+    // hint bar (replaces the shared hint bar for this tab only)
+    if chunks[1].height > 2 {
+        let hint = Paragraph::new(Line::from(vec![
+            Span::styled(login_hint, Style::default().fg(Color::DarkGray)),
+        ]));
+        // render inside bottom of provider block — skip if log area takes over
+        let _ = hint;
+    }
+
+    // ── Login output log ──
+    if log_height > 0 {
+        let log_lines: Vec<Line> = app
+            .agent
+            .auth_login_output
+            .iter()
+            .rev()
+            .take(5)
+            .rev()
+            .map(|l| Line::from(Span::styled(l.as_str(), Style::default().fg(Color::Yellow))))
+            .collect();
+        let log_color = if app.agent.auth_login_running { Color::Yellow } else { Color::DarkGray };
+        f.render_widget(
+            Paragraph::new(log_lines).block(
+                Block::default().title(" Login Output ").borders(Borders::ALL)
+                    .border_style(Style::default().fg(log_color)),
+            ),
+            chunks[2],
+        );
+    }
 }
 
 // ── Skills tab ────────────────────────────────────────────────────────────
@@ -823,7 +894,7 @@ fn render_hints(f: &mut Frame, app: &App, area: Rect) {
         }
         AgentTab::Sessions => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
         AgentTab::Config => "[←/→] tabs  [↑↓/jk] scroll  [/] search  [n/N] next/prev  [r] refresh",
-        AgentTab::Auth => "[←/→] tabs  [↑↓/jk] select  [r] refresh",
+        AgentTab::Auth => "[←/→] tabs  [↑↓/jk] select provider  [l] login  [m] edit model  [p] cycle provider  [r] refresh",
         AgentTab::Skills => "[←/→] tabs  [↑↓/jk] select  [d] remove  [r] refresh",
         AgentTab::Library => "[←/→] tabs  [↑↓/jk] select  [i/Enter] install  [r] refresh",
         AgentTab::Logs => "[←/→] tabs  [↑↓/jk] scroll  [f] toggle follow  [R] reload",

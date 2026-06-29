@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_match)]
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::core::models::{Route, TunnelRoute};
@@ -92,6 +93,13 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
         && app.agent.config_search_mode == InputMode::Editing
     {
         handle_pi_agent_config_search_input(app, key);
+        return false;
+    }
+    if app.screen == Screen::Agent
+        && app.agent.active_tab == AgentTab::Auth
+        && app.agent.auth_model_input_mode == InputMode::Editing
+    {
+        handle_pi_agent_auth_key(app, key);
         return false;
     }
     if app.screen == Screen::System
@@ -2842,7 +2850,10 @@ fn switch_agent_tab(app: &mut App, tab: AgentTab) {
         AgentTab::Status => app.spawn_load_pi_agent_status(),
         AgentTab::Sessions => app.spawn_load_pi_agent_sessions(),
         AgentTab::Config => app.spawn_load_pi_agent_config(),
-        AgentTab::Auth => app.spawn_load_pi_agent_auth(),
+        AgentTab::Auth => {
+            app.spawn_load_pi_agent_auth();
+            app.spawn_load_pi_agent_model();
+        }
         AgentTab::Skills => app.spawn_load_pi_agent_skills(),
         AgentTab::Library => app.spawn_load_pi_agent_library(),
         AgentTab::Logs => app.spawn_load_pi_agent_logs(),
@@ -2984,6 +2995,28 @@ fn config_search_jump(app: &mut App, forward: bool) {
 }
 
 fn handle_pi_agent_auth_key(app: &mut App, key: KeyEvent) {
+    if app.agent.auth_model_input_mode == InputMode::Editing {
+        match key.code {
+            KeyCode::Enter => {
+                let model = app.agent.auth_model_input.trim().to_string();
+                if !model.is_empty() {
+                    let provider = app.agent.auth_provider.clone();
+                    app.agent.auth_model_input.clear();
+                    app.agent.auth_model_input_mode = InputMode::Normal;
+                    app.spawn_pi_set_model(provider, model);
+                }
+            }
+            KeyCode::Esc => {
+                app.agent.auth_model_input.clear();
+                app.agent.auth_model_input_mode = InputMode::Normal;
+            }
+            KeyCode::Char(c) => app.agent.auth_model_input.push(c),
+            KeyCode::Backspace => { app.agent.auth_model_input.pop(); }
+            _ => {}
+        }
+        return;
+    }
+
     let len = app.agent.auth_entries.len();
     match key.code {
         KeyCode::Down | KeyCode::Char('j') if len > 0 => {
@@ -2996,8 +3029,34 @@ fn handle_pi_agent_auth_key(app: &mut App, key: KeyEvent) {
                 .auth_state
                 .select(Some(if i == 0 { len - 1 } else { i - 1 }));
         }
+        KeyCode::Char('l') if !app.agent.auth_login_running => {
+            if let Some(idx) = app.agent.auth_state.selected() {
+                if let Some(entry) = app.agent.auth_entries.get(idx) {
+                    let provider = entry.provider.clone();
+                    app.spawn_pi_login(provider);
+                }
+            }
+        }
+        KeyCode::Char('m') => {
+            app.agent.auth_model_input = app.agent.auth_model.clone();
+            app.agent.auth_model_input_mode = InputMode::Editing;
+        }
+        KeyCode::Char('p') => {
+            const PROVIDERS: &[&str] = &["openrouter", "anthropic", "openai", "gemini", "groq", "xai"];
+            let current = app.agent.auth_provider.as_str();
+            let next = PROVIDERS
+                .iter()
+                .position(|&p| p == current)
+                .map(|i| PROVIDERS[(i + 1) % PROVIDERS.len()])
+                .unwrap_or(PROVIDERS[0]);
+            app.agent.auth_provider = next.to_string();
+            let model = app.agent.auth_model.clone();
+            app.spawn_pi_set_model(next.to_string(), model);
+        }
         KeyCode::Char('r') => {
+            app.agent.auth_login_output.clear();
             app.spawn_load_pi_agent_auth();
+            app.spawn_load_pi_agent_model();
         }
         _ => {}
     }

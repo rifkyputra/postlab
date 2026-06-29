@@ -102,6 +102,7 @@ async fn run_loop(
         if event::poll(tick)? {
             match event::read()? {
                 Event::Key(key) => {
+                    #[allow(clippy::collapsible_match)]
                     if key.kind == KeyEventKind::Press {
                         if key.code == KeyCode::Char('c')
                             && key.modifiers.contains(KeyModifiers::CONTROL)
