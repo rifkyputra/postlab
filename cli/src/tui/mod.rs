@@ -291,7 +291,6 @@ fn render_help_overlay(f: &mut ratatui::Frame, area: Rect) {
             ("1…9", "Jump to screen"),
             ("Tab / Shift+Tab", "Next / previous screen"),
             ("a", "Ask Pi Agent (overlay)"),
-            ("s", "Jump to System screen"),
             ("←/→ or H/L", "Switch tabs within screen"),
             ("r / R", "Refresh current screen"),
             ("?", "Toggle this help"),
