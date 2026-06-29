@@ -10,6 +10,7 @@
 
 | Feature | Phase | Status | Artifacts | Last updated |
 |---|---|---|---|---|
+| Git wrapper rewrite | architecture | in-progress | `docs/plan/postlab_git_rewrite.md` | 2026-06-29 |
 | _example: dry-run mode_ | _implementation_ | _in-progress_ | `docs/plan/dry_run_mode.md` | _2026-01-01_ |
 
 ## Blocked
