@@ -20,6 +20,10 @@ Rust TUI bare-metal server manager. Runs as root. Stack: ratatui + crossterm, SQ
 
 **`feature_list.json`** (repo root) is the source of truth for all screens, tabs, and CLI commands. Read it before adding, renaming, or describing any feature — do not infer feature names or structure from the code alone.
 
+**`PROGRESS.md`** (repo root) is the cross-session handoff file. Read it first in any new
+session to discover in-flight work, blocked features, and recent merges. Update it at each
+phase transition per `docs/agent_workflow.md` §6.
+
 ## Architecture
 
 ```
@@ -77,3 +81,23 @@ Before closing any task:
 4. If TUI was changed: note that visual verification requires `sudo postlab`
 5. If migrations touched: user confirmed
 6. If CI/install.sh touched: user confirmed
+
+## Multi-agent workflow
+
+**For any non-trivial postlab feature work, follow `docs/agent_workflow.md`.**
+
+Triggers: `do agentic workflow`, `spawn agents`, `run the full workflow`, `multi-agent`,
+`fan out`, or `follow docs/agent_workflow.md` — all equivalent.
+
+This document defines a multi-phase process (intake → architecture → recon → implement →
+review → HITL → docs → release) using the agent runtime's `team` and `Agent` primitives.
+Key rules:
+- The parent agent orchestrates; subagents do the churn and hand back durable artifacts
+  (`docs/plan/`, `docs/research/`, `docs/reviews/`).
+- Reviews always run as a fresh, cold agent — never the author.
+- Right-size per §5 of the doc: collapse phases for trivial work, fan out for
+  adapter-wide or multi-screen features.
+
+**Non-collapsible gates (always run):** QAS (`make check` + `make test`); migration
+confirmation (user); security review for system-mutating diffs; HITL `sudo postlab` for
+any `tui/screens/*.rs` change; CI/`install.sh` confirmation (user).
