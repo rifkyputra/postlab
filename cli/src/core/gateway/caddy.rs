@@ -107,6 +107,11 @@ impl GatewayManager for CaddyManager {
             return Ok(String::from_utf8_lossy(&out.stdout).to_string());
         }
         if crate::core::packages::which("dnf") {
+            // Fedora — enable Copr repo first (caddy is not in default repos)
+            let _ = tokio::process::Command::new("dnf")
+                .args(["copr", "enable", "@caddy/caddy", "-y"])
+                .output()
+                .await;
             let out = tokio::process::Command::new("dnf")
                 .args(["install", "-y", "caddy"])
                 .output()
@@ -138,6 +143,8 @@ impl GatewayManager for CaddyManager {
             return run_cmd_streaming("apt-get", &["install", "-y", "caddy"], tx).await;
         }
         if crate::core::packages::which("dnf") {
+            // Fedora — enable Copr repo first (caddy is not in default repos)
+            let _ = run_cmd_streaming("dnf", &["copr", "enable", "@caddy/caddy", "-y"], tx.clone()).await;
             return run_cmd_streaming("dnf", &["install", "-y", "caddy"], tx).await;
         }
         if crate::core::packages::which("brew") {

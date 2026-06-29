@@ -213,10 +213,10 @@ impl DashboardTab {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum AgentTab {
     #[default]
+    Status,
     Chat,
     Tools,
     Tasks,
-    Status,
     Sessions,
     Config,
     Auth,
@@ -228,10 +228,10 @@ pub enum AgentTab {
 impl AgentTab {
     pub fn all() -> &'static [AgentTab] {
         &[
+            AgentTab::Status,
             AgentTab::Chat,
             AgentTab::Tools,
             AgentTab::Tasks,
-            AgentTab::Status,
             AgentTab::Sessions,
             AgentTab::Config,
             AgentTab::Auth,
@@ -242,10 +242,10 @@ impl AgentTab {
     }
     pub fn title(&self) -> &'static str {
         match self {
+            AgentTab::Status => "Status",
             AgentTab::Chat => "Chat",
             AgentTab::Tools => "Tools",
             AgentTab::Tasks => "Tasks",
-            AgentTab::Status => "Status",
             AgentTab::Sessions => "Sessions",
             AgentTab::Config => "Config",
             AgentTab::Auth => "Auth",
@@ -1397,7 +1397,7 @@ pub struct AgentState {
 impl Default for AgentState {
     fn default() -> Self {
         Self {
-            active_tab: AgentTab::Chat,
+            active_tab: AgentTab::Status,
             messages: Vec::new(),
             input: String::new(),
             input_mode: InputMode::Normal,

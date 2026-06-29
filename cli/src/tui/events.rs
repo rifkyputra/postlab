@@ -208,10 +208,6 @@ pub async fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             app.set_screen_by_index(8);
             return false;
         }
-        KeyCode::Char('a') | KeyCode::Char('A') => {
-            app.open_agent_overlay();
-            return false;
-        }
         KeyCode::Tab => {
             app.next_screen();
             return false;

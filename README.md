@@ -91,6 +91,12 @@ The script detects your OS and architecture, downloads the matching binary from 
 curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | DEST=~/.local/bin/postlab bash
 ```
 
+> **Add to PATH** — if the install directory is not already in `$PATH`, add it:
+> ```bash
+> export PATH="$PATH:$HOME/.local/bin"   # temporary, current shell
+> echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.bashrc   # permanent (bash)
+> ```
+
 **Pin a specific version:**
 
 ```bash
@@ -153,7 +159,6 @@ sudo postlab --database /var/lib/postlab/data.db
 | Key | Action |
 | --- | ------ |
 | `1`–`9` | Switch screens |
-| `a` | Open Agent overlay (global) |
 | `s` | Jump to System (global, except on System screen) |
 | `Tab` / `Shift+Tab` | Next / previous screen |
 | `H` / `L` or `←` `→` | Switch tabs within a screen |

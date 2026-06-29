@@ -102,7 +102,7 @@ pub const CURATED: &[CuratedCategory] = &[
     CuratedCategory {
         name: "System Tools",
         packages: &[
-            "htop", "tmux", "git", "curl", "wget", "vim", "rsync", "jq", "unzip",
+            "htop", "tmux", "git", "curl", "wget", "vim", "neovim", "rsync", "jq", "unzip",
         ],
     },
     CuratedCategory {
