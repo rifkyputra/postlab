@@ -4,8 +4,15 @@ version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
 
+[features]
+default = []
+# Experimental: load sandboxed WASM security checks. Pulls in wasmtime (heavy);
+# kept off the default build so `make check`/`make test` stay fast and dep-light.
+wasm-plugins = ["dep:wasmtime"]
+
 [dependencies]
 async-trait = "0.1"
+wasmtime = { version = "27", optional = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

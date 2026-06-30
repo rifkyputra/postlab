@@ -1,0 +1,26 @@
+package postlab:plugin@0.1.0;
+
+// Capabilities the host grants to a plugin. Deny-by-default: a plugin can only
+// touch what is declared here. Today that is read-only file access, which the
+// host further restricts to an allowlist of roots.
+interface host {
+  read-file: func(path: string) -> result<string, string>;
+}
+
+// What a security-check plugin must export.
+interface check {
+  record finding {
+    id: string,
+    title: string,
+    severity: u8,           // 0=critical 1=high 2=medium 3=low 4=info
+    description: string,
+    file-path: option<string>,
+    fix-description: string,
+  }
+  scan: func() -> list<finding>;
+}
+
+world security-plugin {
+  import host;
+  export check;
+}
