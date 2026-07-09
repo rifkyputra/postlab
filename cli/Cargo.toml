@@ -28,9 +28,19 @@ sysinfo = "0.30"
 # Config parsing
 toml = "0.8"
 
+# Web server (wired in Phase 2; pinned here so workspace resolves consistently)
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+rust-embed = { workspace = true }
+dashmap = { workspace = true }
+
 # Utilities
 unicode-width = "0.2"
 whoami = "1.5"
 nix = { version = "0.29", features = ["user"] }
 itertools = "0.12"
 walkdir = "2.5.0"
+
+[dev-dependencies]
+tempfile = "3"

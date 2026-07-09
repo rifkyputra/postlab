@@ -1989,7 +1989,10 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             match platform.packages.list_installed().await {
-                Ok(pkgs) => {
+                Ok(mut pkgs) => {
+                    let names: Vec<&str> =
+                        crate::core::packages::USER_TOOLS.iter().map(|(n, _)| *n).collect();
+                    pkgs.extend(crate::core::packages::detect_user_tools(&names).await);
                     let _ = tx.send(TaskResult::PackageList(pkgs));
                 }
                 Err(e) => {
@@ -2005,13 +2008,16 @@ impl App {
         let tx = self.task_tx.clone();
         tokio::spawn(async move {
             let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            let tools = crate::core::packages::detect_user_tools(&refs).await;
             match platform.packages.check_packages(&refs).await {
-                Ok(pkgs) => {
+                Ok(mut pkgs) => {
+                    pkgs.extend(tools);
                     let _ = tx.send(TaskResult::PackagesUpdated(pkgs));
                 }
                 Err(_) => {
                     // Fall back to full reload if targeted check fails
-                    if let Ok(pkgs) = platform.packages.list_installed().await {
+                    if let Ok(mut pkgs) = platform.packages.list_installed().await {
+                        pkgs.extend(tools);
                         let _ = tx.send(TaskResult::PackageList(pkgs));
                     }
                 }

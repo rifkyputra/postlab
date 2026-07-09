@@ -97,22 +97,15 @@ either can land first.
 
 **Depends on:** nothing.
 
-**Work**
-- [ ] Add to `cli/Cargo.toml` (consume the workspace pins): `axum`, `tower`, `tower-http`,
-      `rust-embed`, `dashmap`.
-- [ ] `rust-embed`: add the **`debug-embed`** feature (workspace currently pins only
-      `compression`) so dev/`check` builds read `web/dist/` from disk and don't require npm.
-- [ ] **`dashmap` and `arraydeque` are not in the workspace `Cargo.toml` yet** — add the pins
-      there first, then consume. (The design doc's Phase 1 wording assumes they're already
-      pinned like axum/tower; they are not.)
-- [ ] Add the **`v7`** feature to the workspace `uuid` pin (currently `features = ["v4"]`)
-      for `app_deploys.id`.
-- [ ] Commit a placeholder `web/dist/index.html` ("run `npm run build`") so `rust-embed`'s
-      compile-time `#[folder]` resolution succeeds on a fresh checkout.
-- [ ] **Doc-sync `postlab_go.md`**: (a) deploy-workflow step 2 references `app.deploy_type` (that
-      column is gone — it's now `app.runtime`); (b) confirm the frontend section reads "SvelteKit
-      + adapter-static" throughout; (c) change `config_dir` from `~/postlab/apps/<id>/` to the
-      `/var/lib/postlab/apps/<id>` layout above.
+**Work** — all done (2026-06-30)
+- [x] Workspace `Cargo.toml`: `axum`, `tower`, `tower-http`, `thiserror`, `rust-embed`
+      were already pinned; added `dashmap = "6"`, `arraydeque = "0.5"`, `uuid v7` feature,
+      `debug-embed` feature to `rust-embed`.
+- [x] `cli/Cargo.toml`: consuming `axum`, `tower`, `tower-http`, `rust-embed`, `dashmap`
+      from workspace (wired in Phase 2; pinned here so workspace resolves consistently).
+- [x] `web/dist/index.html` placeholder committed.
+- [x] **Doc-sync `postlab_go.md`**: `app.deploy_type` → `app.runtime`;
+      `~/postlab/` paths → `/var/lib/postlab/`; SvelteKit + adapter-static already correct.
 
 This phase also satisfies the **frontend-build-safety** items from the tooling doc (its
 "Phase C"): the committed `web/dist/` placeholder + `debug-embed` are exactly what keep
@@ -610,17 +603,17 @@ Tracked, not committed. Each is its own design effort.
 
 ## Open decisions
 
-These gate Phase 1 and should be settled before it starts:
+All three decisions below were resolved during the Phase 1 architecture phase
+(see [`postlab_git_rewrite.md` — Resolved decisions](./postlab_git_rewrite.md#resolved-decisions)):
 
-1. **`GitRepo` ownership model (`run_as`).** Root-owned deploy repos under `/var/lib/postlab`
-   vs. user-owned project-browser repos. The roadmap assumes **both**, with `run_as` baked into
-   the type — deploy uses `Root`, the TUI project browser keeps `User`. Confirm this rather than
-   collapsing to root-only (which would regress the project browser's file ownership).
-2. **Canonical path** `/var/lib/postlab` (chosen here, FHS-correct) vs. `~/postlab` (current
-   `postlab_go.md` text). Picking `/var/lib/postlab` requires the Phase 0 doc-sync edit.
-3. **HTTPS token storage** — encrypted SQLite column vs. per-app mode-0600 credential file.
-   Either is fine; it must match the repo's existing secret-handling and **never** appear in a
-   remote URL (git-rewrite risk 4).
+1. **`GitRepo` ownership model (`run_as`) — resolved.** Both ownership modes supported via
+   `RunAs::Root` (deploy repos under `/var/lib/postlab`) and `RunAs::User(uid)` (TUI project
+   browser). Baked into `GitRepo` from day one; no global collapse to root.
+2. **Canonical path — resolved to `/var/lib/postlab`.** `postlab_go.md` doc-sync done
+   (2026-06-30): `~/postlab/` references replaced with `/var/lib/postlab/`.
+3. **HTTPS token storage — resolved: per-app mode-0600 credential file, never URL-embedded.**
+   Matches existing `core/projects/mod.rs` pattern. Token never appears in `ps`, reflog, or
+   `.git/config`.
 
 ---
 

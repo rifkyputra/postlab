@@ -1,4 +1,5 @@
 pub mod deploy;
+pub mod git;
 pub mod docker;
 pub mod firewall;
 pub mod gateway;

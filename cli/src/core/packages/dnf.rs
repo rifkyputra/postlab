@@ -1,4 +1,4 @@
-use super::{run_cmd, run_cmd_streaming, PackageManager};
+use super::{run_cmd, run_cmd_streaming, run_user_cmd, run_user_cmd_streaming, PackageManager};
 use crate::core::models::{Package, UpgradablePackage};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -66,15 +66,14 @@ impl PackageManager for DnfManager {
 
     async fn install(&self, name: &str) -> Result<String> {
         if name == "bun" {
-            return run_cmd("bash", &["-c", "curl -fsSL https://bun.sh/install | bash"]).await;
+            return run_user_cmd("curl -fsSL https://bun.sh/install | bash").await;
         }
         if name == "claude-code" {
-            return run_cmd("npm", &["install", "-g", "@anthropic-ai/claude-code"]).await;
+            return run_user_cmd("npm install -g @anthropic-ai/claude-code").await;
         }
         if name == "rust" {
-            return run_cmd(
-                "bash",
-                &["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+            return run_user_cmd(
+                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             )
             .await;
         }
@@ -87,20 +86,14 @@ impl PackageManager for DnfManager {
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) -> Result<String> {
         if name == "bun" {
-            return run_cmd_streaming(
-                "bash",
-                &["-c", "curl -fsSL https://bun.sh/install | bash"],
-                tx,
-            )
-            .await;
+            return run_user_cmd_streaming("curl -fsSL https://bun.sh/install | bash", tx).await;
         }
         if name == "claude-code" {
-            return run_cmd_streaming("npm", &["install", "-g", "@anthropic-ai/claude-code"], tx).await;
+            return run_user_cmd_streaming("npm install -g @anthropic-ai/claude-code", tx).await;
         }
         if name == "rust" {
-            return run_cmd_streaming(
-                "bash",
-                &["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+            return run_user_cmd_streaming(
+                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
                 tx,
             )
             .await;

@@ -163,6 +163,49 @@ fn is_lock_error(stderr: &str) -> bool {
     errors.iter().any(|e| stderr.contains(e))
 }
 
+/// Build args to run `script` under a login shell as the invoking sudo user, so
+/// user-scoped installers (rustup, bun, npm -g) write into the sudoer's home rather
+/// than /root when postlab runs as `sudo postlab`. A login shell (`su -l`) is used so
+/// the child gets the user's HOME, PATH and shell rc. Falls back to a plain `bash -c`
+/// when not running under sudo (SUDO_USER unset), preserving the original behavior.
+fn user_bash(script: &str) -> (&'static str, Vec<String>) {
+    if nix::unistd::getuid().is_root() {
+        if let Ok(user) = std::env::var("SUDO_USER") {
+            if !user.is_empty() {
+                return (
+                    "su",
+                    vec![
+                        "-l".into(),
+                        user,
+                        "-s".into(),
+                        "/bin/bash".into(),
+                        "-c".into(),
+                        script.into(),
+                    ],
+                );
+            }
+        }
+    }
+    ("bash", vec!["-c".into(), script.into()])
+}
+
+/// Run a user-scoped install script as the invoking sudo user. See `user_bash`.
+pub async fn run_user_cmd(script: &str) -> Result<String> {
+    let (prog, args) = user_bash(script);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_cmd(prog, &refs).await
+}
+
+/// Streaming variant of `run_user_cmd`.
+pub async fn run_user_cmd_streaming(
+    script: &str,
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> Result<String> {
+    let (prog, args) = user_bash(script);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_cmd_streaming(prog, &refs, tx).await
+}
+
 /// Spawn a process, stream every stdout/stderr line to `tx`, and return Ok/Err when done.
 pub async fn run_cmd_streaming(
     program: &str,
@@ -231,6 +274,36 @@ pub async fn run_cmd_streaming(
 pub fn which(bin: &str) -> bool {
     let path_var = std::env::var_os("PATH").unwrap_or_default();
     std::env::split_paths(&path_var).any(|dir| dir.join(bin).is_file())
+}
+
+/// Curated names installed by curl/npm scripts into a home dir rather than via the OS
+/// package manager, mapped to the binary that proves they're present. dpkg/rpm can't
+/// see these, so they're detected by probing the invoking user's PATH instead.
+pub const USER_TOOLS: &[(&str, &str)] = &[
+    ("bun", "bun"),
+    ("rust", "rustc"),
+    ("claude-code", "claude"),
+];
+
+/// Detect which of `names` are installed for the invoking sudo user by probing their
+/// login-shell PATH (so `~/.cargo/bin`, `~/.bun/bin`, nvm's npm-global are visible).
+/// Only names present in USER_TOOLS are probed; returns a Package per one found.
+pub async fn detect_user_tools(names: &[&str]) -> Vec<Package> {
+    let mut found = Vec::new();
+    for (name, bin) in USER_TOOLS {
+        if !names.contains(name) {
+            continue;
+        }
+        if run_user_cmd(&format!("command -v {bin}")).await.is_ok() {
+            found.push(Package {
+                name: (*name).to_string(),
+                version: String::new(),
+                description: String::new(),
+                installed: true,
+            });
+        }
+    }
+    found
 }
 
 #[cfg(test)]

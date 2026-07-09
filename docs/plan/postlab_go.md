@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS apps (
     health_path    TEXT NOT NULL DEFAULT '/',
     status         TEXT NOT NULL DEFAULT 'created',
     webhook_secret TEXT NOT NULL,          -- per-app HMAC secret (required; see Webhooks)
-    config_dir     TEXT NOT NULL,          -- ~/postlab/apps/<id>/
+    config_dir     TEXT NOT NULL,          -- /var/lib/postlab/apps/<id>/
     created_at     TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS app_deploys (
 );
 ```
 
-Logs are written to `~/postlab/apps/<app_id>/deploys/<deploy_id>.log` on disk. The DB stores the path, not the log content. This keeps the SQLite database small and allows streaming large logs.
+Logs are written to `/var/lib/postlab/apps/<app_id>/deploys/<deploy_id>.log` on disk. The DB stores the path, not the log content. This keeps the SQLite database small and allows streaming large logs.
 
 ### App metrics — in-memory, not a table
 
@@ -384,7 +384,7 @@ No runtime process. Generates Caddy config pointing to the repo directory. Serve
 
 1. **git pull/clone** — If the config dir has no repo, `git clone`. Otherwise `git pull --ff-only` (reject if dirty; user must resolve manually or force-redeploy).
 
-2. **Detect** — If `app.deploy_type` is null, run the detector. If the user manually set a runtime, skip detection.
+2. **Detect** — If `app.runtime` is null, run the detector. If the user manually set a runtime, skip detection.
 
 3. **Build** — Runtime-specific build step. Emits stdout/stderr line-by-line as WS `deploy.progress` events.
 
