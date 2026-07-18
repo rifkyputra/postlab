@@ -3688,7 +3688,7 @@ impl App {
         self.projects.new_name_exists = if name.is_empty() {
             false
         } else {
-            let target = format!("{}/{}", crate::core::projects::expand_home(&self.projects.dir), name);
+            let target = format!("{}/{}", crate::core::expand_home(&self.projects.dir), name);
             std::path::Path::new(&target).exists()
         };
     }

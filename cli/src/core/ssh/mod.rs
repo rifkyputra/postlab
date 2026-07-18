@@ -1,7 +1,6 @@
 use crate::core::models::SshKey;
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Local;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -24,15 +23,6 @@ impl DefaultSshKeyManager {
         Path::new(&home).join(".ssh")
     }
 
-    async fn backup_authorized_keys(&self) -> Result<()> {
-        let path = Self::get_ssh_dir().join("authorized_keys");
-        if path.exists() {
-            let ts = Local::now().format("%Y%m%dT%H%M%S");
-            let backup = path.with_extension(format!("bak.{}", ts));
-            fs::copy(&path, &backup).await?;
-        }
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -143,7 +133,7 @@ impl SshKeyManager for DefaultSshKeyManager {
     }
 
     async fn authorize_key(&self, key_content: &str) -> Result<()> {
-        self.backup_authorized_keys().await?;
+        crate::core::backup_file(Self::get_ssh_dir().join("authorized_keys")).await?;
         let ssh_dir = Self::get_ssh_dir();
         fs::create_dir_all(&ssh_dir).await?;
         let path = ssh_dir.join("authorized_keys");
@@ -180,7 +170,7 @@ impl SshKeyManager for DefaultSshKeyManager {
     }
 
     async fn deauthorize_key(&self, fingerprint: &str) -> Result<()> {
-        self.backup_authorized_keys().await?;
+        crate::core::backup_file(Self::get_ssh_dir().join("authorized_keys")).await?;
         let path = Self::get_ssh_dir().join("authorized_keys");
         if !path.exists() {
             return Ok(());

@@ -40,14 +40,7 @@ pub struct GitStatus {
 
 pub struct ProjectsManager;
 
-pub fn expand_home(path: &str) -> String {
-    if path.starts_with('~') {
-        let home = crate::core::real_home();
-        path.replacen('~', &home, 1)
-    } else {
-        path.to_string()
-    }
-}
+pub use crate::core::expand_home;
 
 /// Inline env for git over SSH in a non-interactive (piped) context: auto-accept a
 /// first-seen host key instead of blocking on the yes/no prompt, and fail fast rather
@@ -347,7 +340,8 @@ impl ProjectsManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_home, ProjectsManager};
+    use super::ProjectsManager;
+    use crate::core::expand_home;
     use std::fs;
 
     #[test]

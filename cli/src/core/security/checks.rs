@@ -6,8 +6,6 @@ use crate::core::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Local;
-use std::path::Path;
 use tokio::fs;
 
 pub struct DefaultSecurityAuditor {
@@ -226,17 +224,8 @@ async fn check_dnf_automatic() -> Option<SecurityFinding> {
 
 // ── apply fixes ───────────────────────────────────────────────────────────
 
-async fn backup_file(path: &str) -> Result<()> {
-    if Path::new(path).exists() {
-        let ts = Local::now().format("%Y%m%dT%H%M%S");
-        let backup = format!("{}.bak.{}", path, ts);
-        fs::copy(path, &backup).await?;
-    }
-    Ok(())
-}
-
 async fn sed_in_place(path: &str, from: &str, to: &str) -> Result<String> {
-    backup_file(path).await?;
+    crate::core::backup_file(path).await?;
     let content = fs::read_to_string(path).await?;
     let updated = content.replace(from, to);
     fs::write(path, &updated).await?;
@@ -346,7 +335,7 @@ impl SecurityAuditor for DefaultSecurityAuditor {
                 if !self.os.is_linux() {
                     anyhow::bail!("ASLR fix is only applicable on Linux");
                 }
-                backup_file("/etc/sysctl.conf").await?;
+                crate::core::backup_file("/etc/sysctl.conf").await?;
                 let mut content = fs::read_to_string("/etc/sysctl.conf")
                     .await
                     .unwrap_or_default();

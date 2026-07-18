@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let db_path = expand_tilde(&cli.database);
+    let db_path = crate::core::expand_home(&cli.database);
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -596,11 +596,3 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
-fn expand_tilde(path: &str) -> String {
-    if path.starts_with("~/") {
-        let home = crate::core::real_home();
-        path.replacen("~", &home, 1)
-    } else {
-        path.to_string()
-    }
-}

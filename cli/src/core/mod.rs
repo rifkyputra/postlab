@@ -26,6 +26,25 @@ pub mod projects;
 
 pub use platform::Platform;
 
+pub fn expand_home(path: &str) -> String {
+    if path.starts_with("~/") {
+        let home = real_home();
+        path.replacen("~", &home, 1)
+    } else {
+        path.to_string()
+    }
+}
+
+pub async fn backup_file(path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
+    let path = path.as_ref();
+    if path.exists() {
+        let ts = chrono::Local::now().format("%Y%m%dT%H%M%S");
+        let backup = format!("{}.bak.{}", path.display(), ts);
+        tokio::fs::copy(path, &backup).await?;
+    }
+    Ok(())
+}
+
 pub fn real_home() -> String {
     if let Ok(sudo_user) = std::env::var("SUDO_USER") {
         if let Ok(Some(user)) = nix::unistd::User::from_name(&sudo_user) {
