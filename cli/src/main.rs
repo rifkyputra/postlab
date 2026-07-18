@@ -598,7 +598,7 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = crate::core::real_home();
         path.replacen("~", &home, 1)
     } else {
         path.to_string()

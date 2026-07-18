@@ -1,5 +1,6 @@
 use super::TunnelManager;
 use crate::core::models::{Tunnel, TunnelRoute};
+use crate::core::real_home;
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -498,20 +499,6 @@ async fn svc_action(action: &str) -> Result<()> {
             anyhow::bail!("{}", msg)
         }
     }
-}
-
-/// Returns the real user's home directory.
-/// When running via `sudo`, $HOME is /root but the cloudflared config lives
-/// under the invoking user's home. Use SUDO_USER → getpwnam to find it.
-fn real_home() -> String {
-    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
-        if !sudo_user.is_empty() {
-            if let Ok(Some(user)) = nix::unistd::User::from_name(&sudo_user) {
-                return user.dir.to_string_lossy().to_string();
-            }
-        }
-    }
-    std::env::var("HOME").unwrap_or_default()
 }
 
 fn cf_dir() -> String {

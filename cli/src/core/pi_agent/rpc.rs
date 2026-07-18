@@ -41,7 +41,7 @@ pub async fn spawn_rpc(
     // pi-agent doesn't run with root privileges.
     let sudo_uid: Option<u32> = std::env::var("SUDO_UID").ok().and_then(|s| s.parse().ok());
     let sudo_gid: Option<u32> = std::env::var("SUDO_GID").ok().and_then(|s| s.parse().ok());
-    let home = super::real_home();
+    let home = crate::core::real_home();
 
     let current_path = std::env::var("PATH").unwrap_or_default();
     let pi_bin_dir = std::path::Path::new(&bin)

@@ -61,18 +61,21 @@ struct HostState {
 
 impl Host for HostState {
     fn read_file(&mut self, path: String) -> Result<String, String> {
-        let requested = PathBuf::from(&path);
-        // Deny-by-default: a plugin may only read under host-granted roots, and
-        // never via `..` traversal out of them.
-        let allowed = self
-            .allowed_roots
-            .iter()
-            .any(|root| requested.starts_with(root))
-            && !path.contains("..");
+        // Deny-by-default: a plugin may only read under host-granted roots.
+        // Resolve symlinks and `..` first, then authorize the *real* target — a
+        // symlink under an allowed root would otherwise escape the sandbox, and
+        // we're running as root. Read via the resolved path so it can't be
+        // re-followed elsewhere after the check.
+        let resolved = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+        let allowed = self.allowed_roots.iter().any(|root| {
+            std::fs::canonicalize(root)
+                .map(|root| resolved.starts_with(root))
+                .unwrap_or(false)
+        });
         if !allowed {
             return Err(format!("read denied: {path}"));
         }
-        std::fs::read_to_string(&requested).map_err(|e| e.to_string())
+        std::fs::read_to_string(&resolved).map_err(|e| e.to_string())
     }
 }
 

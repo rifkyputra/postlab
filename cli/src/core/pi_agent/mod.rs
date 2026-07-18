@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use tokio::process::Command;
 
+use crate::core::real_home;
+
 // ── Data types ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -53,15 +55,6 @@ const POSTLAB_SKILL: &str =
     include_str!("../../../../skills_library/postlab/SKILL.md");
 
 // ── Path helpers ──────────────────────────────────────────────────────────
-
-/// Real (non-root) home: prefer SUDO_USER-derived path so postlab running
-/// under sudo still finds files in the invoking user's home directory.
-pub(super) fn real_home() -> String {
-    std::env::var("SUDO_USER")
-        .ok()
-        .map(|u| format!("/home/{}", u))
-        .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/root".into()))
-}
 
 fn pi_dir() -> PathBuf {
     PathBuf::from(real_home()).join(".pi")

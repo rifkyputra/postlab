@@ -42,10 +42,7 @@ pub struct ProjectsManager;
 
 pub fn expand_home(path: &str) -> String {
     if path.starts_with('~') {
-        let home = std::env::var("SUDO_USER")
-            .ok()
-            .map(|u| format!("/home/{}", u))
-            .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/root".to_string()));
+        let home = crate::core::real_home();
         path.replacen('~', &home, 1)
     } else {
         path.to_string()
@@ -253,11 +250,7 @@ impl ProjectsManager {
         let expanded = expand_home(dir);
 
         let user = std::env::var("SUDO_USER").unwrap_or_default();
-        let home = if user.is_empty() {
-            std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())
-        } else {
-            format!("/home/{user}")
-        };
+        let home = crate::core::real_home();
         // .bashrc has an interactivity guard and can't be sourced from a non-interactive
         // process. Instead: init nvm directly (its script has no guard) and prepend the
         // well-known bin dirs used by nvm, pi-node, volta, and npm-global.

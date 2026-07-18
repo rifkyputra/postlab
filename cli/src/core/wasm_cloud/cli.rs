@@ -10,7 +10,7 @@ pub struct WasmCloudCliManager;
 
 /// Returns the path to the wash binary, checking PATH and the default install location.
 pub fn find_wash() -> Option<String> {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = crate::core::real_home();
     let candidates = [
         format!("{home}/.wash/bin/wash"),
         format!("{home}/.cargo/bin/wash"),

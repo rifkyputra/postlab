@@ -25,3 +25,12 @@ pub mod pi_agent;
 pub mod projects;
 
 pub use platform::Platform;
+
+pub fn real_home() -> String {
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if let Ok(Some(user)) = nix::unistd::User::from_name(&sudo_user) {
+            return user.dir.to_string_lossy().to_string();
+        }
+    }
+    std::env::var("HOME").unwrap_or_default()
+}
