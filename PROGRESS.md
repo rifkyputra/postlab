@@ -32,4 +32,5 @@
 
 | Feature | Merged | PR |
 |---|---|---|
+| System Homelab tab (v0.6.0) | 2026-08-13 | — (tagged release) |
 | Phase 0 — dep/repo prep | 2026-06-30 | — |

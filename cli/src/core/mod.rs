@@ -5,6 +5,7 @@ pub mod firewall;
 pub mod gateway;
 pub mod ghost;
 pub mod hardware;
+pub mod homelab;
 pub mod models;
 pub mod nats;
 pub mod packages;

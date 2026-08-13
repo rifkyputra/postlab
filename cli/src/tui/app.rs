@@ -13,6 +13,7 @@ use crate::core::{
         ManagedWorkloadSpec, MemInfo, OsInfo, Package, ProcessEntry, Route, SecurityFinding,
         SshKey, SwapStatus, Tunnel, UserInfo, WasmCloudApp, WasmCloudComponent, WasmCloudHost,
     },
+    homelab::{HomelabFeature, HomelabFeatureStatus, HomelabStatus},
     portcheck::{default_entries, PortEntry, PortStatus},
     services::ServiceUnit,
     Platform,
@@ -79,6 +80,7 @@ pub enum SystemTab {
     Swap,
     Storage,
     Hardware,
+    Homelab,
 }
 
 impl SystemTab {
@@ -91,6 +93,7 @@ impl SystemTab {
             SystemTab::Swap,
             SystemTab::Storage,
             SystemTab::Hardware,
+            SystemTab::Homelab,
         ]
     }
 
@@ -103,6 +106,7 @@ impl SystemTab {
             SystemTab::Swap => "Swap",
             SystemTab::Storage => "Storage",
             SystemTab::Hardware => "Hardware",
+            SystemTab::Homelab => "Homelab",
         }
     }
 
@@ -496,6 +500,13 @@ pub enum TaskResult {
     LoadLoaded(crate::core::models::LoadAvg),
     BootLoaded(crate::core::models::BootAnalysis),
     HardwareOpDone { op: String, success: bool },
+    HomelabLoaded(Vec<HomelabStatus>),
+    HomelabOpDone {
+        feature: HomelabFeature,
+        enabled: bool,
+        status: HomelabStatus,
+        audit_error: Option<String>,
+    },
     ProjectsList(Vec<crate::core::projects::ProjectEntry>),
     ProjectsOpProgress { op: String, line: String },
     ProjectsOpDone { op: String, name: String, success: bool },
@@ -531,6 +542,10 @@ pub enum ConfirmAction {
     MaintenanceAction { op: String },
     DeleteSwap { path: String },
     Umount { target: String },
+    ToggleHomelab {
+        feature: HomelabFeature,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -1270,6 +1285,35 @@ impl Default for StorageState {
     }
 }
 
+// ── Homelab state ───────────────────────────────────────────────────────────
+pub struct HomelabState {
+    pub statuses: Vec<HomelabStatus>,
+    pub table_state: TableState,
+    pub loading: bool,
+    pub mutating: Option<HomelabFeature>,
+}
+
+impl Default for HomelabState {
+    fn default() -> Self {
+        let statuses = HomelabFeature::ALL
+            .into_iter()
+            .map(|feature| HomelabStatus {
+                feature,
+                status: HomelabFeatureStatus::Unavailable,
+                detail: "Not loaded".to_string(),
+            })
+            .collect();
+        let mut table_state = TableState::default();
+        table_state.select(Some(0));
+        Self {
+            statuses,
+            table_state,
+            loading: false,
+            mutating: None,
+        }
+    }
+}
+
 // ── Hardware state ───────────────────────────────────────────────────────────
 #[derive(Default)]
 pub struct HardwareState {
@@ -1776,6 +1820,7 @@ pub struct App {
     pub swap: SwapState,
     pub storage: StorageState,
     pub hardware: HardwareState,
+    pub homelab: HomelabState,
     pub projects: ProjectsState,
 
     pub terminal_width: u16,
@@ -1824,6 +1869,7 @@ impl App {
             swap: SwapState::default(),
             storage: StorageState::default(),
             hardware: HardwareState::default(),
+            homelab: HomelabState::default(),
             projects: ProjectsState::default(),
             task_tx,
             task_rx,
@@ -1945,6 +1991,7 @@ impl App {
             SystemTab::Swap => self.spawn_load_swap(),
             SystemTab::Storage => self.spawn_load_storage(),
             SystemTab::Hardware => self.spawn_load_hardware(),
+            SystemTab::Homelab => self.spawn_load_homelab(),
         }
     }
 
@@ -3546,6 +3593,57 @@ impl App {
                     let _ = tx2.send(TaskResult::Error(e.to_string()));
                 }
             }
+        });
+    }
+
+    // ── Homelab spawn methods ───────────────────────────────────────────
+
+    pub fn spawn_load_homelab(&mut self) {
+        if self.homelab.loading || self.homelab.mutating.is_some() {
+            return;
+        }
+        self.homelab.loading = true;
+        let manager = Arc::clone(&self.platform.homelab);
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(TaskResult::HomelabLoaded(manager.status().await));
+        });
+    }
+
+    pub fn spawn_set_homelab(&mut self, feature: HomelabFeature, enabled: bool) {
+        if self.homelab.loading || self.homelab.mutating.is_some() {
+            return;
+        }
+        self.homelab.mutating = Some(feature);
+        let manager = Arc::clone(&self.platform.homelab);
+        let pool = self.pool.clone();
+        let tx = self.task_tx.clone();
+        tokio::spawn(async move {
+            let status = manager.set(feature, enabled).await;
+            let success = matches!(
+                (enabled, status.status),
+                (true, HomelabFeatureStatus::Enabled)
+                    | (false, HomelabFeatureStatus::Disabled)
+            );
+            let target = feature.label();
+            let operation = if enabled { "enable" } else { "disable" };
+            let output = format!("{}: {}", operation, status.detail);
+            let audit_error = crate::db::audit::log_action(
+                &pool,
+                "homelab",
+                Some(target),
+                &output,
+                success,
+            )
+            .await
+            .err()
+            .map(|error| error.to_string());
+            let _ = tx.send(TaskResult::HomelabOpDone {
+                feature,
+                enabled,
+                status,
+                audit_error,
+            });
         });
     }
 
@@ -5239,6 +5337,34 @@ impl App {
                 if success {
                     self.spawn_load_hardware();
                 }
+            }
+            TaskResult::HomelabLoaded(statuses) => {
+                self.homelab.statuses = statuses;
+                self.homelab.loading = false;
+                if self.homelab.table_state.selected().is_none() {
+                    self.homelab.table_state.select(Some(0));
+                }
+            }
+            TaskResult::HomelabOpDone {
+                feature,
+                enabled,
+                status,
+                audit_error,
+            } => {
+                self.homelab.mutating = None;
+                let success = matches!(
+                    (enabled, status.status),
+                    (true, HomelabFeatureStatus::Enabled)
+                        | (false, HomelabFeatureStatus::Disabled)
+                );
+                self.status_msg = Some(if let Some(error) = audit_error {
+                    format!("{} changed; audit log failed: {}", feature.label(), error)
+                } else if success {
+                    format!("{} {}d", feature.label(), if enabled { "enable" } else { "disable" })
+                } else {
+                    format!("{}: {}", feature.label(), status.detail)
+                });
+                self.spawn_load_homelab();
             }
             TaskResult::ProjectsList(list) => {
                 self.projects.list = list;

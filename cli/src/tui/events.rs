@@ -364,6 +364,9 @@ fn execute_confirmed(app: &mut App, action: ConfirmAction) {
         }
         ConfirmAction::DeleteSwap { path } => app.spawn_swap_delete(path),
         ConfirmAction::Umount { target } => app.spawn_storage_umount(target),
+        ConfirmAction::ToggleHomelab { feature, enabled } => {
+            app.spawn_set_homelab(feature, enabled)
+        }
     }
 }
 
@@ -442,6 +445,44 @@ fn handle_system_key(app: &mut App, key: KeyEvent) {
         SystemTab::Swap => handle_swap_key(app, key),
         SystemTab::Storage => handle_storage_key(app, key),
         SystemTab::Hardware => handle_hardware_key(app, key),
+        SystemTab::Homelab => handle_homelab_key(app, key),
+    }
+}
+
+fn handle_homelab_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char('r') | KeyCode::Char('R') => app.spawn_load_homelab(),
+        KeyCode::Down => table_next(
+            &mut app.homelab.table_state,
+            app.homelab.statuses.len(),
+        ),
+        KeyCode::Up => table_prev(&mut app.homelab.table_state),
+        KeyCode::Char(' ') | KeyCode::Enter
+            if !app.homelab.loading && app.homelab.mutating.is_none() =>
+        {
+            let Some(index) = app.homelab.table_state.selected() else {
+                return;
+            };
+            let Some(item) = app.homelab.statuses.get(index) else {
+                return;
+            };
+            let enabled = match item.status {
+                crate::core::homelab::HomelabFeatureStatus::Enabled => false,
+                crate::core::homelab::HomelabFeatureStatus::Disabled => true,
+                crate::core::homelab::HomelabFeatureStatus::Unavailable
+                | crate::core::homelab::HomelabFeatureStatus::Error => {
+                    app.status_msg = Some(format!("{}: {}", item.feature.label(), item.detail));
+                    return;
+                }
+            };
+            let feature = item.feature;
+            let action = if enabled { "Enable" } else { "Disable" };
+            app.confirm = Some(ConfirmDialog {
+                message: format!("{} {}? (y/N)", action, feature.label()),
+                action: ConfirmAction::ToggleHomelab { feature, enabled },
+            });
+        }
+        _ => {}
     }
 }
 

@@ -28,6 +28,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         SystemTab::Swap => super::swap::render(f, app, chunks[1]),
         SystemTab::Storage => super::storage::render(f, app, chunks[1]),
         SystemTab::Hardware => super::hardware::render(f, app, chunks[1]),
+        SystemTab::Homelab => super::homelab::render(f, app, chunks[1]),
     }
 }
 

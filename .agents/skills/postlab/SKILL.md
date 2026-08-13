@@ -151,6 +151,8 @@ The agent process runs under the original user's UID/GID (via `$SUDO_UID`/`$SUDO
 | **Users** | Unix user management: list, add, remove, change passwords, manage sudoers |
 | **Swap** | View swap usage; create, resize, enable, disable swap files |
 | **Storage** | Filesystems table (device, mount, type, size, used, avail, %), physical disk SMART health (model, status, temperature, power-on hours), mount/unmount volumes, inspect /etc/fstab |
+| **Hardware** | CPU temperatures, fan speeds, load history, and systemd boot-time breakdown |
+| **Homelab** | Toggle persistent Linux server-stability settings: keep awake, disable automatic sleep/hibernation, Wake-on-LAN, and disable Wi-Fi power saving |
 
 ### 9. Projects — `key: 9`
 
@@ -215,6 +217,9 @@ Mouse clicks work on nav bar tabs, sub-tabs, and list items.
 
 ### "I need to add a user"
 → Screen **8 (System)** → **Users** tab. Add users, set passwords, manage sudoers.
+
+### "I want this machine to stay awake as a homelab server"
+→ Screen **8 (System)** → **Homelab** tab. Select each stability setting and press `Space` or `Enter` to toggle it. Wake-on-LAN and Wi-Fi persistence require NetworkManager and the relevant hardware tools.
 
 ### "I want to check Tailscale VPN status"
 → Screen **4 (Networking)** → **Tailscale** tab. View connected peers, bring VPN up/down.

@@ -5,6 +5,7 @@ use crate::core::{
     docker::{DockerCliManager, DockerManager},
     firewall::{FirewallManager, FirewalldManager, NoneManager, PfManager, UfwManager},
     gateway::{CaddyManager, GatewayManager},
+    homelab::HomelabManager,
     packages::{which, AptManager, BrewManager, DnfManager, PackageManager, PacmanManager},
     processes::{ProcessManager, SysinfoProcessManager},
     security::{DefaultFail2Ban, DefaultSecurityAuditor, Fail2BanManager, SecurityAuditor},
@@ -68,6 +69,7 @@ pub struct Platform {
     pub ssh: Arc<dyn SshKeyManager>,
     pub services: Arc<dyn ServiceManager>,
     pub users: Arc<dyn UserManager>,
+    pub homelab: Arc<HomelabManager>,
     pub nats: Arc<crate::core::nats::NatsManager>,
     pub workloads: Arc<dyn ManagedWorkloadManager>,
 }
@@ -93,6 +95,7 @@ pub fn detect() -> Result<Platform> {
         Arc::new(MacosServiceManager)
     };
     let users = Arc::new(UnixUserManager);
+    let homelab = Arc::new(HomelabManager::new(os.is_linux()));
     let nats = Arc::new(crate::core::nats::NatsManager::new());
     let workloads: Arc<dyn ManagedWorkloadManager> = Arc::new(
         DefaultManagedWorkloadManager::detect(os, Arc::clone(&services)),
@@ -114,6 +117,7 @@ pub fn detect() -> Result<Platform> {
         ssh,
         services,
         users,
+        homelab,
         nats,
         workloads,
     })

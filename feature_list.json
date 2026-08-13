@@ -1,6 +1,6 @@
 {
   "project": "postlab",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "cli_commands": [
     {
       "command": "postlab",
@@ -308,6 +308,11 @@
           "id": "hardware",
           "name": "Hardware",
           "description": "Sensors (CPU temps, fan speeds via /sys/class/hwmon or lm-sensors), load average history sparkline, and boot-time breakdown (systemd-analyze); [i] one-click installs lm-sensors. [planned] GPU info (nvidia-smi / lspci) and hardware inventory (motherboard, BIOS, RAM, PCI)"
+        },
+        {
+          "id": "homelab",
+          "name": "Homelab",
+          "description": "Linux server-stability controls: keep the host awake, disable automatic sleep/hibernation, enable Wake-on-LAN, and disable Wi-Fi power saving; persistent toggles use systemd and NetworkManager when available"
         }
       ]
     },
