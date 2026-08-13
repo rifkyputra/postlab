@@ -13,7 +13,7 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.3.0-blue.svg" alt="Version 0.3.0">
+    <img src="https://img.shields.io/badge/version-0.6.0-blue.svg" alt="Version 0.6.0">
     <img src="https://img.shields.io/badge/license-Apache--2.0-green.svg" alt="License Apache-2.0">
     <img src="https://github.com/rifkyputra/postlab/actions/workflows/build.yml/badge.svg" alt="Build Status">
   </p>
@@ -47,7 +47,7 @@ Single binary. Low memory. Cross-platform (Linux + macOS).
 | **5. Docker** | Containers, Images, Compose, Workloads, Managed | Manage Docker or Podman lifecycle, view image sizes, control Compose stacks, host-managed workloads, and one-click dev services (PostgreSQL, Redis, RabbitMQ, etc.). |
 | **6. wasmCloud** | Hosts, Components, Apps, Inspector | Manage wasmCloud lattices, host nodes, components, and applications. NATS backbone health and interactive inspector. |
 | **7. Agent** | Chat, Tools, Tasks, Status, Sessions, Config, Auth, Skills, Library, Logs | Interactive chat with pi agent; tool execution log; background task scheduler; install/update management; session browser; config/auth viewer; skill library with one-click install; live log tail. |
-| **8. System** | Ghosts, Janitor, Services, Users, Swap, Storage, Hardware | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable; filesystem browser with mount/unmount, physical disk SMART health, and /etc/fstab viewer; hardware sensors (temps/fans), load-average history, and boot-time breakdown. |
+| **8. System** | Ghosts, Janitor, Services, Users, Swap, Storage, Hardware, Homelab | Ghost process hunter; package-cache cleanup; systemd / launchd service control; Unix user CRUD and sudoers; swap file creation, resize, and enable/disable; filesystem browser with mount/unmount, physical disk SMART health, and /etc/fstab viewer; hardware sensors (temps/fans), load-average history, and boot-time breakdown; **Homelab server-stability toggles** (keep awake, disable automatic sleep/hibernation, Wake-on-LAN, Wi-Fi power saving). |
 | **9. Projects** | Projects, New, Clone, Settings | Browse local projects by last modified time; scaffold a new app via create-better-t-stack; clone a GitHub repo by shorthand or URL; configure the projects directory. |
 
 All operations are **non-blocking** — the TUI stays responsive while background tasks (like package installations) run.
@@ -100,7 +100,7 @@ curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh 
 **Pin a specific version:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | VERSION=v0.3.0 bash
+curl -fsSL https://raw.githubusercontent.com/rifkyputra/postlab/main/install.sh | VERSION=v0.6.0 bash
 ```
 
 **Build from source:**
@@ -229,6 +229,9 @@ sudo postlab --database /var/lib/postlab/data.db
 | **System → Hardware** |||
 | `R` / `r` | Hardware tab | Reload sensors and load average |
 | `i` | Hardware tab | Install lm-sensors |
+| **System → Homelab** |||
+| `Space` / `Enter` | Homelab tab | Toggle selected stability setting (with confirm) |
+| `r` | Homelab tab | Refresh statuses |
 | **Projects** |||
 | `p` | Projects tab | git pull in selected project |
 | `c` | Clone tab | Clone (after entering repo URL) |
@@ -266,6 +269,7 @@ cli/src/
 │   │                        # detect() — auto-selects right impls at runtime
 │   ├── models.rs            # Shared data types (30+ structs/enums)
 │   ├── system/              # SystemInfo trait + sysinfo impl (swap, fstab)
+│   ├── homelab/             # Homelab stability toggles (sleep masks, logind, WOL, Wi-Fi power save)
 │   ├── packages/            # PackageManager trait + apt / dnf / pacman / brew
 │   ├── processes/           # ProcessManager trait + sysinfo impl
 │   ├── security/            # SecurityAuditor trait + SSH/ASLR/firewall checks
@@ -346,11 +350,22 @@ Every fix creates a `.bak.<timestamp>` copy of the config file first, e.g., `/et
 - [ ] **Audit log** — Expose the SQLite audit trail as a TUI screen with filtering by action, user, and time range.
 - [ ] **Plugin system** — Extensible plugin architecture for custom screens, package adapters, and firewall backends.
 - [x] **System info** — `postlab system sensors / load / boot` subcommands and a new **Hardware** tab in the System TUI screen (8): CPU temps and fan speeds, load average history sparkline, and a `systemd-analyze` boot-time breakdown.
+- [x] **Homelab stability** — System tab (8) with persistent toggles: keep the host awake (systemd sleep-target masks), disable automatic sleep/hibernation (logind drop-in), Wake-on-LAN (ethtool + NetworkManager), and Wi-Fi power saving (iw + NetworkManager). Linux-only; unavailable on unsupported hosts.
 - [ ] **Hardware inventory & GPU** — Extend the Hardware tab and `postlab system` with GPU details (nvidia-smi / lspci) and motherboard/BIOS/RAM/PCI inventory.
 
 ---
 
 ## Changelog
+
+### v0.6.0 — 2026-08-13
+
+- **System → Homelab tab** — persistent Linux server-stability toggles: keep awake (systemd sleep/suspend/hibernate target masks, ownership-aware rollback), disable automatic sleep/hibernation (systemd-logind drop-in + reload), Wake-on-LAN (ethtool runtime + NetworkManager profiles, transactional rollback), and Wi-Fi power saving (iw + NetworkManager). All mutations audit-logged; honest `Unavailable` states on unsupported hosts.
+- Node.js quick install via NodeSource LTS setup + `rustup`, `bun`, and `claude-code` quick-install entries.
+- Pi Agent Auth tab: interactive model/provider config manager with streamed `pi login`.
+- Native git module (`core/git/`) replacing `deploy/git.rs`; apt/dnf adapter updates.
+- Version 0.3.0 → 0.6.0.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history and the [v0.6.0 release](https://github.com/rifkyputra/postlab/releases/tag/v0.6.0) for downloads.
 
 ### v0.3.0 — 2026-06-28
 
